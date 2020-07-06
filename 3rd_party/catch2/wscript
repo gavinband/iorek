@@ -1,0 +1,11 @@
+import os.path
+
+def configure( conf ):
+	pass
+
+def build( bld ):
+	bld(
+		target = 'catch',
+		includes = './',
+		export_includes = './', 
+	)

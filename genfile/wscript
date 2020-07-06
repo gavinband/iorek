@@ -1,0 +1,23 @@
+import os.path
+import glob
+#import UnitTest
+
+def configure( conf ):
+	pass
+
+def build( bld ):
+	#---------------------
+	# libs
+	#---------------------
+	bld.stlib(
+		features = "cxx",
+		target = "genfile",
+		source = (
+			bld.path.ant_glob( 'src/*.cpp')
+			+ bld.path.ant_glob( 'src/string_utils/*.cpp')
+			+ bld.path.ant_glob( 'src/db/*.cpp')
+		),
+		includes = [ './include' ],
+		use = 'svelte_config boost zstd sqlite3 zlib eigen',
+		export_includes = './include'
+	)

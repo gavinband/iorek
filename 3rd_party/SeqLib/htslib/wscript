@@ -1,0 +1,58 @@
+from waflib.Errors import ConfigurationError
+
+def configure( conf ):
+	# From the htslib Makefile:
+	#	echo '#define HAVE_LIBBZ2 1' >> $@
+	#	echo '#define HAVE_LIBLZMA 1' >> $@
+	#	echo '#define HAVE_LZMA_H 1' >> $@
+	#	echo '#define HAVE_FSEEKO 1' >> $@
+	#	echo '#define HAVE_DRAND48 1' >> $@
+
+	try:
+		conf.check( lib='bz2', uselib_store='bz2', msg = 'bz2' )
+		conf.define( "HAVE_LIBBZ2", 1 )
+	except waflib.Errors.ConfigurationError, e:
+		pass
+	try:
+		conf.check( lib = 'lzma', uselib_store='lzma', msg = 'lzma' )
+		conf.define( "HAVE_LIBLZMA", 1 )
+		conf.check( header_name = 'lzma.h', msg = 'lzma.h' )
+		conf.define( "HAVE_LZMA_H", 1 )
+	except ConfigurationError, e:
+		pass
+	try:
+		conf.check( fragment = """
+#include <sys/types.h> /* for off_t */
+#include <stdio.h>
+int main ()
+{
+	int (*fp) (FILE *, off_t, int) = fseeko;
+	return fseeko (stdin, 0, 0) && fp (stdin, 0, 0);
+	return 0;
+}""", uselib_store = "fseeko", msg = "fseeko" )
+		conf.define( "HAVE_FSEEKO", 1 )
+	except ConfigurationError, e:
+		pass
+	try:
+		conf.check( lib = 'curl', uselib_store='curl', msg = 'curl' )
+		conf.define( "HAVE_CURL", 1 )
+	except ConfigurationError, e:
+		pass
+
+	conf.define( "HAVE_DRAND48", 1 )
+	conf.write_config_header( "config.h" )
+
+def build( bld ):
+	sources = bld.path.ant_glob( "**/htslib/*.c" )
+	sources = [ elt for elt in sources if not elt.abspath().endswith( "_s3.c" )]
+	bld.shlib(
+		features = "c",
+		name = "htslib",
+		includes = "./",
+		defines = [ 'PLUGIN_EXT=""' ],
+		cflags = "-Wall -O2 -fpic",
+		source = sources,
+		target = "htslib",
+		export_includes = "./",
+		use = "bz2 zlib curl lzma"
+	)

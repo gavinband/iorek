@@ -1,0 +1,16 @@
+def configure( cfg ):
+	cfg.define( "HAVE_SQLITE", 1 )
+
+def build( bld ):
+        bld.stlib(
+                features = 'c',
+                name = 'sqlite3',
+                target = 'sqlite3',
+                source = [ 'sqlite3/sqlite3.c' ],
+                defines = 'SQLITE_ENABLE_COLUMN_METADATA SQLITE_ENABLE_STAT3',
+                cflags = '-O3 -fPIC',
+                use = 'DL',
+                includes = 'sqlite3/',
+                export_includes = './'
+        )
+

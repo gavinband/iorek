@@ -1,0 +1,11 @@
+import os.path
+
+def configure( conf ):
+	conf.define( "HAVE_EIGEN", 1 )
+
+def build( bld ):
+	bld(
+		target = 'eigen',
+		includes = './',
+		export_includes = './', 
+	)

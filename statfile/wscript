@@ -1,0 +1,21 @@
+import os.path
+import glob
+#import UnitTest
+
+def configure( conf ):
+	pass
+
+def build( bld ):
+	#---------------------
+	# libs
+	#---------------------
+	bld.stlib(
+		features = 'cxx',
+		target = 'statfile',
+		source = bld.path.ant_glob( 'src/*.cpp' ),
+		includes = '../ ./include',
+		use = 'boost zlib genfile',
+		export_includes = './include'
+	)
+
+	#create_tests( bld, 'test_statfile' )

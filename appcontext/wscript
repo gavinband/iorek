@@ -1,0 +1,12 @@
+def configure( cfg ):
+	pass
+
+def build( bld ):
+	bld.stlib(
+		target = 'appcontext',
+		source = bld.path.ant_glob( 'src/*.cpp' ),
+		includes='./include',
+		cxxflags = [ '-std=c++11' ],
+		use = 'boost',
+		export_includes = './include'
+	)

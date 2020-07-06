@@ -1,0 +1,17 @@
+import os.path
+import glob
+#import UnitTest
+
+def configure( conf ):
+	conf.define( "HAVE_QCDB", 1 )
+
+def build( bld ):
+	bld.shlib(
+		features = 'cxx',
+		target = 'qcdb',
+		source = bld.path.ant_glob( 'src/*.cpp' ),
+		includes = './include',
+		use = 'boost sqlite3 statfile genfile appcontext',
+		export_includes = './include'
+	)
+	

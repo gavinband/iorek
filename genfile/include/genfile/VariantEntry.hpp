@@ -1,0 +1,92 @@
+
+//          Copyright Gavin Band 2008 - 2012.
+// Distributed under the Boost Software License, Version 1.0.
+//    (See accompanying file LICENSE_1_0.txt or copy at
+//          http://www.boost.org/LICENSE_1_0.txt)
+
+#ifndef GENFILE_VARIANTENTRY_HPP
+#define GENFILE_VARIANTENTRY_HPP
+
+#include <string>
+#include <boost/variant.hpp>
+#include "genfile/MissingValue.hpp"
+#include "genfile/GenomePosition.hpp"
+
+namespace genfile {
+	class VariantEntry {
+	public:
+		template< typename T > VariantEntry( T const& value ) ;
+		VariantEntry( int const value ) ;
+		template< typename T > VariantEntry& operator=( T const& value ) ;
+		VariantEntry& operator=( int const value ) ;
+		VariantEntry() ; // Initialise with MissingValue.
+	public:
+		int type() const ;
+		bool is_missing() const ;
+		bool is_string() const ;
+		bool is_int() const ;
+		bool is_double() const ;
+		bool is_chromosome() const ;
+		bool is_position() const ;
+		template< typename T > T as() const ;
+
+		template< typename Visitor >
+		friend void apply_visitor( Visitor visitor, VariantEntry const& ) ;
+		template< typename Visitor >
+		friend void apply_visitor( Visitor visitor, VariantEntry& ) ;
+	public:
+		bool operator==( VariantEntry const& rhs ) const ;
+		bool operator!=( VariantEntry const& rhs ) const ;
+		bool operator<( VariantEntry const& rhs ) const ;
+		bool operator<=( VariantEntry const& rhs ) const ;
+		bool operator>( VariantEntry const& rhs ) const ;
+		bool operator>=( VariantEntry const& rhs ) const ;
+		friend std::ostream& operator<<( std::ostream&, VariantEntry const& ) ;
+		typedef int64_t Integer ;
+
+	private:
+		enum Types { eMissing = 0, eString = 1, eInteger = 2, eDouble = 3, eChromosome = 4, eGenomePosition = 5 } ;
+		typedef boost::variant< MissingValue, std::string, Integer, double, Chromosome, GenomePosition > EntryData ;
+		EntryData m_entrydata ;
+		
+	private:
+		// prevent implicit conversion to VariantEntry in comparisons.
+		template< typename T > bool operator==( T const& rhs ) const ; 
+		template< typename T > bool operator<( T const& rhs ) const ; // this prevents implicit conversion to VariantEntry.
+	} ;
+	
+	template< typename T >
+	VariantEntry::VariantEntry( T const& value ):
+		m_entrydata( value )
+	{}
+	
+	template< typename T >
+	VariantEntry& VariantEntry::operator=( T const& value ) {
+		this->m_entrydata = value ;
+		return *this ;
+	}
+	
+	template< typename T >
+	T VariantEntry::as() const {
+		return boost::get< T >( m_entrydata ) ;
+	}
+	
+	// The following specialisation allows the user to get either a double or integer entry as a double.
+	// This simplifies some uses.
+	template<> double VariantEntry::as() const ;
+	// The following specialisation allows the user to get either a value as an int.
+	template<> int VariantEntry::as() const ;
+	
+	template< typename Visitor >
+	void apply_visitor( Visitor visitor, VariantEntry const& value ) {
+		return boost::apply_visitor( visitor, value.m_entrydata ) ;
+	}
+
+	template< typename Visitor >
+	void apply_visitor( Visitor visitor, VariantEntry& value ) {
+		return boost::apply_visitor( visitor, value.m_entrydata ) ;
+		
+	}
+}
+
+#endif

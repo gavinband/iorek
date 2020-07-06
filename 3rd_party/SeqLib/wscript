@@ -1,0 +1,107 @@
+from waflib.Errors import ConfigurationError
+
+def check( conf, define, *args, **kwargs ):
+	try:
+		conf.check( *args, **kwargs )
+		conf.define( define, 1 )
+	except ConfigurationError, e:
+		conf.define( define, 0 )
+
+def configure( conf ):
+	check( conf, "HAVE_BZ2", lib='bz2', uselib_store='bz2', msg = 'bz2' )
+	check( conf, "HAVE_PTHREAD", lib='pthread', uselib_store='pthread', msg = 'pthread' )
+	#check( conf, "HAVE_LIBLZMA", lib = 'lzma', uselib_store='lzma', msg = 'lzma' )
+	#check( conf, "HAVE_LZMA_H", header_name = 'lzma.h', msg = 'lzma.h' )
+	check( conf, "HAVE_FSEEKO",
+		fragment = """
+#include <sys/types.h> /* for off_t */
+#include <stdio.h>
+int main ()
+{
+	int (*fp) (FILE *, off_t, int) = fseeko;
+	return fseeko (stdin, 0, 0) && fp (stdin, 0, 0);
+	return 0;
+}""", uselib_store = "fseeko", msg = "fseeko" )
+	check( conf, "HAVE_CURL", lib = 'curl', uselib_store='curl', msg = 'curl' )
+	conf.define( "HAVE_DRAND48", 1 )
+
+	conf.define( "HAVE_CLOCK_GETTIME", 1 )
+	check( conf, "HAVE_INTTYPES_H", header_name = "inttypes.h" )
+	check( conf, "HAVE_MEMORY_H", header_name = "memory.h" )
+	check( conf, "HAVE_STDINT_H", header_name = "stdint.h" )
+	check( conf, "HAVE_STDLIB_H", header_name = "stdlib.h" )
+	check( conf, "HAVE_STRINGS_H", header_name = "strings.h" )
+	check( conf, "HAVE_STRING_H", header_name = "string.h" )
+	check( conf, "HAVE_SYS_STAT_H", header_name = "sys/stat.h" )
+	check( conf, "HAVE_SYS_TYPES_H", header_name = "sys/types.h" )
+	check( conf, "HAVE_UNISTD_H", header_name = "unistd.h" )
+	conf.define( "PACKAGE", "seqkit" )
+	conf.write_config_header( "config/config.h" )
+
+def build( bld ):
+	htslib_sources = (
+		[
+			'htslib/bcf_sr_sort.c',
+			'htslib/bgzf.c',
+			'htslib/faidx.c',
+			'htslib/knetfile.c',
+			'htslib/kstring.c',
+			'htslib/hfile.c',
+			'htslib/hfile_gcs.c',
+			'htslib/hfile_libcurl.c',
+			'htslib/hfile_net.c',
+			#'htslib/hfile_s3.c',
+			'htslib/hts.c',
+			'htslib/hts_os.c',
+			'htslib/md5.c',
+			'htslib/multipart.c',
+			'htslib/probaln.c',
+			'htslib/realn.c',
+			'htslib/regidx.c',
+			'htslib/sam.c',
+			'htslib/synced_bcf_reader.c',
+			'htslib/tbx.c',
+			'htslib/textutils.c',
+			'htslib/thread_pool.c',
+			'htslib/vcf.c',
+			'htslib/vcf_sweep.c',
+			'htslib/vcfutils.c'
+		]
+		+ bld.path.ant_glob( "htslib/cram/*.c" )
+	)
+	bld.stlib(
+		features = "c",
+		name = "seqlib_htslib",
+		includes = [ "htslib", "config" ],
+		defines = [ 'PLUGIN_EXT=""' ],
+		cflags = "-Wall -O2 -fpic",
+		source = htslib_sources,
+		target = "seqlib_htslib",
+		export_includes = "./",
+		use = "bz2 zlib curl lzma pthread"
+	)
+
+
+	bld.stlib(
+		source = ['src/ssw.c'],
+		target = 'SeqLib_ssw',
+		name = "SeqLib_ssw",
+		includes = "./"
+	)
+	
+	seqlib_sources = [
+		'src/BamHeader.cpp', 'src/BamReader.cpp', 'src/BamRecord.cpp',
+		'src/GenomicRegion.cpp', 'src/ReadFilter.cpp', 'src/RefGenome.cpp',
+		'src/ssw_cpp.cpp', 'src/jsoncpp.cpp', 'src/ssw.c'
+		#, 'src/BFC.cpp'
+	]
+
+	bld.stlib(
+		features = "cxx",
+		name = "seqlib",
+		target = "seqlib",
+		includes = [ "./", "htslib", "config" ],
+		source = seqlib_sources,
+		export_includes = [ ".", "htslib" ],
+		use = "seqlib_htslib"
+	)

@@ -1,0 +1,31 @@
+import os.path
+import glob
+#import UnitTest
+
+def configure( conf ):
+	pass
+
+def build( bld ):
+	#---------------------
+	# libs
+	#---------------------
+	bld.stlib(
+		features = "cxx",
+		target = "libsvelte",
+		source = (
+			bld.path.ant_glob( 'src/*.cpp')
+		),
+		includes = [ './include' ],
+		use = 'svelte_config boost eigen',
+		export_includes = './include'
+	)
+
+	bld.program(
+		features = "cxx",
+		target = "test_libsvelte",
+		source = (
+			bld.path.ant_glob( 'test/*.cpp')
+		),
+		includes = [ './include', './test' ],
+		use = 'svelte_config libsvelte boost eigen',
+	)

@@ -1,0 +1,22 @@
+def configure( cfg ):
+	pass
+	
+def build( bld ):
+	bld.program(
+		source = "svelte.cpp",
+		target = 'svelte',
+		use = 'seqan bamtools seqlib package_revision appcontext genfile statfile pthread',
+		includes = "./"
+	)
+	bld.program(
+		source = "nonahore.cpp",
+		target = 'nonahore',
+		use = 'package_revision appcontext genfile statfile libsvelte',
+		includes = "./"
+	)
+	bld.program(
+		source = "parse-cigar.cpp",
+		target = 'parse-cigar',
+		use = 'seqan bamtools seqlib package_revision appcontext genfile qcdb pthread',
+		includes = "./"
+	)
