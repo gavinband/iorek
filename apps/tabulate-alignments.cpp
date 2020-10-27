@@ -53,8 +53,13 @@ public:
 		options[ "-reads" ]
 			.set_description( "Path of bam/cram files to operate on." )
 			.set_takes_values_until_next_option()
-			.set_is_required()
 		;
+		options[ "-read-files" ]
+			.set_description( "File containing paths of bam/cram files to operate on." )
+			.set_takes_single_value()
+		;
+
+		options.option_excludes_option( "-reads", "-read-files" ) ;
 
 		options[ "-o" ]
 			.set_description( "Path of output file." )
@@ -65,8 +70,9 @@ public:
 			.set_description(
 				"Range of positions to focus analysis on (in the form <chromosome>:<position>, or <chromosome>:<start>-<end>). "
 				"Note " + globals::program_name + " uses 1-based coordinates with closed intervals." )
-			.set_takes_single_value()
-			.set_is_required()
+			.set_takes_values_until_next_option()
+			.set_minimum_multiplicity( 1 )
+			.set_maximum_multiplicity( 1000 )
 		;
 
 		options[ "-reference" ]
@@ -389,8 +395,22 @@ private:
 	typedef std::vector< genfile::GenomePositionRange > Regions ;
 
 	void unsafe_process() {
+		std::vector< std::string > filenames ;
+		if( options().check( "-reads" )) {
+			filenames = options().get_values< std::string >( "-reads" ) ;
+		} else if( options().check( "-read-files" )) {
+			std::string const filename = options().get_value< std::string >( "-read-files" ) ;
+			std::auto_ptr< std::istream > in = genfile::open_text_file_for_input( filename ) ;
+			std::copy(
+				std::istream_iterator< std::string >( *in ),
+				std::istream_iterator< std::string >(),
+				std::back_inserter< std::vector< std::string > >( filenames )
+			) ;
+		} else {
+			throw appcontext::OptionProcessingException( "-reads", std::vector< std::string >(), "You must supply either -reads or -read-files." ) ;
+		}
 		unsafe_process(
-			options().get_values< std::string >( "-reads" ),
+			filenames,
 			get_regions( options().get_values< std::string >( "-range" ) )
 		) ;
 	}
@@ -421,18 +441,18 @@ private:
 		{
 			*sink | "file" | "chromosome" | "position" ;
 			for( std::size_t i = 0; i < mq_bins.size(); ++i ) {
-				*sink | "fwd:mq>=" + to_string(mq_bins[i]) + ":A" ;
-				*sink | "rev:mq>=" + to_string(mq_bins[i]) + ":A" ;
-				*sink | "fwd:mq>=" + to_string(mq_bins[i]) + ":C" ;
-				*sink | "rev:mq>=" + to_string(mq_bins[i]) + ":C" ;
-				*sink | "fwd:mq>=" + to_string(mq_bins[i]) + ":G" ;
-				*sink | "rev:mq>=" + to_string(mq_bins[i]) + ":G" ;
-				*sink | "fwd:mq>=" + to_string(mq_bins[i]) + ":T" ;
-				*sink | "rev:mq>=" + to_string(mq_bins[i]) + ":T" ;
-				*sink | "fwd:mq>=" + to_string(mq_bins[i]) + ":-" ;
-				*sink | "rev:mq>=" + to_string(mq_bins[i]) + ":-" ;
-				*sink | "fwd:mq>=" + to_string(mq_bins[i]) + ":+" ;
-				*sink | "rev:mq>=" + to_string(mq_bins[i]) + ":+" ;
+				*sink | ("fwd:mq>=" + to_string(mq_bins[i]) + ":A") ;
+				*sink | ("rev:mq>=" + to_string(mq_bins[i]) + ":A") ;
+				*sink | ("fwd:mq>=" + to_string(mq_bins[i]) + ":C") ;
+				*sink | ("rev:mq>=" + to_string(mq_bins[i]) + ":C") ;
+				*sink | ("fwd:mq>=" + to_string(mq_bins[i]) + ":G") ;
+				*sink | ("rev:mq>=" + to_string(mq_bins[i]) + ":G") ;
+				*sink | ("fwd:mq>=" + to_string(mq_bins[i]) + ":T") ;
+				*sink | ("rev:mq>=" + to_string(mq_bins[i]) + ":T") ;
+				*sink | ("fwd:mq>=" + to_string(mq_bins[i]) + ":-") ;
+				*sink | ("rev:mq>=" + to_string(mq_bins[i]) + ":-") ;
+				*sink | ("fwd:mq>=" + to_string(mq_bins[i]) + ":+") ;
+				*sink | ("rev:mq>=" + to_string(mq_bins[i]) + ":+") ;
 			}
 		}
 		auto progress_context = ui().get_progress_context( "Processing samples" ) ;
@@ -458,6 +478,20 @@ private:
 		std::vector< int > mq_bins,
 		statfile::BuiltInTypeStatSink& sink
 	) {
+		try {
+			process_reads_unsafe( filename, region, name, mq_bins, sink ) ;
+		} catch( std::exception const& e ) {
+			ui().logger() << "!! Error processing \"" << name << "\", results for this file will be zero.\n" ;
+		}
+	}
+
+	void process_reads_unsafe(
+		std::string const& filename,
+		Region const& region,
+		std::string const& name,
+		std::vector< int > mq_bins,
+		statfile::BuiltInTypeStatSink& sink
+	) {
 		seqlib::BamReader reader;
 		
 		if( options().check( "-reference" )) {
@@ -469,20 +503,25 @@ private:
 		}
 
 		
-		seqlib::BamHeader const& header = reader.Header() ;
-		reader.SetRegion( seqlib::GenomicRegion( region.toString(), header )) ;
-
 		impl::ReadCounter read_counter( region, mq_bins ) ;
-		seqlib::BamRecord alignment ;
-		while( reader.GetNextRecord( alignment ) ) {
-			if(
-				!alignment.SecondaryFlag()
-				&& !alignment.DuplicateFlag()
-				&& !alignment.QCFailFlag()
-				&& alignment.MappedFlag()
-			) {
-				read_counter.add_read( alignment, header ) ;
+
+		try {
+			seqlib::BamHeader const& header = reader.Header() ;
+			reader.SetRegion( seqlib::GenomicRegion( region.toString(), header )) ;
+
+			seqlib::BamRecord alignment ;
+			while( reader.GetNextRecord( alignment ) ) {
+				if(
+					!alignment.SecondaryFlag()
+					&& !alignment.DuplicateFlag()
+					&& !alignment.QCFailFlag()
+					&& alignment.MappedFlag()
+				) {
+					read_counter.add_read( alignment, header ) ;
+				}
 			}
+		} catch( std::exception const& e ) {
+			ui().logger() << "!! Error processing \"" << name << "\", results for this file will be zero.\n" ;
 		}
 
 		for( int position = region.start().position(); position < region.end().position(); ++position ) {
