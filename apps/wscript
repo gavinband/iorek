@@ -20,3 +20,9 @@ def build( bld ):
 		use = 'seqan bamtools seqlib package_revision appcontext genfile qcdb pthread',
 		includes = "./"
 	)
+	bld.program(
+		source = "tabulate-alignments.cpp",
+		target = 'tabulate-alignments',
+		use = 'seqan bamtools seqlib package_revision appcontext genfile qcdb pthread',
+		includes = "./"
+	)

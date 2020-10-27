@@ -24,7 +24,8 @@ namespace genfile {
 
 		std::size_t separator_pos = pieces[1].find( '-' ) ;
 		if ( separator_pos == std::string::npos ) {
-			throw genfile::BadArgumentError( "genfile::GenomePositionRange::parse", "spec=\"" + spec + "\"" ) ;
+			// interpret as a single-position range
+			pieces.push_back( pieces[1] ) ;
 		}
 
 		genfile::Chromosome chromosome( pieces[0] ) ;
@@ -140,6 +141,21 @@ namespace genfile {
 			out << range.end().position() ;
 		}
 		return out ;
+	}
+
+	GenomePositionRange GenomePositionRange::toZeroBased() const {
+		GenomePosition start = m_start ;
+		--start.position() ;
+		return GenomePositionRange( start, m_end ) ;
+	}
+
+	GenomePositionRange GenomePositionRange::toOneBased() const {
+		// can't convert an empty range
+		assert( m_start < m_end ) ;
+		GenomePosition start = m_start ;
+		++start.position() ;
+		return GenomePositionRange( start, m_end ) ;
+		
 	}
 	
 }

@@ -37,6 +37,9 @@ namespace genfile {
 
 		bool has_chromosome() const { return m_have_chromosome ; }
 		std::string toString() const ;
+
+		GenomePositionRange toZeroBased() const ;
+		GenomePositionRange toOneBased() const ;
 		
 		private:
 			GenomePosition m_start ;
