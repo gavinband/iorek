@@ -38,7 +38,14 @@ def configure( cfg ):
 	cfg.env['LINKFLAGS'] = flags['LINKFLAGS']
 
 	cfg.check_cxx( lib='z', uselib_store='zlib', msg = 'zlib' )
-
+	import platform
+	if platform.system() == "Darwin":
+		pass
+	else:
+		cfg.check_cxx( lib='rt', uselib_store='rt', msg = 'rt' )
+		cfg.check_cxx( lib='pthread', uselib_store='pthread', msg = 'pthread' )
+		cfg.check_cxx( lib='dl', uselib_store='dl', msg = 'dl' )
+	
 	cfg.recurse( subdirs )
 	cfg.write_config_header( 'config/config.hpp' )
 	

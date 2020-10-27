@@ -6,7 +6,7 @@ def configure( conf ):
 	conf.define( "HAVE_QCDB", 1 )
 
 def build( bld ):
-	bld.shlib(
+	bld.stlib(
 		features = 'cxx',
 		target = 'qcdb',
 		source = bld.path.ant_glob( 'src/*.cpp' ),
