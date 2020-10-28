@@ -56,7 +56,7 @@ public:
 		;
 		options[ "-read-files" ]
 			.set_description( "File containing paths of bam/cram files to operate on." )
-			.set_takes_single_value()
+			.set_takes_values_until_next_option()
 		;
 
 		options.option_excludes_option( "-reads", "-read-files" ) ;
@@ -399,13 +399,15 @@ private:
 		if( options().check( "-reads" )) {
 			filenames = options().get_values< std::string >( "-reads" ) ;
 		} else if( options().check( "-read-files" )) {
-			std::string const filename = options().get_value< std::string >( "-read-files" ) ;
-			std::auto_ptr< std::istream > in = genfile::open_text_file_for_input( filename ) ;
-			std::copy(
-				std::istream_iterator< std::string >( *in ),
-				std::istream_iterator< std::string >(),
-				std::back_inserter< std::vector< std::string > >( filenames )
-			) ;
+			std::vector< std::string > const values = options().get_values< std::string >( "-read-files" ) ;
+			for( auto filename: values ) {
+				std::auto_ptr< std::istream > in = genfile::open_text_file_for_input( filename ) ;
+				std::copy(
+					std::istream_iterator< std::string >( *in ),
+					std::istream_iterator< std::string >(),
+					std::back_inserter< std::vector< std::string > >( filenames )
+				) ;
+			}
 		} else {
 			throw appcontext::OptionProcessingException( "-reads", std::vector< std::string >(), "You must supply either -reads or -read-files." ) ;
 		}
