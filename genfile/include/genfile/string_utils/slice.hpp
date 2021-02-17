@@ -64,7 +64,8 @@ namespace genfile {
 			void split( std::string const& split_chars, boost::function< void( slice ) > ) const ;
 			
 			slice substr( std::size_t start, std::size_t end ) const ;
-			
+			slice until( char const* membership_array ) const ;
+
 			bool operator==( std::string const& other ) const ;
 			bool operator!=( std::string const& other ) const ;
 			bool operator==( char const* other ) const ;

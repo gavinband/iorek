@@ -228,6 +228,11 @@ namespace genfile {
 			return slice( *this, start, end ) ;
 		}
 
+		slice slice::until( char const* membership_array ) const {
+			std::size_t where = this->find_first_of( membership_array ) ;
+			return slice( *this, 0, where == -1 ? this->size() : where ) ;
+		}
+
 		slice slice::strip( std::string const& chars ) const {
 			if( chars.empty() ) {
 				return *this ;
