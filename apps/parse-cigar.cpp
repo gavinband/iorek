@@ -20,8 +20,8 @@ namespace seqlib = SeqLib;
 #include "appcontext/appcontext.hpp"
 
 namespace globals {
-	std::string const program_name = "svelte" ;
-	std::string const program_version = svelte_version ;
+	std::string const program_name = "parse-cigar" ;
+	std::string const program_version = package_version ;
 	std::string const program_revision = std::string( package_revision ).substr( 0, 7 ) ;
 }
 
@@ -205,7 +205,31 @@ private:
 			eMatch = 7,
 			eMismatch = 8,
 			// back is ignored, and we additionally report edit distance
-			eEditDistance = 9
+			eEditDistance = 9,
+			// types for insertions of different lengths
+			eInsertion1 = 101,
+			eInsertion2 = 102,
+			eInsertion3 = 103,
+			eInsertion4 = 104,
+			eInsertion5 = 105,
+			eInsertion6 = 106,
+			eInsertion7 = 107,
+			eInsertion8 = 108,
+			eInsertion9 = 109,
+			eInsertion10 = 110,
+			eInsertionGT10 = 111,
+			// types for insertions of different lengths
+			eDeletion1 = 1001,
+			eDeletion2 = 1002,
+			eDeletion3 = 1003,
+			eDeletion4 = 1004,
+			eDeletion5 = 1005,
+			eDeletion6 = 1006,
+			eDeletion7 = 1007,
+			eDeletion8 = 1008,
+			eDeletion9 = 1009,
+			eDeletion10 = 10010,
+			eDeletionGT10 = 10011
 		} ;
 		
 	public:
@@ -238,33 +262,79 @@ private:
 			Cigar cigar = alignment.GetCigar() ;
 			Cigar::const_iterator i = cigar.begin() ;
 			Cigar::const_iterator const end_i = cigar.end() ;
+
+			// parse cigar string
 			for( ; i != end_i; ++i ) {
 				m_opCounts[ i->RawType() ] += 1 ;
 				m_opBaseTotals[ i->RawType() ] += i->Length() ;
 			}
-			std::string MD_string ;
-			if( alignment.GetTag( "MD", MD_string ) ) {
-				std::vector< MDElt > const MD = parse_MD( MD_string ) ;
-				uint32_t matches = 0 ;
-				uint32_t mismatches = 0 ;
-				uint32_t deletions = 0 ;
-				for( std::size_t i = 0; i < MD.size(); ++i ) {
-					if( MD[i].type() == MDElt::eMatch ) {
-						matches += MD[i].size() ;
-						m_opCounts[ eMatch ] += 1 ;
-						m_opBaseTotals[ eMatch ] += MD[i].size() ;
-					} else if( MD[i].type() == MDElt::eMismatch ) {
-						mismatches += MD[i].size() ;
-						m_opCounts[ eMismatch ] += 1 ;
-						m_opBaseTotals[ eMismatch ] += MD[i].size() ;
-					} else if( MD[i].type() == MDElt::eDeletion ) {
-						deletions += MD[i].size() ;
-					}
-				}
-				uint32_t edit_distance = m_opBaseTotals[ eMismatch ] + m_opBaseTotals[ eInsertion ] + m_opBaseTotals[ eDeletion ] ;
-				m_opCounts[ eEditDistance ] = edit_distance ;
+			std::string data ;
+			if( alignment.GetTag( "MD", data )) {
+				// parse MD tag to get match and mismatch counts
+				// (these are usually missing from cigar)
+				parse_md_tag( data ) ;
+			}
+
+			if( alignment.GetTag( "CS", data )) {
+				// parseCS tag as output by minimap2.
+				// get type of each substitution, insertion, deletion.
+				//parse_cs_tag( data ) ;
+				assert(0) ;
 			}
 		}
+
+		void parse_md_tag( std::string const& MD_string ) {
+			std::vector< MDElt > const MD = parse_MD( MD_string ) ;
+			uint32_t matches = 0 ;
+			uint32_t mismatches = 0 ;
+			uint32_t deletions = 0 ;
+			for( std::size_t i = 0; i < MD.size(); ++i ) {
+				if( MD[i].type() == MDElt::eMatch ) {
+					matches += MD[i].size() ;
+					m_opCounts[ eMatch ] += 1 ;
+					m_opBaseTotals[ eMatch ] += MD[i].size() ;
+				} else if( MD[i].type() == MDElt::eMismatch ) {
+					mismatches += MD[i].size() ;
+					m_opCounts[ eMismatch ] += 1 ;
+					m_opBaseTotals[ eMismatch ] += MD[i].size() ;
+				} else if( MD[i].type() == MDElt::eDeletion ) {
+					deletions += MD[i].size() ;
+				}
+			}
+			uint32_t edit_distance = m_opBaseTotals[ eMismatch ] + m_opBaseTotals[ eInsertion ] + m_opBaseTotals[ eDeletion ] ;
+			m_opCounts[ eEditDistance ] = edit_distance ;
+		}
+#if 0
+		void parse_cs_tag( std::string const& data ) {
+			// CS matches: /(:[0-9]+|\*[a-z][a-z]|[=\+\-][A-Za-z]+)+/
+			// i.e a colon, followed by 
+			using genfile::string_utils::slice ;
+			std::size_t pos = 0 ;
+			char lastBase = 0 ;
+			char nextBase = 0 ;
+			std::size_t where = 0 ;
+			for( ; pos < data.size(); ++pos ) {
+				char op = data[pos++] ;
+				slice operand
+					= slice( data, pos, data.size() )
+					.until( ":+-=" ) ;
+				switch( op ) {
+					case '=':
+						lastBase = operand[ operand.size() - 1 ] ;
+					// slice
+					break ;
+					case '+':
+						std::size_t where = operand.find_first_of( ":+-=" ) ;
+						std::size_t length = operand.size() ;
+					case '-':
+						std::size_t where = operand.find_first_of( ":+-=" ) ;
+						std::size_t length = operand.size() ;
+					break ;
+					case '-'
+				}
+			}
+		}
+#endif
 		
 		typedef boost::function< void ( std::string const& value_name, uint32_t const value ) > ResultCallback ;
 
