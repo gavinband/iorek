@@ -36,7 +36,7 @@ namespace seqlib = SeqLib;
 
 namespace globals {
 	std::string const program_name = "tabulate-alignments" ;
-	std::string const program_version = svelte_version ;
+	std::string const program_version = package_version ;
 	std::string const program_revision = std::string( package_revision ).substr( 0, 7 ) ;
 }
 
