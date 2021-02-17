@@ -1,0 +1,21 @@
+import os.path
+
+def configure( conf ):
+	pass
+
+def build( bld ):
+	sources = ( bld.path.ant_glob( 'lib/*.cc' ))
+	bld.stlib(
+		target = 'jellyfish',
+		source = sources,
+		includes = [ './', 'include/' ],
+		export_includes = 'include/', 
+		uselib = '',
+		cxxflags = [
+			'-std=c++11',
+			'-Wno-unused-local-typedefs',
+			'-Wno-c++11-long-long',
+			'-Wno-keyword-macro',
+			'-Wno-unused-const-variable'
+		]
+	)

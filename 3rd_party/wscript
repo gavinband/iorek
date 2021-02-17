@@ -1,5 +1,5 @@
 import os
-subdirs = [ 'boost_1_70_0', 'SeqLib', 'eigen', 'catch2', 'zstd-1.1.0', 'sqlite3' ]
+subdirs = [ 'boost_1_70_0', 'SeqLib', 'eigen', 'catch2', 'zstd-1.1.0', 'sqlite3', 'jellyfish-2.3.0' ]
 #'seqan', 'bamtools', 'htslib', 'SeqLib', 'catch2', 'eigen' ]
 
 def configure( cfg ):
