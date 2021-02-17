@@ -3,8 +3,8 @@ def configure( cfg ):
 	
 def build( bld ):
 	bld.program(
-		source = "svelte.cpp",
-		target = 'svelte',
+		source = "coverotron.cpp",
+		target = 'coverotron',
 		use = 'seqan bamtools seqlib package_revision appcontext genfile statfile pthread',
 		includes = "./"
 	)
@@ -24,5 +24,11 @@ def build( bld ):
 		source = "tabulate-alignments.cpp",
 		target = 'tabulate-alignments',
 		use = 'seqan bamtools seqlib package_revision appcontext genfile qcdb pthread',
+		includes = "./"
+	)
+	bld.program(
+		source = "classify-kmers.cpp",
+		target = 'classify-kmers',
+		use = 'seqan bamtools seqlib package_revision appcontext genfile qcdb pthread jellyfish',
 		includes = "./"
 	)
