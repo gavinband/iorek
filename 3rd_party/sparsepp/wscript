@@ -1,0 +1,11 @@
+import os.path
+
+def configure( conf ):
+	conf.define( "HAVE_SPARSEPP", 1 )
+
+def build( bld ):
+	bld(
+		target = 'sparsepp',
+		includes = './',
+		export_includes = './',
+	)

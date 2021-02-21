@@ -36,6 +36,8 @@ namespace seqlib = SeqLib;
 #include "genfile/kmer/KmerHashIterator.hpp"
 #include "statfile/BuiltInTypeStatSink.hpp"
 
+#include "parallel_hashmap/phmap.h"
+
 // #define DEBUG 1
 
 namespace globals {
@@ -103,7 +105,8 @@ private:
 	// kmer multiplicities are encoded as:
 	// multiplicity (encoded in lower 8 bits).
 	// k value (encoded in top 8 bits)
-	typedef boost::unordered_map< uint64_t, uint16_t > MultiplicityMap ;
+	//typedef boost::unordered_map< uint64_t, uint16_t > MultiplicityMap ;
+	typedef phmap::flat_hash_map< uint64_t, uint16_t > MultiplicityMap ;
 	MultiplicityMap m_map ;
 	
 	template< typename Iterator >
@@ -113,6 +116,7 @@ private:
 	) {
 		std::string kmer ;
 		uint16_t encoded_multiplicity ;
+		std::size_t count = 0 ;
 		while(it.next()) {
 			unsigned int const k = it.key().k() ;
 			kmer.resize( k + 1 ) ;
@@ -122,7 +126,8 @@ private:
 			std::vector< uint64_t >::const_iterator where = std::lower_bound( limits.begin(), limits.end(), multiplicity ) ;
 			pack_multiplicity( k, multiplicity, encoded_multiplicity ) ;
 			m_map[ hash.minimum_hash() ] = encoded_multiplicity ;
-			std::cerr << std::dec << k << " " << multiplicity << " " << std::hex << encoded_multiplicity << "\n" ;
+			//std::cerr << std::dec << k << " " << multiplicity << " " << std::hex << encoded_multiplicity << "\n" ;
+			std::cerr << ++count << "\n" ;
 		}
 	}
 
@@ -130,6 +135,8 @@ private:
 		std::string jf_filename = options().get< std::string >( "-jf" ) ;
 		std::ifstream ifs( jf_filename ) ;
 		jellyfish::file_header header( ifs ) ;
+		std::cerr << "Loaded header with size " << header.size() << " and nb_hashes() = " << header.nb_hashes() << ".\n" ;
+		
 		jellyfish::mer_dna::k(header.key_len() / 2);
 		
 		std::vector< uint64_t > limits = options().get_values< uint64_t >( "-breaks" ) ;

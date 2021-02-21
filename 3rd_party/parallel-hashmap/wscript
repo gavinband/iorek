@@ -1,0 +1,11 @@
+import os.path
+
+def configure( conf ):
+	conf.define( "HAVE_PARALLEL_HASHMAP", 1 )
+
+def build( bld ):
+	bld(
+		target = 'parallel_hashmap',
+		includes = './',
+		export_includes = './',
+	)
