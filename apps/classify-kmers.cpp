@@ -11,10 +11,9 @@
 #include <unordered_set>
 #include <set>
 #include <boost/ptr_container/ptr_vector.hpp>
-#include <boost/unordered_set.hpp>
 #include <boost/filesystem.hpp>
 #include <boost/noncopyable.hpp>
-#include <boost/unordered_map.hpp>
+#include <thread>
 
 // seqlib
 #include "SeqLib/RefGenome.h"
@@ -82,6 +81,45 @@ namespace {
 			return hashmap.ary()->size_bytes() ;
 		}
 	} ;
+	
+	template< typename HashMap >
+	void classify_threaded(
+		std::string const& filename,
+		HashMap* result,
+		std::vector< uint64_t > const limits,
+		std::size_t const thread_index,
+		uint64_t const thread_mask,
+		std::size_t const max_kmers = std::numeric_limits< std::size_t >::max()
+	) {
+		std::ifstream ifs( filename ) ;
+		jellyfish::file_header header( ifs ) ;
+		binary_reader it(ifs, &header);
+		
+		unsigned int const k = header.key_len() / 2 ;
+		std::size_t count = 0 ;
+		uint64_t const lowerLimit = limits[0] ;
+		uint64_t const upperLimit = limits[2] ;
+		while( it.next() && count < max_kmers ) {
+			uint64_t hash = it.key().get_bits( 0, 2*k ) ;
+			if( (hash & thread_mask) == thread_index ) {
+				uint64_t const multiplicity = it.val() ;
+				if( it.val() >= lowerLimit && it.val() <= upperLimit ) {
+					HashMapTraits< HashMap >::add( result, it.key(), multiplicity ) ;
+				}
+
+				if( (count++) % 25000000 == 0 ) {
+					std::cerr << "\n"
+						<< "(thread " << thread_index << "): ++ Read " << count << " kmers.  Last was:\n" ;
+					std::cerr
+						<< it.key()
+							<< "(thread " << thread_index << "): - " << std::hex << it.key().get_bits(0,2*k) << std::dec << ".  "
+							<< " (" << (spp::GetProcessMemoryUsed()/1000000) << "Mb used, " << result->size() << " hashes stored.)\n" ;
+				
+				}
+			}
+		}
+		std::cerr << "++ Read " << count << " kmers in total.\n" ;
+	}
 }
 
 struct AssessPositionOptionProcessor: public appcontext::CmdLineOptionProcessor
@@ -120,7 +158,7 @@ public:
 				"tradeoffs and it is worth experimenting."
 			)
 			.set_takes_single_value()
-			.set_default_value( "parallel-hashmap" )
+			.set_default_value( "jellyfish" )
 		;
 		options[ "-max-kmers" ]
 			.set_description( "Only read a maximum of this many kmers.  This is useful for testing." )
@@ -182,16 +220,40 @@ private:
 		if( header.format() != binary_dumper::format ) {
 			throw genfile::BadArgumentError( "ClassifyKmerApplication::unsafe_process()", "-jf", "Expected a binary-format jellyfish count file." ) ;
 		}
+		
+		std::pair< std::size_t, std::size_t > count = count_kmers( jf_filename, limits ) ;
+		ui().logger() << "++ Statistics for \"" << jf_filename << "\":\n"
+			<< "     total kmers: " << count.first << "\n"
+			<< "  in-range kmers: " << count.second << "\n" ;
+		
 		binary_reader reader(ifs, &header);
 		jellyfish::mer_dna::k( header.key_len() / 2 ) ;
 		std::string const implementation = options().get< std::string >( "-hashmap-implementation" ) ;
 		if( implementation == "parallel-hashmap" ) {
 			ParallelHashMap map ;
-			classify< binary_reader, ParallelHashMap >( header, reader, &map, limits, max_kmers ) ;
+			classify_singlethreaded< binary_reader, ParallelHashMap >( header, reader, &map, limits, max_kmers ) ;
+
+			ui().logger() << "++ Total memory usage is:\n" ;
+			ui().logger() << "              (process) : " << (spp::GetProcessMemoryUsed()/1000000) << "Mb\n" ;
 		} else if( implementation == "jellyfish" ) {
-			std::pair< std::size_t, std::size_t > count = count_kmers( jf_filename, limits ) ;
 			JellyfishHashMap map( count.second, jellyfish::mer_dna::k()*2, 16, 1 ) ;
-			classify< binary_reader, JellyfishHashMap >( header, reader, &map, limits, max_kmers ) ;
+			std::vector< std::thread > threads ;
+			std::size_t const numberOfThreads = 16 ;
+			for( std::size_t i = 0; i < numberOfThreads; ++i ) {
+				threads.push_back(
+					std::thread(
+						classify_threaded< JellyfishHashMap >,
+						jf_filename, &map, limits, i, 0xFF, max_kmers
+					)
+				) ;
+			}
+			for( auto& thread: threads ) {
+				thread.join() ;
+			}
+
+			ui().logger() << "++ Total memory usage is:\n" ;
+			ui().logger() << "              (process) : " << (spp::GetProcessMemoryUsed()/1000000) << "Mb\n" ;
+
 		} else {
 			throw genfile::BadArgumentError(
 				"ClassifyKmerApplication::unsafe_process()",
@@ -199,9 +261,6 @@ private:
 				"Value must be \"jellyfish\" or \"parallel-hashmap\""
 			) ;
 		}
-
-		ui().logger() << "++ Total memory usage is:\n" ;
-		ui().logger() << "              (process) : " << (spp::GetProcessMemoryUsed()/1000000) << "Mb\n" ;
 	}
 	
 	std::pair< std::size_t, std::size_t > count_kmers(
@@ -211,6 +270,9 @@ private:
 		std::ifstream ifs( filename ) ;
 		jellyfish::file_header header( ifs ) ;
 		binary_reader it(ifs, &header);
+		
+		unsigned int const k = header.key_len() / 2 ;
+		jellyfish::mer_dna::k( k );
 		
 		std::size_t total = 0 ;
 		std::size_t included = 0 ;
@@ -228,12 +290,12 @@ private:
 	}
 	
 	template< typename Iterator, typename HashMap >
-	void classify(
+	void classify_singlethreaded(
 		jellyfish::file_header const& header,
 		Iterator it,
 		HashMap* result,
 		std::vector< uint64_t > const limits,
-		std::size_t max_kmers = std::numeric_limits< std::size_t >::max()
+		std::size_t const max_kmers = std::numeric_limits< std::size_t >::max()
 	) {
 		unsigned int const k = header.key_len() / 2 ;
 		jellyfish::mer_dna::k( k );
@@ -261,6 +323,7 @@ private:
 		std::cerr << "++ Read " << count << " kmers in total.\n" ;
 	}
 	
+
 } ;
 
 
