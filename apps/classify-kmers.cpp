@@ -107,14 +107,11 @@ namespace {
 					HashMapTraits< HashMap >::add( result, it.key(), multiplicity ) ;
 				}
 			}
-			if( (count++) % 100000000 == 0 ) {
-				std::cerr << "\n"
-					<< "(thread " << thread_index << "): ++ Read " << count << " kmers.  Last was:\n" ;
+			if( ((count++) & 0xFFFFFFF) == 0 ) {
 				std::cerr
-					<< it.key()
-						<< "(thread " << thread_index << "): - " << std::hex << it.key().get_bits(0,2*k) << std::dec << ".  "
-						<< " (" << (spp::GetProcessMemoryUsed()/1000000) << "Mb used, " << result->size() << " hashes stored.)\n" ;
-			
+					<< "(thread " << thread_index << ") ++ Read " << count << " kmers.  Last was: "
+					<< it.key() << " - " << std::hex << it.key().get_bits(0,2*k) << std::dec << " " 
+					<< " (" << (spp::GetProcessMemoryUsed()/1000000) << "Mb used)\n" ;
 			}
 		}
 		std::cerr << "(thread " << thread_index << "): ++ Read " << count << " kmers in total.\n" ;
@@ -163,6 +160,13 @@ public:
 			.set_description( "Only read a maximum of this many kmers.  This is useful for testing." )
 			.set_takes_single_value()
 			.set_default_value( std::numeric_limits< uint32_t >::max() )
+		;
+		options[ "-threads" ]
+			.set_description( "Number of threads to use to load kmers with. "
+				"The default value (0) means \"do all work in the main thread\"."
+			)
+			.set_takes_single_value()
+			.set_default_value( 0 )
 		;
 	}
 } ;
@@ -235,19 +239,33 @@ private:
 			ui().logger() << "++ Total memory usage is:\n" ;
 			ui().logger() << "              (process) : " << (spp::GetProcessMemoryUsed()/1000000) << "Mb\n" ;
 		} else if( implementation == "jellyfish" ) {
-			JellyfishHashMap map( count.second, jellyfish::mer_dna::k()*2, 16, 16 ) ;
-			std::vector< std::thread > threads ;
-			std::size_t const numberOfThreads = 16 ;
-			for( std::size_t i = 0; i < numberOfThreads; ++i ) {
-				threads.push_back(
-					std::thread(
-						classify_threaded< JellyfishHashMap >,
-						jf_filename, &map, limits, i, 0xFF, max_kmers
-					)
-				) ;
-			}
-			for( auto& thread: threads ) {
-				thread.join() ;
+			std::size_t const numberOfThreads = options().get< std::size_t >( "-threads" ) ;
+			JellyfishHashMap map( count.second, jellyfish::mer_dna::k()*2, 16, numberOfThreads ) ;
+			if( numberOfThreads == 0 ) {
+				classify_singlethreaded< binary_reader, JellyfishHashMap >( header, reader, &map, limits, max_kmers ) ;
+			} else {
+				uint64_t const threadMask = (numberOfThreads - 1) ;
+
+				if( (numberOfThreads & threadMask) != 0 ) {
+					throw genfile::BadArgumentError(
+						"ClassifyKmerApplication::unsafe_process()",
+						"-threads",
+						"Number of threads must be zero or a power of two."
+					) ;
+				}
+
+				std::vector< std::thread > threads ;
+				for( std::size_t i = 0; i < numberOfThreads; ++i ) {
+					threads.push_back(
+						std::thread(
+							classify_threaded< JellyfishHashMap >,
+							jf_filename, &map, limits, i, threadMask, max_kmers
+						)
+					) ;
+				}
+				for( auto& thread: threads ) {
+					thread.join() ;
+				}
 			}
 
 			ui().logger() << "++ Total memory usage is:\n" ;
@@ -317,17 +335,14 @@ private:
 			}
 
 			if( (count++) % 25000000 == 0 ) {
-				std::cerr << "\n"
-					<< "++ Read " << count << " kmers.  Last was:\n" ;
 				std::cerr
-					<< it.key()
-						<< " - " << std::hex << it.key().get_bits(0,2*k) << std::dec << ".  "
-						<< " (" << (spp::GetProcessMemoryUsed()/1000000) << "Mb used, " << result->size() << " hashes stored.)\n" ;
-				
+					<< "++ Read " << count << " kmers.  Last was: "
+					<< it.key() << " - " << std::hex << it.key().get_bits(0,2*k) << std::dec << " " 
+					<< " (" << (spp::GetProcessMemoryUsed()/1000000) << "Mb used)\n" ;
 			}
 			progress( count, boost::optional< std::size_t >() ) ;
 		}
-		std::cerr << "++ Read " << count << " kmers in total.\n" ;
+		std::cerr << "++ Read " << count << " kmers in total, quitting.\n" ;
 	}
 	
 
