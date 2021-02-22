@@ -218,17 +218,19 @@ private:
 		unsigned int const k = header.key_len() / 2 ;
 		jellyfish::mer_dna::k( k );
 		std::size_t count = 0 ;
+		auto progress = ui().get_progress_context( "Loading kmers" ) ;
 		while( it.next() && count < max_kmers ) {
 			uint64_t const multiplicity = it.val() ;
 			HashMapTraits< HashMap >::add( result, it.key(), multiplicity ) ;
 
-			if( (count++) % 100000 == 0 ) {
+			if( (count++) % 10000000 == 0 ) {
 				std::cerr << "Read " << count << " kmers.  Last was:\n" ;
 				std::cerr
 					<< it.key() << ": "
 						<< it.key()
-						<< " - " << std::hex << it.key().get_bits(0,2*k) << "\n" ;
+						<< " - " << std::hex << it.key().get_bits(0,2*k) << std::dec << "\n" ;
 			}
+			progress( count, boost::optional< std::size_t >() ) ;
 		}
 		std::cerr << "++ Read " << count << " kmers in total.\n" ;
 	}

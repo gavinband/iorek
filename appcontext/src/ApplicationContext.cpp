@@ -153,7 +153,7 @@ namespace appcontext {
 		if( m_application_version != "" ) {
 			m_ui->logger() << "(version: " << m_application_version << ")\n" ;
 		}
-		m_ui->logger() << "\n(C) 2009-2019 University of Oxford\n\n";
+		m_ui->logger() << "\n(C) 2009-2021 University of Oxford\n\n";
 	}
 
 	void ApplicationContext::write_end_banner() {
