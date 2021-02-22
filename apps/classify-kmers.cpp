@@ -215,17 +215,21 @@ private:
 		jellyfish::mer_dna::k( k );
 		std::size_t count = 0 ;
 		auto progress = ui().get_progress_context( "Loading kmers" ) ;
+		uint64_t const lowerLimit = limits[0] ;
 		while( it.next() && count < max_kmers ) {
 			uint64_t const multiplicity = it.val() ;
-			HashMapTraits< HashMap >::add( result, it.key(), multiplicity ) ;
+			if( it.val() >= lowerLimit ) {
+				HashMapTraits< HashMap >::add( result, it.key(), multiplicity ) ;
+			}
 
-			if( (count++) % 10000000 == 0 ) {
-				std::cerr << "Read " << count << " kmers.  Last was:\n" ;
+			if( (count++) % 25000000 == 0 ) {
+				std::cerr << "\n"
+					<< "++ Read " << count << " kmers.  Last was:\n" ;
 				std::cerr
-					<< it.key() << ": "
-						<< it.key()
-						<< " - " << std::hex << it.key().get_bits(0,2*k) << std::dec
-						<< " (" << (spp::GetProcessMemoryUsed()/1000000) << "Mb used)\n" ;
+					<< it.key()
+						<< " - " << std::hex << it.key().get_bits(0,2*k) << std::dec << ".  "
+						<< " (" << (spp::GetProcessMemoryUsed()/1000000) << "Mb used, " << result->size() << " hashes stored.)\n" ;
+				
 			}
 			progress( count, boost::optional< std::size_t >() ) ;
 		}

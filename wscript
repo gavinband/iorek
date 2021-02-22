@@ -52,7 +52,7 @@ def configure( cfg ):
 
 def compute_revision(task):
 	import os, sqlite3
-	revision = "(unknown)"
+	revision = "unknown"
 	filename = "../.fslckout"
 	if os.path.exists( filename ):
 		db = sqlite3.connect( filename )
