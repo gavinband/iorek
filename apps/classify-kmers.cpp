@@ -23,8 +23,6 @@
 #include "SeqLib/GenomicRegion.h"
 //#include "SeqLib/BWAWrapper.h"
 
-#include <jellyfish/jellyfish.hpp>
-
 namespace seqlib = SeqLib;
 // namespace bt = BamTools ;
 
@@ -37,8 +35,15 @@ namespace seqlib = SeqLib;
 #include "statfile/BuiltInTypeStatSink.hpp"
 
 #include "parallel_hashmap/phmap.h"
+#include <jellyfish/jellyfish.hpp>
+/*
+#include <sys/types.h>
+#include <sys/sysinfo.h>
+*/
 
-// #define DEBUG 1
+#define DEBUG 1
+#define MODE 2
+
 
 namespace globals {
 	std::string const program_name = "classify-kmers" ;
@@ -111,33 +116,57 @@ private:
 	
 	template< typename Iterator >
 	void classify(
+		jellyfish::file_header const& header,
 		Iterator it,
 		std::vector< uint64_t > const limits
 	) {
-		std::string kmer ;
-		uint16_t encoded_multiplicity ;
+		unsigned int const k = header.key_len() / 2 ;
+		jellyfish::mer_dna::k( k );
+
+#if MODE == 1
+		MultiplicityMap map ;
+#elif MODE == 2
+		mer_array array( header.size(), k*2, 64, 1 ) ;
+#endif
+
 		std::size_t count = 0 ;
 		while(it.next()) {
-			unsigned int const k = it.key().k() ;
-			kmer.resize( k + 1 ) ;
-			it.key().to_str( &kmer[0] ) ;
+			uint64_t hash = it.key().get_bits( 0, 2*k ) ;
 			uint64_t const multiplicity = it.val() ;
-			genfile::kmer::KmerHashIterator< char const* > hash( &kmer[0], &kmer[0] + k, k ) ;
-			std::vector< uint64_t >::const_iterator where = std::lower_bound( limits.begin(), limits.end(), multiplicity ) ;
-			pack_multiplicity( k, multiplicity, encoded_multiplicity ) ;
-			m_map[ hash.minimum_hash() ] = encoded_multiplicity ;
-			//std::cerr << std::dec << k << " " << multiplicity << " " << std::hex << encoded_multiplicity << "\n" ;
-			std::cerr << ++count << "\n" ;
+#if MODE == 1
+			map[ hash ] = multiplicity ;
+#elif MODE == 2
+			array.add( it.key(), multiplicity ) ;
+#endif
+
+#if DEBUG
+			if( (count++) % 100000 == 0 ) {
+				std::cerr << "Read " << count << " kmers.  Last was:\n" ;
+				std::cerr
+					<< it.key() << ": "
+						<< std::hex << it.key()
+						<< " - " << hash
+						<< " : " << genfile::kmer::decode_hash( hash, k ) << "\n" ;
+			}
+#endif
 		}
+#if DEBUG
+		std::cerr << "Read " << count << " kmers.\n" ;
+#endif
 	}
 
 	void unsafe_process() {
 		std::string jf_filename = options().get< std::string >( "-jf" ) ;
 		std::ifstream ifs( jf_filename ) ;
 		jellyfish::file_header header( ifs ) ;
-		std::cerr << "Loaded header with size " << header.size() << " and nb_hashes() = " << header.nb_hashes() << ".\n" ;
+		ui().logger()
+			<< "++ Loaded header:\n"
+			<< "    size: " << header.size() << "\n"
+			<< "    nb_hashes: " << header.nb_hashes() << "\n"
+			<< "    key_len: " << header.key_len() << ".\n" ;
+
+		// This is 
 		
-		jellyfish::mer_dna::k(header.key_len() / 2);
 		
 		std::vector< uint64_t > limits = options().get_values< uint64_t >( "-breaks" ) ;
 		assert( limits.size() == 3 ) ;
@@ -152,10 +181,10 @@ private:
 
 		if( header.format() == binary_dumper::format ) {
 			binary_reader reader(ifs, &header);
-			classify( reader, limits ) ;
+			classify( header, reader, limits ) ;
 		} else if( header.format() == text_dumper::format ) {
 			text_reader reader(ifs, &header);
-			classify( reader, limits ) ;
+			classify( header, reader, limits ) ;
 		}
 		
 		output( m_map ) ;
