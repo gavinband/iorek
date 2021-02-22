@@ -496,7 +496,7 @@ private:
 	) {
 		seqlib::BamReader reader;
 		
-		if( options().check( "-reference" )) {
+		if( options().check( "-reference" ) && filename.substr( filename.size() - 5, 5 ) == ".cram" ) {
 			reader.SetCramReference( options().get< std::string >( "-reference" )) ;
 		}
 
