@@ -189,7 +189,8 @@ private:
 			ParallelHashMap map ;
 			classify< binary_reader, ParallelHashMap >( header, reader, &map, limits, max_kmers ) ;
 		} else if( implementation == "jellyfish" ) {
-			JellyfishHashMap map( 10000000, jellyfish::mer_dna::k()*2, 64, 1 ) ;
+			std::pair< std::size_t, std::size_t > count = count_kmers( jf_filename, limits ) ;
+			JellyfishHashMap map( count.second, jellyfish::mer_dna::k()*2, 16, 1 ) ;
 			classify< binary_reader, JellyfishHashMap >( header, reader, &map, limits, max_kmers ) ;
 		} else {
 			throw genfile::BadArgumentError(
@@ -201,6 +202,29 @@ private:
 
 		ui().logger() << "++ Total memory usage is:\n" ;
 		ui().logger() << "              (process) : " << (spp::GetProcessMemoryUsed()/1000000) << "Mb\n" ;
+	}
+	
+	std::pair< std::size_t, std::size_t > count_kmers(
+		std::string const& filename,
+		std::vector< uint64_t > const limits
+	) {
+		std::ifstream ifs( filename ) ;
+		jellyfish::file_header header( ifs ) ;
+		binary_reader it(ifs, &header);
+		
+		std::size_t total = 0 ;
+		std::size_t included = 0 ;
+		auto progress = ui().get_progress_context( "Counting kmers" ) ;
+		uint64_t const lowerLimit = limits[0] ;
+		uint64_t const upperLimit = limits[2] ;
+
+		while( it.next() ) {
+			if( it.val() >= lowerLimit && it.val() <= upperLimit ) {
+				++included ;
+			}
+			progress( ++total, boost::optional< std::size_t >() ) ;
+		}
+		return std::make_pair( total, included ) ;
 	}
 	
 	template< typename Iterator, typename HashMap >
@@ -216,9 +240,10 @@ private:
 		std::size_t count = 0 ;
 		auto progress = ui().get_progress_context( "Loading kmers" ) ;
 		uint64_t const lowerLimit = limits[0] ;
+		uint64_t const upperLimit = limits[2] ;
 		while( it.next() && count < max_kmers ) {
 			uint64_t const multiplicity = it.val() ;
-			if( it.val() >= lowerLimit ) {
+			if( it.val() >= lowerLimit && it.val() <= upperLimit ) {
 				HashMapTraits< HashMap >::add( result, it.key(), multiplicity ) ;
 			}
 
