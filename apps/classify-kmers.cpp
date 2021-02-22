@@ -155,10 +155,6 @@ public:
 	}
 
 private:
-	// kmer multiplicities are encoded as:
-	// multiplicity (encoded in lower 8 bits).
-	// k value (encoded in top 8 bits)
-	//typedef boost::unordered_map< uint64_t, uint16_t > MultiplicityMap ;
 	void unsafe_process() {
 		std::string jf_filename = options().get< std::string >( "-jf" ) ;
 		std::ifstream ifs( jf_filename ) ;
@@ -204,7 +200,7 @@ private:
 		}
 
 		ui().logger() << "++ Total memory usage is:\n" ;
-		ui().logger() << "              (process) : " << (spp::GetProcessMemoryUsed()/1000) << "kb\n" ;
+		ui().logger() << "              (process) : " << (spp::GetProcessMemoryUsed()/1000000) << "Mb\n" ;
 	}
 	
 	template< typename Iterator, typename HashMap >
@@ -228,7 +224,8 @@ private:
 				std::cerr
 					<< it.key() << ": "
 						<< it.key()
-						<< " - " << std::hex << it.key().get_bits(0,2*k) << std::dec << "\n" ;
+						<< " - " << std::hex << it.key().get_bits(0,2*k) << std::dec
+						<< " (" << (spp::GetProcessMemoryUsed()/1000000) << "Mb used)\n" ;
 			}
 			progress( count, boost::optional< std::size_t >() ) ;
 		}
