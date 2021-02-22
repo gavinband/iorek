@@ -35,7 +35,11 @@ namespace seqlib = SeqLib;
 #include "statfile/BuiltInTypeStatSink.hpp"
 
 #include "parallel_hashmap/phmap.h"
-#include <jellyfish/jellyfish.hpp>
+#include "parallel_hashmap/meminfo.h"
+#include "jellyfish/jellyfish.hpp"
+#include "jellyfish/large_hash_iterator.hpp"
+#include "jellyfish/hash_counter.hpp"
+
 /*
 #include <sys/types.h>
 #include <sys/sysinfo.h>
@@ -111,8 +115,11 @@ private:
 	// multiplicity (encoded in lower 8 bits).
 	// k value (encoded in top 8 bits)
 	//typedef boost::unordered_map< uint64_t, uint16_t > MultiplicityMap ;
+#if MODE == 2
 	typedef phmap::flat_hash_map< uint64_t, uint16_t > MultiplicityMap ;
-	MultiplicityMap m_map ;
+#elif MODE == 3
+	typedef mer_hash MultiplicityMap ;
+#endif
 	
 	template< typename Iterator >
 	void classify(
@@ -122,36 +129,62 @@ private:
 	) {
 		unsigned int const k = header.key_len() / 2 ;
 		jellyfish::mer_dna::k( k );
-
-#if MODE == 1
+#if MODE == 2
 		MultiplicityMap map ;
-#elif MODE == 2
-		mer_array array( header.size(), k*2, 64, 1 ) ;
+#elif MODE == 3
+		MultiplicityMap map( 10000000, k*2, 64, 1 ) ;
 #endif
+
+		auto progress_context = ui().get_progress_context( "Reading kmers" ) ;
 
 		std::size_t count = 0 ;
-		while(it.next()) {
+		while(it.next() && count < 500000000 ) {
+#if MODE > 0
 			uint64_t hash = it.key().get_bits( 0, 2*k ) ;
 			uint64_t const multiplicity = it.val() ;
-#if MODE == 1
-			map[ hash ] = multiplicity ;
-#elif MODE == 2
-			array.add( it.key(), multiplicity ) ;
 #endif
-
+#if MODE == 2
+			map[ hash ] = multiplicity ;
+#elif MODE == 3
+			map.add( it.key(), multiplicity ) ;
+#endif
 #if DEBUG
-			if( (count++) % 100000 == 0 ) {
-				std::cerr << "Read " << count << " kmers.  Last was:\n" ;
+			if( count % 10000000 == 0 ) {
+				uint64_t hash = it.key().get_bits( 0, 2*k ) ;
+				std::cerr << "\n++ Read " << std::dec << count << " kmers.  Last was:\n" ;
 				std::cerr
 					<< it.key() << ": "
 						<< std::hex << it.key()
 						<< " - " << hash
 						<< " : " << genfile::kmer::decode_hash( hash, k ) << "\n" ;
+				std::cerr << "++ Total memory usage is:\n" ;
+				std::cerr << "              (process) : " << std::dec << (spp::GetProcessMemoryUsed()/1000) << "kb\n" ;
 			}
 #endif
+			progress_context( ++count, boost::optional< std::size_t >() ) ;
 		}
 #if DEBUG
 		std::cerr << "Read " << count << " kmers.\n" ;
+#endif
+		std::cerr << "++ Total memory usage is:\n" ;
+		std::cerr << "              (process) : " << std::dec << (spp::GetProcessMemoryUsed()/1000) << "kb\n" ;
+#if MODE == 3
+		std::cerr << "            (mer_array) : " << std::dec << (map.ary()->size_bytes()/1000) << "kb.\n" ;
+#endif
+#if MODE == 2
+		std::cerr << "++ First few map values are:\n" ;
+		MultiplicityMap::const_iterator iterator = map.begin() ;
+		MultiplicityMap::const_iterator const end = map.end() ;
+		for( std::size_t n = 0; iterator != end && n < 100; ++iterator, ++n ) {
+			std::cerr << "  " << iterator->first << ": " << iterator->second << "\n" ;
+		}
+#elif MODE == 3
+		std::cerr << "++ First few map values are:\n" ;
+		mer_array::const_iterator iterator = map.ary()->begin() ;
+		mer_array::const_iterator const end = map.ary()->end() ;
+		for( std::size_t n = 0; iterator!= end && n < 100; ++iterator, ++n ) {
+			std::cerr << "  " << iterator->first << ": " << iterator->second << "\n" ;
+		}
 #endif
 	}
 
@@ -187,7 +220,7 @@ private:
 			classify( header, reader, limits ) ;
 		}
 		
-		output( m_map ) ;
+		//output( m_map ) ;
 	}
 	
 	void pack_multiplicity( int k, int multiplicity, uint16_t& result ) {
@@ -199,7 +232,8 @@ private:
 		multiplicity = int( encoded & 0xFF ) ;
 		k = int( (encoded >> 8) & 0xFF ) ;
 	}
-	
+
+#if 0	
 	void output( MultiplicityMap const& map ) {
 		int multiplicity ;
 		int k ;
@@ -209,6 +243,7 @@ private:
 				<< " " << k << " " << multiplicity << "\n" ;
 		}
 	}
+#endif
 } ;
 
 
