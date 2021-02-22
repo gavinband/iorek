@@ -106,19 +106,18 @@ namespace {
 				if( it.val() >= lowerLimit && it.val() <= upperLimit ) {
 					HashMapTraits< HashMap >::add( result, it.key(), multiplicity ) ;
 				}
-
-				if( (count++) % 25000000 == 0 ) {
-					std::cerr << "\n"
-						<< "(thread " << thread_index << "): ++ Read " << count << " kmers.  Last was:\n" ;
-					std::cerr
-						<< it.key()
-							<< "(thread " << thread_index << "): - " << std::hex << it.key().get_bits(0,2*k) << std::dec << ".  "
-							<< " (" << (spp::GetProcessMemoryUsed()/1000000) << "Mb used, " << result->size() << " hashes stored.)\n" ;
-				
-				}
+			}
+			if( (count++) % 100000000 == 0 ) {
+				std::cerr << "\n"
+					<< "(thread " << thread_index << "): ++ Read " << count << " kmers.  Last was:\n" ;
+				std::cerr
+					<< it.key()
+						<< "(thread " << thread_index << "): - " << std::hex << it.key().get_bits(0,2*k) << std::dec << ".  "
+						<< " (" << (spp::GetProcessMemoryUsed()/1000000) << "Mb used, " << result->size() << " hashes stored.)\n" ;
+			
 			}
 		}
-		std::cerr << "++ Read " << count << " kmers in total.\n" ;
+		std::cerr << "(thread " << thread_index << "): ++ Read " << count << " kmers in total.\n" ;
 	}
 }
 
@@ -236,7 +235,7 @@ private:
 			ui().logger() << "++ Total memory usage is:\n" ;
 			ui().logger() << "              (process) : " << (spp::GetProcessMemoryUsed()/1000000) << "Mb\n" ;
 		} else if( implementation == "jellyfish" ) {
-			JellyfishHashMap map( count.second, jellyfish::mer_dna::k()*2, 16, 1 ) ;
+			JellyfishHashMap map( count.second, jellyfish::mer_dna::k()*2, 16, 16 ) ;
 			std::vector< std::thread > threads ;
 			std::size_t const numberOfThreads = 16 ;
 			for( std::size_t i = 0; i < numberOfThreads; ++i ) {
@@ -267,6 +266,10 @@ private:
 		std::string const& filename,
 		std::vector< uint64_t > const limits
 	) {
+#if 1
+		return std::make_pair( 4294967296, 4294967296 ) ;
+#endif
+
 		std::ifstream ifs( filename ) ;
 		jellyfish::file_header header( ifs ) ;
 		binary_reader it(ifs, &header);
@@ -281,10 +284,14 @@ private:
 		uint64_t const upperLimit = limits[2] ;
 
 		while( it.next() ) {
-			if( it.val() >= lowerLimit && it.val() <= upperLimit ) {
+			uint64_t const value = it.val() ;
+			if( value >= lowerLimit && value <= upperLimit ) {
 				++included ;
 			}
-			progress( ++total, boost::optional< std::size_t >() ) ;
+			++total ;
+			if( total % 100000 == 0 ) {
+				progress( total, boost::optional< std::size_t >() ) ;
+			}
 		}
 		return std::make_pair( total, included ) ;
 	}
