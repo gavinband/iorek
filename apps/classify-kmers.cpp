@@ -36,23 +36,52 @@ namespace seqlib = SeqLib;
 
 #include "parallel_hashmap/phmap.h"
 #include "parallel_hashmap/meminfo.h"
-#include "jellyfish/jellyfish.hpp"
-#include "jellyfish/large_hash_iterator.hpp"
-#include "jellyfish/hash_counter.hpp"
-
+#include <jellyfish/jellyfish.hpp>
 /*
 #include <sys/types.h>
 #include <sys/sysinfo.h>
 */
 
 #define DEBUG 1
-#define MODE 2
-
 
 namespace globals {
 	std::string const program_name = "classify-kmers" ;
 	std::string const program_version = package_version ;
 	std::string const program_revision = std::string( package_revision ).substr( 0, 7 ) ;
+}
+
+namespace {
+	typedef phmap::flat_hash_map< uint64_t, uint16_t > ParallelHashMap ;
+	typedef jellyfish::cooperative::hash_counter<jellyfish::mer_dna> JellyfishHashMap ; 
+
+	template< typename HashMap >
+	struct HashMapTraits {
+		typedef HashMap hashmap_t ;
+		static bool add( hashmap_t* result, jellyfish::mer_dna const& key, uint64_t value ) ;
+		static std::size_t size_in_bytes( hashmap_t const& hashmap ) ;
+	} ;
+
+	template<>
+	struct HashMapTraits< ParallelHashMap > {
+		typedef ParallelHashMap hashmap_t ;
+		static void add( hashmap_t* result, jellyfish::mer_dna const& key, uint64_t value ) {
+			(*result)[ key.get_bits( 0, 2*jellyfish::mer_dna::k() ) ] += value ;
+		}
+		static std::size_t size_in_bytes( hashmap_t const& hashmap ) {
+			return 0 ;
+		}
+	} ;
+
+	template<>
+	struct HashMapTraits< JellyfishHashMap > {
+		typedef JellyfishHashMap hashmap_t ;
+		static void add( hashmap_t* result, jellyfish::mer_dna const& key, uint64_t value ) {
+			return result->add( key, value ) ;
+		}
+		static std::size_t size_in_bytes( hashmap_t const& hashmap ) {
+			return hashmap.ary()->size_bytes() ;
+		}
+	} ;
 }
 
 struct AssessPositionOptionProcessor: public appcontext::CmdLineOptionProcessor
@@ -83,6 +112,21 @@ public:
 			.set_description( "Path of output file." )
 			.set_takes_single_value()
 			.set_default_value( "-" ) ;
+		
+		options.declare_group( "Algorithm options" ) ;
+		options[ "-hashmap-implementation" ]
+			.set_description( "Type of hashmap to use internally.  Possible values are: "
+				"\"jellyfish\" or \"parallel-hashmap\".  These have difference space/speed "
+				"tradeoffs and it is worth experimenting."
+			)
+			.set_takes_single_value()
+			.set_default_value( "parallel-hashmap" )
+		;
+		options[ "-max-kmers" ]
+			.set_description( "Only read a maximum of this many kmers.  This is useful for testing." )
+			.set_takes_single_value()
+			.set_default_value( std::numeric_limits< uint32_t >::max() )
+		;
 	}
 } ;
 
@@ -115,79 +159,6 @@ private:
 	// multiplicity (encoded in lower 8 bits).
 	// k value (encoded in top 8 bits)
 	//typedef boost::unordered_map< uint64_t, uint16_t > MultiplicityMap ;
-#if MODE == 2
-	typedef phmap::flat_hash_map< uint64_t, uint16_t > MultiplicityMap ;
-#elif MODE == 3
-	typedef mer_hash MultiplicityMap ;
-#endif
-	
-	template< typename Iterator >
-	void classify(
-		jellyfish::file_header const& header,
-		Iterator it,
-		std::vector< uint64_t > const limits
-	) {
-		unsigned int const k = header.key_len() / 2 ;
-		jellyfish::mer_dna::k( k );
-#if MODE == 2
-		MultiplicityMap map ;
-#elif MODE == 3
-		MultiplicityMap map( 10000000, k*2, 64, 1 ) ;
-#endif
-
-		auto progress_context = ui().get_progress_context( "Reading kmers" ) ;
-
-		std::size_t count = 0 ;
-		while(it.next() && count < 500000000 ) {
-#if MODE > 0
-			uint64_t hash = it.key().get_bits( 0, 2*k ) ;
-			uint64_t const multiplicity = it.val() ;
-#endif
-#if MODE == 2
-			map[ hash ] = multiplicity ;
-#elif MODE == 3
-			map.add( it.key(), multiplicity ) ;
-#endif
-#if DEBUG
-			if( count % 10000000 == 0 ) {
-				uint64_t hash = it.key().get_bits( 0, 2*k ) ;
-				std::cerr << "\n++ Read " << std::dec << count << " kmers.  Last was:\n" ;
-				std::cerr
-					<< it.key() << ": "
-						<< std::hex << it.key()
-						<< " - " << hash
-						<< " : " << genfile::kmer::decode_hash( hash, k ) << "\n" ;
-				std::cerr << "++ Total memory usage is:\n" ;
-				std::cerr << "              (process) : " << std::dec << (spp::GetProcessMemoryUsed()/1000) << "kb\n" ;
-			}
-#endif
-			progress_context( ++count, boost::optional< std::size_t >() ) ;
-		}
-#if DEBUG
-		std::cerr << "Read " << count << " kmers.\n" ;
-#endif
-		std::cerr << "++ Total memory usage is:\n" ;
-		std::cerr << "              (process) : " << std::dec << (spp::GetProcessMemoryUsed()/1000) << "kb\n" ;
-#if MODE == 3
-		std::cerr << "            (mer_array) : " << std::dec << (map.ary()->size_bytes()/1000) << "kb.\n" ;
-#endif
-#if MODE == 2
-		std::cerr << "++ First few map values are:\n" ;
-		MultiplicityMap::const_iterator iterator = map.begin() ;
-		MultiplicityMap::const_iterator const end = map.end() ;
-		for( std::size_t n = 0; iterator != end && n < 100; ++iterator, ++n ) {
-			std::cerr << "  " << iterator->first << ": " << iterator->second << "\n" ;
-		}
-#elif MODE == 3
-		std::cerr << "++ First few map values are:\n" ;
-		mer_array::const_iterator iterator = map.ary()->begin() ;
-		mer_array::const_iterator const end = map.ary()->end() ;
-		for( std::size_t n = 0; iterator!= end && n < 100; ++iterator, ++n ) {
-			std::cerr << "  " << iterator->first << ": " << iterator->second << "\n" ;
-		}
-#endif
-	}
-
 	void unsafe_process() {
 		std::string jf_filename = options().get< std::string >( "-jf" ) ;
 		std::ifstream ifs( jf_filename ) ;
@@ -200,7 +171,6 @@ private:
 
 		// This is 
 		
-		
 		std::vector< uint64_t > limits = options().get_values< uint64_t >( "-breaks" ) ;
 		assert( limits.size() == 3 ) ;
 		if( limits[1] <= limits[0] || limits[2] <= limits[1] ) {
@@ -211,39 +181,58 @@ private:
 			) ;
 		}
 		limits.push_back( std::numeric_limits< uint64_t >::max() ) ;
+		std::size_t const max_kmers = options().get< std::size_t >( "-max-kmers" ) ;
 
-		if( header.format() == binary_dumper::format ) {
-			binary_reader reader(ifs, &header);
-			classify( header, reader, limits ) ;
-		} else if( header.format() == text_dumper::format ) {
-			text_reader reader(ifs, &header);
-			classify( header, reader, limits ) ;
+		if( header.format() != binary_dumper::format ) {
+			throw genfile::BadArgumentError( "ClassifyKmerApplication::unsafe_process()", "-jf", "Expected a binary-format jellyfish count file." ) ;
 		}
-		
-		//output( m_map ) ;
+		binary_reader reader(ifs, &header);
+		jellyfish::mer_dna::k( header.key_len() / 2 ) ;
+		std::string const implementation = options().get< std::string >( "-hashmap-implementation" ) ;
+		if( implementation == "parallel-hashmap" ) {
+			ParallelHashMap map ;
+			classify< binary_reader, ParallelHashMap >( header, reader, &map, limits, max_kmers ) ;
+		} else if( implementation == "jellyfish" ) {
+			JellyfishHashMap map( 10000000, jellyfish::mer_dna::k()*2, 64, 1 ) ;
+			classify< binary_reader, JellyfishHashMap >( header, reader, &map, limits, max_kmers ) ;
+		} else {
+			throw genfile::BadArgumentError(
+				"ClassifyKmerApplication::unsafe_process()",
+				"-hashmap-implementation",
+				"Value must be \"jellyfish\" or \"parallel-hashmap\""
+			) ;
+		}
+
+		ui().logger() << "++ Total memory usage is:\n" ;
+		ui().logger() << "              (process) : " << (spp::GetProcessMemoryUsed()/1000) << "kb\n" ;
 	}
 	
-	void pack_multiplicity( int k, int multiplicity, uint16_t& result ) {
-		result = multiplicity | (uint16_t(k) << 8) ;
-	}
+	template< typename Iterator, typename HashMap >
+	void classify(
+		jellyfish::file_header const& header,
+		Iterator it,
+		HashMap* result,
+		std::vector< uint64_t > const limits,
+		std::size_t max_kmers = std::numeric_limits< std::size_t >::max()
+	) {
+		unsigned int const k = header.key_len() / 2 ;
+		jellyfish::mer_dna::k( k );
+		std::size_t count = 0 ;
+		while( it.next() && count < max_kmers ) {
+			uint64_t const multiplicity = it.val() ;
+			HashMapTraits< HashMap >::add( result, it.key(), multiplicity ) ;
 
-	void unpack_multiplicity( uint16_t encoded, int& k, int& multiplicity ) {
-
-		multiplicity = int( encoded & 0xFF ) ;
-		k = int( (encoded >> 8) & 0xFF ) ;
-	}
-
-#if 0	
-	void output( MultiplicityMap const& map ) {
-		int multiplicity ;
-		int k ;
-		for( auto& elt: map ) {
-			unpack_multiplicity( elt.second, k, multiplicity ) ;
-			std::cout << genfile::kmer::decode_hash( elt.first, k )
-				<< " " << k << " " << multiplicity << "\n" ;
+			if( (count++) % 100000 == 0 ) {
+				std::cerr << "Read " << count << " kmers.  Last was:\n" ;
+				std::cerr
+					<< it.key() << ": "
+						<< it.key()
+						<< " - " << std::hex << it.key().get_bits(0,2*k) << "\n" ;
+			}
 		}
+		std::cerr << "++ Read " << count << " kmers in total.\n" ;
 	}
-#endif
+	
 } ;
 
 
