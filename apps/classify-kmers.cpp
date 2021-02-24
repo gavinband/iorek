@@ -284,10 +284,6 @@ private:
 		std::string const& filename,
 		std::vector< uint64_t > const limits
 	) {
-#if 1
-		return std::make_pair( 4294967296, 4294967296 ) ;
-#endif
-
 		std::ifstream ifs( filename ) ;
 		jellyfish::file_header header( ifs ) ;
 		binary_reader it(ifs, &header);
