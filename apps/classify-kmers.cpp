@@ -13,6 +13,8 @@
 #include <boost/ptr_container/ptr_vector.hpp>
 #include <boost/filesystem.hpp>
 #include <boost/noncopyable.hpp>
+#include <boost/lockfree/queue.hpp>
+#include <chrono>
 #include <thread>
 
 // seqlib
@@ -35,7 +37,9 @@ namespace seqlib = SeqLib;
 
 #include "parallel_hashmap/phmap.h"
 #include "parallel_hashmap/meminfo.h"
-#include <jellyfish/jellyfish.hpp>
+#include "jellyfish/jellyfish.hpp"
+#include "concurrentqueue/concurrentqueue.h"
+
 /*
 #include <sys/types.h>
 #include <sys/sysinfo.h>
@@ -81,40 +85,71 @@ namespace {
 			return hashmap.ary()->size_bytes() ;
 		}
 	} ;
+
+	/*
+	typedef boost::lockfree::queue<
+		std::pair< jellyfish::mer_dna, uint64_t >,
+		boost::lockfree::capacity< 2048 >
+	> Queue ;
+*/
+	typedef moodycamel::ConcurrentQueue<
+		std::pair< jellyfish::mer_dna, uint64_t >
+	> Queue ;
 	
-	template< typename HashMap >
+	template< typename HashMap, typename HetMap >
 	void classify_threaded(
-		std::string const& filename,
+		std::size_t const k,
+		Queue* queue,
 		HashMap* result,
+		HetMap* hets,
 		std::vector< uint64_t > const limits,
 		std::size_t const thread_index,
 		uint64_t const thread_mask,
-		std::size_t const max_kmers = std::numeric_limits< std::size_t >::max()
+		std::atomic< int >* quit
 	) {
-		std::ifstream ifs( filename ) ;
-		jellyfish::file_header header( ifs ) ;
-		binary_reader it(ifs, &header);
-		
-		unsigned int const k = header.key_len() / 2 ;
 		std::size_t count = 0 ;
+		std::size_t het_count = 0 ;
 		uint64_t const lowerLimit = limits[0] ;
+		uint64_t const hetLimit = limits[1] ;
 		uint64_t const upperLimit = limits[2] ;
-		while( it.next() && count < max_kmers ) {
-			uint64_t hash = it.key().get_bits( 0, 2*k ) ;
-			if( (hash & thread_mask) == thread_index ) {
-				uint64_t const multiplicity = it.val() ;
-				if( it.val() >= lowerLimit && it.val() <= upperLimit ) {
-					HashMapTraits< HashMap >::add( result, it.key(), multiplicity ) ;
-				}
+		assert( hetLimit >= lowerLimit ) ;
+		assert( upperLimit >= hetLimit ) ;
+		bool popped = false;
+		std::pair< jellyfish::mer_dna, uint64_t > elt ;
+		while( !(*quit) ) {
+			bool popped = queue->try_dequeue( elt ) ;
+			if( popped ) {
+				std::cerr << "(thread " << thread_index << ") ++ Got " << elt.first << "!\n" ;
+			} else {
+				std::cerr << "(thread " << thread_index << ") ++ no pop.\n" ;
 			}
-			if( ((count++) & 0xFFFFFFF) == 0 ) {
-				std::cerr
-					<< "(thread " << thread_index << ") ++ Read " << count << " kmers.  Last was: "
-					<< it.key() << " - " << std::hex << it.key().get_bits(0,2*k) << std::dec << " " 
-					<< " (" << (spp::GetProcessMemoryUsed()/1000000) << "Mb used)\n" ;
+			if( popped ) {
+				uint64_t hash = elt.first.get_bits( 0, 2*k ) ;
+				if( (hash & thread_mask) == thread_index ) {
+					uint64_t const& multiplicity = elt.second ;
+					if( elt.second >= lowerLimit ) {
+						if( elt.second <= upperLimit ) {
+							++count ;
+							HashMapTraits< HashMap >::add( result, elt.first, multiplicity ) ;
+						}
+						if( elt.second <= hetLimit ) {
+							++het_count ;
+							HashMapTraits< HetMap >::add( hets, elt.first, multiplicity ) ;
+						}
+					}
+				}
+				if( (count & 0xFFFFFFF) == 0 ) {
+					std::cerr << "(thread " << thread_index << ") ++ Added " << count << " kmers.\n" ;
+				}
+			} else {
+				// nothing to pop, sleep to allow queue to fill.
+				std::this_thread::sleep_for( std::chrono::milliseconds(1) ) ;
 			}
 		}
-		std::cerr << "(thread " << thread_index << "): ++ Read " << count << " kmers in total.\n" ;
+		std::cerr << "(thread " << thread_index << "): ++ Added "
+			<< count << " kmers in total, including "
+			<< het_count << " probable hets.\n" ;
+		std::cerr << "(thread " << thread_index << "): ++ Thread ending...\n" ;
 	}
 }
 
@@ -162,11 +197,9 @@ public:
 			.set_default_value( std::numeric_limits< uint32_t >::max() )
 		;
 		options[ "-threads" ]
-			.set_description( "Number of threads to use to load kmers with. "
-				"The default value (0) means \"do all work in the main thread\"."
-			)
+			.set_description( "Number of threads to use to load kmers with. " )
 			.set_takes_single_value()
-			.set_default_value( 0 )
+			.set_default_value( 1 )
 		;
 	}
 } ;
@@ -230,20 +263,16 @@ private:
 			<< "  in-range kmers: " << count.second << "\n" ;
 		
 		binary_reader reader(ifs, &header);
-		jellyfish::mer_dna::k( header.key_len() / 2 ) ;
+		std::size_t const k = header.key_len() / 2 ;
+		jellyfish::mer_dna::k( k ) ;
 		std::string const implementation = options().get< std::string >( "-hashmap-implementation" ) ;
-		if( implementation == "parallel-hashmap" ) {
-			ParallelHashMap map ;
-			classify_singlethreaded< binary_reader, ParallelHashMap >( header, reader, &map, limits, max_kmers ) ;
 
-			ui().logger() << "++ Total memory usage is:\n" ;
-			ui().logger() << "              (process) : " << (spp::GetProcessMemoryUsed()/1000000) << "Mb\n" ;
-		} else if( implementation == "jellyfish" ) {
+
+		{
 			std::size_t const numberOfThreads = options().get< std::size_t >( "-threads" ) ;
-			JellyfishHashMap map( count.second, jellyfish::mer_dna::k()*2, 16, numberOfThreads ) ;
-			if( numberOfThreads == 0 ) {
-				classify_singlethreaded< binary_reader, JellyfishHashMap >( header, reader, &map, limits, max_kmers ) ;
-			} else {
+			JellyfishHashMap all( count.second, jellyfish::mer_dna::k()*2, 16, numberOfThreads ) ;
+			ParallelHashMap hets ;
+			{
 				uint64_t const threadMask = (numberOfThreads - 1) ;
 
 				if( (numberOfThreads & threadMask) != 0 ) {
@@ -254,15 +283,27 @@ private:
 					) ;
 				}
 
+				Queue queue( 2048 ) ;
+				std::atomic< int > quit(0) ;
 				std::vector< std::thread > threads ;
 				for( std::size_t i = 0; i < numberOfThreads; ++i ) {
 					threads.push_back(
 						std::thread(
-							classify_threaded< JellyfishHashMap >,
-							jf_filename, &map, limits, i, threadMask, max_kmers
+							classify_threaded< JellyfishHashMap, ParallelHashMap >,
+							k, &queue, &all, &hets, limits, i, threadMask, &quit
 						)
 					) ;
 				}
+				
+				read_into_queue( header, reader, queue, max_kmers ) ;
+				
+				while( queue.size_approx() > 0 ) {
+					std::cerr << "Queue size = " << queue.size_approx() << ".\n" ;
+					std::this_thread::sleep_for( std::chrono::milliseconds(10)) ;
+				}
+
+				quit = 1 ;
+
 				for( auto& thread: threads ) {
 					thread.join() ;
 				}
@@ -270,13 +311,6 @@ private:
 
 			ui().logger() << "++ Total memory usage is:\n" ;
 			ui().logger() << "              (process) : " << (spp::GetProcessMemoryUsed()/1000000) << "Mb\n" ;
-
-		} else {
-			throw genfile::BadArgumentError(
-				"ClassifyKmerApplication::unsafe_process()",
-				"-hashmap-implementation",
-				"Value must be \"jellyfish\" or \"parallel-hashmap\""
-			) ;
 		}
 	}
 	
@@ -286,10 +320,11 @@ private:
 	) {
 		std::ifstream ifs( filename ) ;
 		jellyfish::file_header header( ifs ) ;
+		unsigned int const k = header.key_len() / 2 ;
+		std::cerr << "k = " << k << ".\n" ;
+		jellyfish::mer_dna::k( k );
 		binary_reader it(ifs, &header);
 		
-		unsigned int const k = header.key_len() / 2 ;
-		jellyfish::mer_dna::k( k );
 		
 		std::size_t total = 0 ;
 		std::size_t included = 0 ;
@@ -310,38 +345,25 @@ private:
 		return std::make_pair( total, included ) ;
 	}
 	
-	template< typename Iterator, typename HashMap >
-	void classify_singlethreaded(
+	template< typename Iterator >
+	void read_into_queue(
 		jellyfish::file_header const& header,
 		Iterator it,
-		HashMap* result,
-		std::vector< uint64_t > const limits,
+		Queue& queue,
 		std::size_t const max_kmers = std::numeric_limits< std::size_t >::max()
 	) {
 		unsigned int const k = header.key_len() / 2 ;
-		jellyfish::mer_dna::k( k );
+		jellyfish::mer_dna::k( k ) ;
 		std::size_t count = 0 ;
 		auto progress = ui().get_progress_context( "Loading kmers" ) ;
-		uint64_t const lowerLimit = limits[0] ;
-		uint64_t const upperLimit = limits[2] ;
 		while( it.next() && count < max_kmers ) {
-			uint64_t const multiplicity = it.val() ;
-			if( it.val() >= lowerLimit && it.val() <= upperLimit ) {
-				HashMapTraits< HashMap >::add( result, it.key(), multiplicity ) ;
+			std::pair< jellyfish::mer_dna, uint64_t > elt( it.key(), it.val() ) ;
+			while( !queue.try_enqueue( elt )) {
+				std::this_thread::sleep_for( std::chrono::milliseconds(1) ) ;
 			}
-
-			if( (count++) % 25000000 == 0 ) {
-				std::cerr
-					<< "++ Read " << count << " kmers.  Last was: "
-					<< it.key() << " - " << std::hex << it.key().get_bits(0,2*k) << std::dec << " " 
-					<< " (" << (spp::GetProcessMemoryUsed()/1000000) << "Mb used)\n" ;
-			}
-			progress( count, boost::optional< std::size_t >() ) ;
 		}
-		std::cerr << "++ Read " << count << " kmers in total, quitting.\n" ;
+		std::cerr << "++ read_into_queue(): Read " << count << " kmers in totalquitting.\n" ;
 	}
-	
-
 } ;
 
 
