@@ -1,0 +1,11 @@
+import os.path
+
+def configure( conf ):
+	conf.define( "HAVE_CONCURRENTQUEUE", 1 )
+
+def build( bld ):
+	bld(
+		target = 'concurrentqueue',
+		includes = './',
+		export_includes = './', 
+	)
