@@ -61,13 +61,13 @@ public:
 
 		options.declare_group( "Model options" ) ;
 		
-		options[ "-training-regions" ]
-			.set_description( "A regions (expressed in the form <chromosome>:<start>-<end>)"
-				" to learn distributions from.  Regions are expressed in 1-based, right-closed coordinates."
+		options[ "-range" ]
+			.set_description( "Genommic regions (expressed in the form <chromosome>:<start>-<end>)"
+				" to process.  Regions are expressed in 1-based, right-closed coordinates."
 				" (These regions should have few copy number variants)" 
 				" Alternatively this can be the name of a file containing a list of regions."
 			)
-			.set_takes_single_value()
+			.set_takes_values_until_next_option()
 			.set_is_required()
 		;
 		/*
@@ -279,7 +279,7 @@ private:
 	void unsafe_process() {
 		unsafe_process(
 			options().get_values< std::string >( "-reads" ),
-			get_regions( options().get_values< std::string >( "-training-regions" ) )
+			get_regions( options().get_values< std::string >( "-range" ) )
 		) ;
 	}
 	
@@ -290,7 +290,7 @@ private:
 			if( !region.has_chromosome() ) {
 				throw genfile::BadArgumentError(
 					"SvelteApplication::get_regions()",
-					"-training-regions=\"" + spec + "\"",
+					"-range=\"" + spec + "\"",
 					"Regions must be specified with chromosome/contig identifiers."
 				) ;
 			}
@@ -303,7 +303,7 @@ private:
 				if( region.size() % bin_size != 0 ) {
 					throw genfile::BadArgumentError(
 						"SvelteApplication::get_regions()",
-						"-training-regions=\"" + spec + "\"",
+						"-range=\"" + spec + "\"",
 						"Region size (" + to_string( region.size() ) + ") should be a multiple of the bin size (" + to_string(bin_size) + ")"
 					) ;
 				}
