@@ -278,11 +278,33 @@ private:
 
 	void unsafe_process() {
 		unsafe_process(
-			options().get_values< std::string >( "-reads" ),
+			collect_unique_ids( options().get_values< std::string >( "-reads" ) ),
 			get_regions( options().get_values< std::string >( "-range" ) )
 		) ;
 	}
-	
+
+	std::vector< std::string > collect_unique_ids( std::vector< std::string > const& ids_or_filenames ) {
+		std::vector< std::string > result ;
+		// collect strings
+		for( auto elt: ids_or_filenames ) {
+			if( boost::filesystem::exists( elt ) && !((elt.size() > 4 && elt.substr( elt.size() - 4, 4 ) == ".bam") || (elt.size() > 5 && elt.substr( elt.size() - 5, 5 ) == ".cram" ) )) {
+				std::ifstream f( elt ) ;
+				std::copy(
+					std::istream_iterator< std::string >( f ),
+					std::istream_iterator< std::string >(),
+					std::back_inserter< std::vector< std::string > >( result )
+				) ;
+			} else {
+				result.push_back( elt ) ;
+			}
+		}
+		// sort and uniqueify them...
+		std::sort( result.begin(), result.end() ) ;
+		std::vector< std::string >::const_iterator newBack = std::unique( result.begin(), result.end() ) ;
+		result.resize( newBack - result.begin() ) ;
+		return result ;
+	}
+
 	Regions get_regions( std::vector< std::string > const& specs ) const {
 		Regions result ;
 		for( auto spec: specs ) {
@@ -375,14 +397,14 @@ private:
 		bool const output_per_file = !options().check( "-no-per-file" ) ;
 		bool const output_total = true ;
 		statfile::BuiltInTypeStatSink::UniquePtr sink = statfile::BuiltInTypeStatSink::open( options().get< std::string >( "-o" ) ) ;
-		*sink | "chromosome" | "position" | "size" | "N" ;
+		*sink | "chromosome" | "position" | "bin_size" | "L" ;
 		if( output_per_file ) {
 			for( auto name: names ) {
 				(*sink) | (name + ":coverage") | (name + ":mean_mq") ;
 			}
 		}
 		if( output_total ) {
-			(*sink) | "total:coverage" | "total:mean_mq" ;
+			(*sink) | "N" | "total:coverage" | "total:mean_mq" ;
 		}
 		return sink ;
 	}
@@ -441,7 +463,15 @@ private:
 		}
 		
 		seqlib::BamHeader const& header = reader.Header() ;
-		reader.SetRegion( seqlib::GenomicRegion( region.toString(), header )) ;
+		try {
+			reader.SetRegion( seqlib::GenomicRegion( region.toString(), header )) ;
+		} catch( std::invalid_argument const& e ) {
+			throw genfile::BadArgumentError(
+				"seqlib::GenomicRegion()",
+				"region=\"" + region.toString() + "\"",
+				"Failed for file \"" + filename + "\""
+			) ;
+		}
 
 		int32_t const mq_threshold = options().get< int32_t >( "-mq" ) ;
 		
@@ -536,6 +566,7 @@ private:
 		}
 		if( output_total ) {
 			// output totals
+			sink << names.size() ;
 			sink << total.coverage() ;
 			if( total.coverage() > 0 ) {
 				sink << double(total.total_mapping_quality()) / double(total.coverage()) ;
