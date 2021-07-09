@@ -6,6 +6,8 @@
 
 #include <vector>
 #include <sstream>
+#include <iostream>
+#include <iomanip>
 #include "svelte/HalfOpenRangeLevel.hpp"
 #include "svelte/CoverageProfile.hpp"
 
@@ -17,6 +19,17 @@ namespace svelte {
 			result
 				<< ((i>0) ? ";" : "")
 				<< "[" << range.start() << "," << range.end() << "):" << range.level() ;
+		}
+		return result.str() ;
+	}
+
+	std::string CoverageProfile::prettyPrint() const {
+		std::ostringstream result ;
+		for( std::size_t i = 0; i < m_data.size(); ++i ) {
+			auto range = m_data[i] ;
+			result
+				<< ((i>0) ? "; " : "")
+				<< "[" << std::setw(4) << range.start() << "," << std::setw(4) << range.end() << "): " << range.level() ;
 		}
 		return result.str() ;
 	}

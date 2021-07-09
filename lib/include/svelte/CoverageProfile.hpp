@@ -34,6 +34,7 @@ namespace svelte {
 		}
 
 		std::string toString() const ;
+		std::string prettyPrint() const ;
 
 	public:
 		std::size_t size() const { return m_data.size() ; }

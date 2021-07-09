@@ -5,8 +5,11 @@
 //					http://www.boost.org/LICENSE_1_0.txt)
 
 #include <iostream>
+#include <iomanip>
 #include <sstream>
 #include <vector>
+#include <numeric>
+
 #include "svelte/HalfOpenRange.hpp"
 #include "svelte/HalfOpenRangeLevel.hpp"
 #include "svelte/CoverageProfile.hpp"
@@ -23,6 +26,20 @@ namespace svelte {
 				<< m_profiles[i].toString() << ":" << m_frequencies[i] ;
 		}
 		str << "}" ;
+		return str.str() ;
+	}
+	
+	std::string SVPopulationModel::prettyPrint( std::size_t const indent ) const {
+		std::ostringstream str ;
+		str.precision(5) ;
+		str << "{\n" ;
+		std::string indentation( indent, ' ' ) ;
+		for( std::size_t i = 0; i < m_profiles.size(); ++i ) {
+			str << ((i>0) ? ",\n" : "" )
+				<< indentation
+				<< std::setw(8) << m_frequencies[i] << ": " << m_profiles[i].prettyPrint() ;
+		}
+		str << "\n}\n" ;
 		return str.str() ;
 	}
 	
@@ -67,6 +84,16 @@ namespace svelte {
 		return m_index.find( profile ) != m_index.end() ;
 	}
 	
+	void SVPopulationModel::set_frequencies( std::vector< double > frequencies ) {
+		assert( frequencies.size() == m_profiles.size() ) ;
+		// normalise
+		double sum = std::accumulate( frequencies.begin(), frequencies.end(), 0.0 ) ;
+		for( std::size_t i = 0; i < frequencies.size(); ++i ) {
+			frequencies[i] /= sum ;
+		}
+		m_frequencies = frequencies ;
+	}
+
 	void SVPopulationModel::generate_diploid_profiles(
 		std::function< void( CoverageProfile const& profile, double const weight ) > callback
 	) const {

@@ -8,10 +8,14 @@
 
 #include <vector>
 #include <string>
+#include <numeric>
 #include <Eigen/Core>
 
 #include <boost/random/mersenne_twister.hpp>
 #include <boost/random/uniform_int_distribution.hpp>
+#include <boost/random/uniform_01.hpp>
+#include <boost/random/beta_distribution.hpp>
+#include <boost/math/distributions/geometric.hpp>
 
 #include "appcontext/appcontext.hpp"
 #include "genfile/GenomePositionRange.hpp"
@@ -19,6 +23,7 @@
 #include "genfile/string_utils/slice.hpp"
 #include "genfile/Error.hpp"
 #include "statfile/BuiltInTypeStatSource.hpp"
+#include "statfile/BuiltInTypeStatSink.hpp"
 
 #include "svelte/GaussianCoverageLoglikelihood.hpp"
 #include "svelte/MixtureCoverageLoglikelihood.hpp"
@@ -45,15 +50,38 @@ public:
 		
 		options.declare_group( "Input / output file options" ) ;
 		options[ "-c" ]
-			.set_description( "Path to file containing coverage values." )
+			.set_description( "Path to file containing coverage data." )
 			.set_takes_single_value()
 			.set_is_required()
 		;
 
-		options[ "-o" ]
-			.set_description( "Path of output file." )
+		options[ "-t" ]
+			.set_description( "Path to file containing coverage data for training." )
+			.set_takes_single_value()
+			.set_is_required()
+		;
+
+		options[ "-og" ]
+			.set_description( "Path of output genotypes file." )
 			.set_takes_single_value()
 			.set_default_value( "-" ) ;
+
+		options.declare_group( "Model options" ) ;
+		options[ "-penalty" ]
+			.set_description( "Parameter of geometric distribution penalty on number of SVs" )
+			.set_takes_single_value()
+			.set_default_value( 0.5 ) ;
+
+		options[ "-iterations" ]
+			.set_description( "Number of iterations to run" )
+			.set_takes_single_value()
+			.set_default_value( 1 ) ;
+
+		options[ "-ploidy" ]
+			.set_description( "Ploidy of samples" )
+			.set_takes_single_value()
+			.set_default_value( 2 ) ;
+
 	}
 } ;
 
@@ -92,27 +120,39 @@ private:
 	
 	void unsafe_process() {
 		unsafe_process(
+			options().get< std::string >( "-t" ),
 			options().get< std::string >( "-c" )
 		) ;
 	}
 	
 	void unsafe_process(
-		std::string const& filename
+		std::string const& training_filename,
+		std::string const& data_filename
 	) {
 		std::vector< std::string > samples ;
 		std::vector< std::pair< genfile::GenomePositionRange, std::size_t > > bins ;
 		Eigen::MatrixXd coverage ;
-		auto source = statfile::BuiltInTypeStatSource::open( filename ) ;
-		read_svelte_output( *source, &samples, &bins, &coverage ) ;
-
-
+		
+		// Learn means and variances from the training data
+		{
+			auto source = statfile::BuiltInTypeStatSource::open( training_filename ) ;
+			read_svelte_output( *source, &samples, &bins, &coverage ) ;
+		}
 		Eigen::RowVectorXd means = coverage.colwise().sum() / coverage.rows() ;
 		Eigen::RowVectorXd variances = (coverage - means.replicate( coverage.rows(), 1 )).array().square().colwise().sum() / (coverage.rows() - 1) ;
 
+		// Load actual coverage data
+		{
+			auto source = statfile::BuiltInTypeStatSource::open( data_filename ) ;
+			read_svelte_output( *source, &samples, &bins, &coverage ) ;
+		}
+
+		int const ploidy = options().get< int >( "-ploidy" ) ;
+
 		std::cerr << "LOADED COVERAGE:\n" ;
 		std::cerr << coverage.block( 0, 0, std::min( coverage.rows(), 10l ), std::min( coverage.cols(), 10l )) << ".\n" ;
-		std::cerr << "    PREDICTED HAPLOID MEANS: " << 0.5 * means << ".\n" ;
-		std::cerr << "PREDICTED HAPLOID VARIANCES: " << 0.5 * variances << ".\n" ;
+		std::cerr << "    PREDICTED " << ploidy << "-ploid MEANS: " << ( means / ploidy ) << ".\n" ;
+		std::cerr << "PREDICTED " << ploidy << "-ploid VARIANCES: " << ( variances / ploidy ) << ".\n" ;
 		std::cerr << "\n...processing...\n\n" ;
 
 		SVHaplotype haplotype( 0, bins.size() ) ;
@@ -120,8 +160,8 @@ private:
 		m_profileHaplotypeMap[ haplotype.toProfile() ].push_back( haplotype ) ;
 
 		svelte::MixtureCoverageLoglikelihood ll(
-			0.5 * means,
-			0.5 * variances,
+			means / ploidy,
+			variances / ploidy,
 			coverage
 		) ;
 
@@ -129,7 +169,10 @@ private:
 		Eigen::VectorXd totalLLs( means.size() ) ;
 		svelte::SVPopulationModel bestPopulationModel = referenceModel ;
 
-		for( std::size_t iteration = 0; iteration < 10; ++iteration, referenceModel = bestPopulationModel ) {
+		boost::math::geometric geometric( options().get< double >( "-penalty" )) ;
+		using boost::math::pdf ;
+		std::size_t const max_iterations = options().get< std::size_t >( "-iterations" ) ;
+		for( std::size_t iteration = 0; iteration < max_iterations; ++iteration, referenceModel = bestPopulationModel ) {
 			{
 				ProfileSVMap new_profileHaplotypeMap( m_profileHaplotypeMap ) ;
 				std::set< SVHaplotype > visited_haplotypes ;
@@ -138,6 +181,9 @@ private:
 				std::vector< svelte::SVPopulationModel > new_models ;
 				new_models.reserve( 1000000 ) ;
 
+				// Always include this one
+				new_models.push_back( referenceModel ) ;
+
 				// Try removing one
 				for( std::size_t i = 1; i < referenceModel.profiles().size(); ++i ) {
 					svelte::SVPopulationModel model = referenceModel ;
@@ -145,15 +191,23 @@ private:
 					new_models.push_back( model ) ;
 				}
 				
-				// Try changing frequencies...
-				// TODO
-				
 				std::cerr << "\n"
-					<< "ITERATION " << iteration << ": GENERATING RECOMBINANTS...\n" ;
+					<< "ITERATION " << iteration << ": Adjusting frequencies...\n" ;
+				if( referenceModel.size() > 1 ) {
+					sample_frequencies(
+						referenceModel,
+						200,
+						[&]( svelte::SVPopulationModel const& model ) {
+							new_models.push_back( model ) ;
+						}
+					) ;
+				}
+				
+				std::cerr << "ITERATION " << iteration << ": Generating recombinants...\n" ;
 				sample_recombinant_haplotypes_from_profiles(
-					referenceModel.profiles(),
+					referenceModel,
 					m_profileHaplotypeMap,
-					10000,
+					1000,
 					[&]( SVHaplotype const& haplotype ) {
 						CoverageProfile const profile = haplotype.toProfile() ;
 						bool haplotypeIsNovel = visited_haplotypes.insert( haplotype ).second ;
@@ -161,15 +215,17 @@ private:
 						if( haplotypeIsNovel ) {
 							new_profileHaplotypeMap[ profile ].push_back( haplotype ) ;
 						}
-
+#if 0
+						std::cerr << profile.toString() << "\n" ;
+#endif
 						if( !profileIsNovel || referenceModel.contains( profile )) {
 							//std::cerr << "  Skipped: " << profile.toString() << ".\n" ;
 						} else {
 							
 							// add
-							{
+							for( std::size_t f = 5; f <= 95; f += 10 ) {
 								svelte::SVPopulationModel model = referenceModel ;
-								model.add( profile, 0.05 ) ;
+								model.add( profile, double(f)/100 ) ;
 								new_models.push_back( model ) ;
 							}
 
@@ -183,41 +239,48 @@ private:
 					}
 				) ;
 
+				std::cerr << "ITERATION " << iteration << ": Evaluating lls...\n" ;
 				// Now evaluate LLs...
 				ll.evaluate( referenceModel, &theLLs ) ;
 				rowwise_log_sum_exp( theLLs, &totalLLs ) ;
 				bestPopulationModel = referenceModel ;
-				double bestTotalLL = totalLLs.sum() ;
-
-				std::cerr
-					<< "REFERENCE MODEL: " << referenceModel.toString()
-					<< ": LLs =\n" << theLLs.topRows( 10 )
-					<< ", total = " << totalLLs.sum() << ".\n" ;
-
+				double const referenceLL = totalLLs.sum() ;
+				double const referencePenalty = std::log( pdf( geometric, referenceModel.size() )) ;
+				double bestModelLL = referenceLL ;
+				double bestModelPenalty = referencePenalty ;
+				
 				for( auto new_model: new_models ) {
 					ll.evaluate( new_model, &theLLs ) ;
 					rowwise_log_sum_exp( theLLs, &totalLLs ) ;
-					double totalLL = totalLLs.sum() ;
+					double const LL = totalLLs.sum() ;
+					double const penalty = std::log( pdf( geometric, new_model.size() )) ;
+#if 0
 					std::cerr
 						<< "  ITERATION: " << iteration
 						<< ": MODEL: " << new_model.toString()
-						<< ": LL = " << totalLLs.sum()
-						<< " (best = " << bestPopulationModel.toString() << ", LL = " << bestTotalLL << ").\n" ;
-					//std::cerr << "CURRENT BEST: " << bestPopulationModel.toString() << "; LL = " << bestTotalLL << ".\n" ;
-					if( totalLL > bestTotalLL ) {
+						<< ": LL = " << LL
+						<< "\n" ;
+#endif
+					if( (LL + penalty) > (bestModelLL + bestModelPenalty) ) {
 						bestPopulationModel = new_model ;
-						bestTotalLL = totalLL ;
+						bestModelLL = LL ;
+						bestModelPenalty = penalty ;
 					}
 				}
 		
 				m_profileHaplotypeMap.swap( new_profileHaplotypeMap ) ;
 				std::cerr << "\n" ;
-				std::cerr << "BEST MODEL: " << bestPopulationModel.toString() << ", LL = " << bestTotalLL << ".\n" ;
+				std::cerr
+					<< "++ AFTER ITERATION " << iteration << ":\n"
+					<< "++ BEST MODEL:\n" << bestPopulationModel.prettyPrint()
+					<< "++ LL = " << bestModelLL << " with penalty: " << bestModelPenalty
+					<< ".\n" ;
 			}
 			
 			referenceModel = bestPopulationModel ;
 		}
-		
+
+#if 0
 		std::cerr << "ALLELES:\n" ;
 		{
 			auto profiles = bestPopulationModel.profiles() ;
@@ -231,8 +294,8 @@ private:
 				}
 			}
 		}
-
-		std::cerr << "GENOTYPES:\n" ;
+#endif
+		std::cerr << "Writing genotypes.\n" ;
 		{
 			ll.evaluate( bestPopulationModel, &theLLs ) ;
 			// divide by totals to get probabilities
@@ -246,10 +309,13 @@ private:
 					genotypes.push_back( genfile::string_utils::to_string( i ) + "/" + genfile::string_utils::to_string( j ) ) ;
 				}
 			}
+			statfile::BuiltInTypeStatSink::UniquePtr sink = statfile::BuiltInTypeStatSink::open( options().get< std::string >( "-og" )) ;
+			(*sink) | "sample" | "genotype" ;
 			for( int i = 0; i < theLLs.rows(); ++i ) {
 				int j ;
 				theLLs.row(i).maxCoeff( &j ) ;
-				std::cerr << genotypes[j]<< ": " << samples[i] << "\n" ;
+				(*sink) << samples[i] << genotypes[j] << statfile::end_row() ;
+				//std::cerr << genotypes[j]<< ": " << samples[i] << "\n" ;
 			}
 		}
 	}
@@ -343,31 +409,77 @@ private:
 			}
 		}
 	}
-	
+
+	void sample_frequencies(
+		svelte::SVPopulationModel const& model,
+		std::size_t N,
+		std::function< void( svelte::SVPopulationModel const& ) > callback
+	) {
+		typedef boost::random::uniform_int_distribution< std::size_t > Uniform ;
+		typedef boost::random::beta_distribution< double > Beta ;
+		std::vector< double > const frequencies = model.frequencies() ;
+		std::vector< double > new_frequencies( frequencies ) ;
+		double sum = std::accumulate( frequencies.begin(), frequencies.end(), 0.0 ) ;
+		Uniform selector( 0, frequencies.size() - 1 ) ;
+		Beta frequencyGenerator( 1.02, 1.02 ) ; // use beta distribution to avoid zero.
+		for( std::size_t i = 0; i < N; ++i ) {
+			// pick a random frequency to change
+			std::size_t w = selector( m_rng ) ;
+			// pick a random value to change by
+			new_frequencies = frequencies ;
+			new_frequencies[w] = frequencyGenerator( m_rng ) ;
+			double sumOfOthers = sum - frequencies[w] ;
+			for( std::size_t k = 0; k < new_frequencies.size(); ++k ) {
+				if( k != w ) {
+					new_frequencies[k] /= sumOfOthers ;
+				}
+			}
+			svelte::SVPopulationModel newModel = model ;
+			newModel.set_frequencies( new_frequencies ) ;
+			callback( newModel ) ;
+		}
+	}
+
+	std::size_t select_by_frequency( std::vector< double > const& frequencies ) {
+		typedef boost::random::uniform_01< std::size_t > Uniform ;
+		Uniform selector ;
+		double value = selector( m_rng ) ;
+		std::size_t result = 0 ;
+		for(
+			value -= frequencies[0];
+			(result < frequencies.size()) && (value > 0) ;
+			value -= frequencies[++result]
+		) {
+			// nothing to do
+		}
+		return result ;
+	}
+
 	void sample_recombinant_haplotypes_from_profiles(
-		std::vector< svelte::CoverageProfile > const& profiles,
+		svelte::SVPopulationModel const& model,
 		ProfileSVMap const& profileHaplotypeMap,
 		std::size_t const N,
 		std::function< void( SVHaplotype const& ) > callback
 	) {
-		typedef boost::random::uniform_int_distribution< std::size_t > Uniform ;
-		Uniform selector( 0, profiles.size()-1 ) ;
+		std::vector< svelte::CoverageProfile > const& profiles = model.profiles() ;
+		std::vector< double > const frequencies = model.frequencies() ;
+		typedef boost::random::uniform_int_distribution< std::size_t > UniformInt ;
 		for( std::size_t i = 0; i < N; ++i ) {
-			std::size_t const pi = selector( m_rng ) ;
-			std::size_t const pj = selector( m_rng ) ;
+			std::size_t const pi = select_by_frequency( frequencies ) ;
+			std::size_t const pj = select_by_frequency( frequencies ) ;
 			auto where_i = profileHaplotypeMap.find( profiles[pi] ) ;
 			auto where_j = profileHaplotypeMap.find( profiles[pj] ) ;
 			assert( where_i != profileHaplotypeMap.end() ) ;
 			assert( where_j != profileHaplotypeMap.end() ) ;
 
-			Uniform leftHapSelector( 0, where_i->second.size() - 1 ) ;
-			Uniform rightHapSelector( 0, where_j->second.size() - 1 ) ;
+			UniformInt leftHapSelector( 0, where_i->second.size() - 1 ) ;
+			UniformInt rightHapSelector( 0, where_j->second.size() - 1 ) ;
 
 			SVHaplotype const& leftHap = where_i->second[ leftHapSelector( m_rng ) ] ;
 			SVHaplotype const& rightHap = where_j->second[ rightHapSelector( m_rng ) ] ;
 
-			Uniform leftBreakpointSelector( 1, leftHap.size() - 1 ) ;
-			Uniform rightBreakpointSelector( 1, rightHap.size() - 1 ) ;
+			UniformInt leftBreakpointSelector( 1, leftHap.size() - 1 ) ;
+			UniformInt rightBreakpointSelector( 1, rightHap.size() - 1 ) ;
 
 			callback(
 				splice(

@@ -14,7 +14,7 @@
 #include "svelte/SVPopulationModel.hpp"
 #include "svelte/MixtureCoverageLoglikelihood.hpp"
 
-// #define DEBUG 1
+//#define DEBUG 1
 #if DEBUG
 #include <iostream>
 #endif
@@ -54,6 +54,10 @@ namespace svelte {
 #if DEBUG
 		std::cerr << "Frequencies = " << f << ".\n" ;
 #endif
+		// values at i,j in result is
+		// loglikelihood of profile j in sample i
+		// total ll of result 
+		
 		result->array() += f.array().log().replicate( N, 1 ) ;
 	}
 }

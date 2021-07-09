@@ -51,7 +51,9 @@ namespace svelte {
 		}
 
 		std::string toString() const ;
+		std::string prettyPrint( std::size_t const indent = 3 ) const ;
 		
+		std::size_t const size() const { return m_profiles.size() ; }
 		std::vector< CoverageProfile > const& profiles() const { return m_profiles ; }
 		std::vector< double > const& frequencies() const { return m_frequencies ; }
 
@@ -60,6 +62,8 @@ namespace svelte {
 		void remove( CoverageProfile const& profile ) ;
 		void replace( std::size_t i, CoverageProfile const& profile ) ;
 		bool contains( CoverageProfile const& profile ) const ;
+
+		void set_frequencies( std::vector< double > frequencies ) ;
 
 		void generate_diploid_profiles( std::function< void( CoverageProfile const& profile, double const weight ) > ) const ;
 
