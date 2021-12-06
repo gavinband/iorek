@@ -5,30 +5,36 @@ def build( bld ):
 	bld.program(
 		source = "coverotron.cpp",
 		target = 'coverotron',
-		use = 'seqan bamtools seqlib package_revision appcontext genfile statfile pthread',
+		use = 'seqan bamtools seqlib package_revision appcontext genfile statfile pthread zlib',
 		includes = "./"
 	)
 	bld.program(
 		source = "nonahore.cpp",
 		target = 'nonahore',
-		use = 'package_revision appcontext genfile statfile libsvelte',
+		use = 'package_revision appcontext genfile statfile libsvelte zlib',
 		includes = "./"
 	)
 	bld.program(
 		source = "parse-cigar.cpp",
 		target = 'parse-cigar',
-		use = 'seqan bamtools seqlib package_revision appcontext genfile qcdb pthread',
+		use = 'seqan bamtools seqlib package_revision appcontext genfile qcdb pthread zlib',
 		includes = "./"
 	)
 	bld.program(
 		source = "tabulate-alignments.cpp",
 		target = 'tabulate-alignments',
-		use = 'seqan bamtools seqlib package_revision appcontext genfile qcdb pthread',
+		use = 'seqan bamtools seqlib package_revision appcontext genfile qcdb pthread zlib',
+		includes = "./"
+	)
+	bld.program(
+		source = "plot-msa.cpp",
+		target = 'plot-msa',
+		use = 'seqlib package_revision appcontext genfile qcdb pthread zlib',
 		includes = "./"
 	)
 	bld.program(
 		source = "classify-kmers.cpp",
 		target = 'classify-kmers',
-		use = 'seqan bamtools seqlib package_revision appcontext genfile qcdb pthread jellyfish parallel_hashmap concurrentqueue',
+		use = 'seqan bamtools seqlib package_revision appcontext genfile qcdb pthread jellyfish parallel_hashmap concurrentqueue zlib',
 		includes = "./"
 	)

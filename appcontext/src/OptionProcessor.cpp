@@ -351,6 +351,9 @@ namespace appcontext {
 	std::vector< std::string > OptionProcessor::get_default_values( std::string const& arg ) const {
 		std::map< std::string, OptionDefinition >::const_iterator defn_i = m_option_definitions.find( arg ) ;
 		assert( defn_i != m_option_definitions.end() ) ;
+		if( !defn_i->second.has_default_value() ) {
+			throw OptionProcessingException( defn_i->first, std::vector< std::string >(), "Option \"" + defn_i->first + "\" has no default value." ) ;
+		}
 		assert( defn_i->second.has_default_value() ) ;
 		return defn_i->second.default_values() ;
 	}

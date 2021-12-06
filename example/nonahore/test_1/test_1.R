@@ -1,6 +1,6 @@
 library( RSQLite )
 
-N = 1000
+N = 100
 S = 100
 
 model = list(
@@ -38,7 +38,7 @@ for( i in 1:N ) {
 }
 colnames(training) = sprintf( "%s:coverage", colnames(training))
 colnames(coverage) = sprintf( "%s:coverage", colnames(coverage))
-
+mode(haplotypes) = "integer"
 db = dbConnect( dbDriver( "SQLite" ), "model.sqlite" )
 dbWriteTable(
 	db,
@@ -87,6 +87,48 @@ system(
 	"sqlite3 -header -csv model.sqlite 'SELECT chromosome, position, size, N, `sample_1:coverage`, `sample_2:coverage`, `sample_3:coverage`, `sample_4:coverage`, `sample_5:coverage`, `sample_6:coverage`, `sample_7:coverage`, `sample_8:coverage`, `sample_9:coverage`, `sample_10:coverage` FROM Coverage ;' > coverage_1_to_10.csv"
 )
 
+system(
+	"sqlite3 -header -csv model.sqlite 'SELECT chromosome, position, size, N, `sample_1:coverage`, `sample_2:coverage`, `sample_3:coverage`, `sample_4:coverage`, `sample_5:coverage`, `sample_6:coverage`, `sample_7:coverage`, `sample_8:coverage`, `sample_9:coverage`, `sample_10:coverage`, `sample_11:coverage`, `sample_12:coverage`, `sample_13:coverage`, `sample_14:coverage`, `sample_15:coverage`, `sample_16:coverage`, `sample_17:coverage`, `sample_18:coverage`, `sample_19:coverage`, `sample_20:coverage` FROM Training ;' > training_1_to_20.csv"
+)
+system(
+	"sqlite3 -header -csv model.sqlite 'SELECT chromosome, position, size, N, `sample_1:coverage`, `sample_2:coverage`, `sample_3:coverage`, `sample_4:coverage`, `sample_5:coverage`, `sample_6:coverage`, `sample_7:coverage`, `sample_8:coverage`, `sample_9:coverage`, `sample_10:coverage`, `sample_11:coverage`, `sample_12:coverage`, `sample_13:coverage`, `sample_14:coverage`, `sample_15:coverage`, `sample_16:coverage`, `sample_17:coverage`, `sample_18:coverage`, `sample_19:coverage`, `sample_20:coverage` FROM Coverage ;' > coverage_1_to_20.csv"
+)
+
 system( "sqlite3 -header -csv model.sqlite 'SELECT * FROM Training' > training_all.csv" )
 system( "sqlite3 -header -csv model.sqlite 'SELECT * FROM Coverage' > coverage_all.csv" )
+system( "sqlite3 -header -csv model.sqlite 'SELECT sample, (MIN(hap_0,hap_1) || \'/\' || MAX(hap_0,hap_1)) AS genotype FROM Haplotypes' > haplotypes.csv" )
+
+
+# PLot it
+pdf( file = "first_20.pdf", width = 8, height = 8 )
+layout( matrix( 1:21, ncol = 1 ), heights = c( rep( 1, 20 ), 0.75 ))
+par( mar = c( 0.1, 1, 0.1, 1 ))
+for( i in 1:20 ) {
+	m = means[i]
+	plot( 1:S, coverage[,i] / 300,
+		xlab = '', ylab = "coverage",
+		xaxt = 'n', yaxt = 'n',
+		main = '',
+		xlim = c( 1, S ),
+		ylim = c( 0, m * 4 ),
+		col = 'black',
+		pch = 19,
+		cex = 0.75,
+		type = 'l'
+	)
+	abline( h = m * 0:4, col = c( 'grey', 'grey', 'red', 'grey', 'grey' ), lty = 2 )
+	axis(2, at = m * 0:4, label = 0:4 )
+	legend(
+		"topleft",
+		legend = i,
+		bty = 'n'
+		)
+}
+par( mar = c( 2, 1, 0.1, 1 ))
+plot(0, 0, col = 'white', xlab = '', ylab = '', bty = 'n', xaxt = 'n', yaxt = 'n', xlim = c( 1, S ) )
+axis(1)
+dev.off()
+
+
+
 
