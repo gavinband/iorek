@@ -86,6 +86,8 @@ public:
 				"extends to positive infinity." )
 			.set_takes_values_until_next_option()
 			.set_default_value( 0 ) ;
+		options[ "-by-strand" ]
+			.set_description( "Specify whether to tabulate by forward and reverse strand." ) ;
 	}
 } ;
 
@@ -206,6 +208,17 @@ namespace impl {
 #endif
 				return where->second ;
 			}
+		}
+
+		int lookup(
+			std::string const& chromosome, int const position,
+			char const allele,
+			int const mq_bin
+		) {
+			return (
+				lookup( chromosome, position, allele, Record::eForwardStrand, mq_bin ) + 
+				lookup( chromosome, position, allele, Record::eReverseStrand, mq_bin )
+			) ;
 		}
 		
 	private:
@@ -440,21 +453,31 @@ private:
 		using genfile::string_utils::to_string ;
 		statfile::BuiltInTypeStatSink::UniquePtr sink = statfile::BuiltInTypeStatSink::open( options().get< std::string >( "-o" ) ) ;
 		std::vector< int > mq_bins = options().get_values< int > ( "-mq-bins" ) ;
+		bool by_strand = options().get_value< bool >( "-by-strand" ) ;
 		{
 			*sink | "file" | "chromosome" | "position" ;
 			for( std::size_t i = 0; i < mq_bins.size(); ++i ) {
-				*sink | ("fwd:mq>=" + to_string(mq_bins[i]) + ":A") ;
-				*sink | ("rev:mq>=" + to_string(mq_bins[i]) + ":A") ;
-				*sink | ("fwd:mq>=" + to_string(mq_bins[i]) + ":C") ;
-				*sink | ("rev:mq>=" + to_string(mq_bins[i]) + ":C") ;
-				*sink | ("fwd:mq>=" + to_string(mq_bins[i]) + ":G") ;
-				*sink | ("rev:mq>=" + to_string(mq_bins[i]) + ":G") ;
-				*sink | ("fwd:mq>=" + to_string(mq_bins[i]) + ":T") ;
-				*sink | ("rev:mq>=" + to_string(mq_bins[i]) + ":T") ;
-				*sink | ("fwd:mq>=" + to_string(mq_bins[i]) + ":-") ;
-				*sink | ("rev:mq>=" + to_string(mq_bins[i]) + ":-") ;
-				*sink | ("fwd:mq>=" + to_string(mq_bins[i]) + ":+") ;
-				*sink | ("rev:mq>=" + to_string(mq_bins[i]) + ":+") ;
+				if( by_strand ) {
+					*sink | ("fwd:mq>=" + to_string(mq_bins[i]) + ":A") ;
+					*sink | ("rev:mq>=" + to_string(mq_bins[i]) + ":A") ;
+					*sink | ("fwd:mq>=" + to_string(mq_bins[i]) + ":C") ;
+					*sink | ("rev:mq>=" + to_string(mq_bins[i]) + ":C") ;
+					*sink | ("fwd:mq>=" + to_string(mq_bins[i]) + ":G") ;
+					*sink | ("rev:mq>=" + to_string(mq_bins[i]) + ":G") ;
+					*sink | ("fwd:mq>=" + to_string(mq_bins[i]) + ":T") ;
+					*sink | ("rev:mq>=" + to_string(mq_bins[i]) + ":T") ;
+					*sink | ("fwd:mq>=" + to_string(mq_bins[i]) + ":-") ;
+					*sink | ("rev:mq>=" + to_string(mq_bins[i]) + ":-") ;
+					*sink | ("fwd:mq>=" + to_string(mq_bins[i]) + ":+") ;
+					*sink | ("rev:mq>=" + to_string(mq_bins[i]) + ":+") ;
+				} else {
+					*sink | ("mq>=" + to_string(mq_bins[i]) + ":A") ;
+					*sink | ("mq>=" + to_string(mq_bins[i]) + ":C") ;
+					*sink | ("mq>=" + to_string(mq_bins[i]) + ":G") ;
+					*sink | ("mq>=" + to_string(mq_bins[i]) + ":T") ;
+					*sink | ("mq>=" + to_string(mq_bins[i]) + ":-") ;
+					*sink | ("mq>=" + to_string(mq_bins[i]) + ":+") ;
+				}
 			}
 		}
 		auto progress_context = ui().get_progress_context( "Processing samples" ) ;
@@ -526,25 +549,37 @@ private:
 			ui().logger() << "!! Error processing \"" << name << "\", results for this file will be zero.\n" ;
 		}
 
+		bool by_strand = options().get< bool >( "-by-strand" ) ;
+
 		for( int position = region.start().position(); position < region.end().position(); ++position ) {
 			sink << name
 				<< region.chromosome()
 				<< (position+1) // reconvert to 1-based coords
 			;
 			for( std::size_t i = 0; i < mq_bins.size(); ++i ) {
-				sink << read_counter.lookup( region.chromosome(), position, 'A', impl::ReadCounter::Record::eForwardStrand, mq_bins[i] )
-					<< read_counter.lookup( region.chromosome(), position, 'A', impl::ReadCounter::Record::eReverseStrand, mq_bins[i] )
-					<< read_counter.lookup( region.chromosome(), position, 'C', impl::ReadCounter::Record::eForwardStrand, mq_bins[i] )
-					<< read_counter.lookup( region.chromosome(), position, 'C', impl::ReadCounter::Record::eReverseStrand, mq_bins[i] )
-					<< read_counter.lookup( region.chromosome(), position, 'G', impl::ReadCounter::Record::eForwardStrand, mq_bins[i] )
-					<< read_counter.lookup( region.chromosome(), position, 'G', impl::ReadCounter::Record::eReverseStrand, mq_bins[i] )
-					<< read_counter.lookup( region.chromosome(), position, 'T', impl::ReadCounter::Record::eForwardStrand, mq_bins[i] )
-					<< read_counter.lookup( region.chromosome(), position, 'T', impl::ReadCounter::Record::eReverseStrand, mq_bins[i] )
-					<< read_counter.lookup( region.chromosome(), position, '-', impl::ReadCounter::Record::eForwardStrand, mq_bins[i] )
-					<< read_counter.lookup( region.chromosome(), position, '-', impl::ReadCounter::Record::eReverseStrand, mq_bins[i] )
-					<< read_counter.lookup( region.chromosome(), position, '+', impl::ReadCounter::Record::eForwardStrand, mq_bins[i] )
-					<< read_counter.lookup( region.chromosome(), position, '+', impl::ReadCounter::Record::eReverseStrand, mq_bins[i] )
-				;
+				if( by_strand ) {
+					sink << read_counter.lookup( region.chromosome(), position, 'A', impl::ReadCounter::Record::eForwardStrand, mq_bins[i] )
+						<< read_counter.lookup( region.chromosome(), position, 'A', impl::ReadCounter::Record::eReverseStrand, mq_bins[i] )
+						<< read_counter.lookup( region.chromosome(), position, 'C', impl::ReadCounter::Record::eForwardStrand, mq_bins[i] )
+						<< read_counter.lookup( region.chromosome(), position, 'C', impl::ReadCounter::Record::eReverseStrand, mq_bins[i] )
+						<< read_counter.lookup( region.chromosome(), position, 'G', impl::ReadCounter::Record::eForwardStrand, mq_bins[i] )
+						<< read_counter.lookup( region.chromosome(), position, 'G', impl::ReadCounter::Record::eReverseStrand, mq_bins[i] )
+						<< read_counter.lookup( region.chromosome(), position, 'T', impl::ReadCounter::Record::eForwardStrand, mq_bins[i] )
+						<< read_counter.lookup( region.chromosome(), position, 'T', impl::ReadCounter::Record::eReverseStrand, mq_bins[i] )
+						<< read_counter.lookup( region.chromosome(), position, '-', impl::ReadCounter::Record::eForwardStrand, mq_bins[i] )
+						<< read_counter.lookup( region.chromosome(), position, '-', impl::ReadCounter::Record::eReverseStrand, mq_bins[i] )
+						<< read_counter.lookup( region.chromosome(), position, '+', impl::ReadCounter::Record::eForwardStrand, mq_bins[i] )
+						<< read_counter.lookup( region.chromosome(), position, '+', impl::ReadCounter::Record::eReverseStrand, mq_bins[i] )
+					;
+				} else {
+					sink << read_counter.lookup( region.chromosome(), position, 'A', mq_bins[i] )
+						<< read_counter.lookup( region.chromosome(), position, 'C', mq_bins[i] )
+						<< read_counter.lookup( region.chromosome(), position, 'G', mq_bins[i] )
+						<< read_counter.lookup( region.chromosome(), position, 'T', mq_bins[i] )
+						<< read_counter.lookup( region.chromosome(), position, '-', mq_bins[i] )
+						<< read_counter.lookup( region.chromosome(), position, '+', mq_bins[i] )
+					;
+				}
 			}
 			sink << statfile::end_row() ;
 		}
