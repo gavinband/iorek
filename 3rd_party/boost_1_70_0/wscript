@@ -13,7 +13,8 @@ def build( bld ):
 		bld.path.ant_glob( 'libs/filesystem/src/*.cpp' ) +
 		bld.path.ant_glob( 'libs/date_time/src/posix_time/*.cpp' ) +
 		bld.path.ant_glob( 'libs/timer/src/*.cpp' ) +
-		bld.path.ant_glob( 'libs/chrono/src/*.cpp' )
+		bld.path.ant_glob( 'libs/chrono/src/*.cpp' ) +
+		bld.path.ant_glob( 'libs/regex/src/*.cpp' )
 	) + [
 			'libs/iostreams/src/file_descriptor.cpp',
 			'libs/iostreams/src/gzip.cpp',

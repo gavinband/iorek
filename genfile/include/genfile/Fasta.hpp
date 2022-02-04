@@ -42,7 +42,7 @@ namespace genfile {
 		void add_sequences_from_files( std::vector< std::string > const& fasta_filenames, ProgressCallback ) ;
 
 		std::size_t number_of_sequences() const { return m_data.size() ; }
-		std::vector< std::string > contig_ids() const ;
+		std::vector< std::string > sequence_ids() const ;
 
 		SequenceData const& sequence() const { return m_data ; }
 		std::string const get_spec() const ;

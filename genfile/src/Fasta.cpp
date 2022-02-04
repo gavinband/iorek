@@ -284,7 +284,7 @@ namespace genfile {
 		) ;
 	}
 
-	std::vector< std::string > Fasta::contig_ids() const {
+	std::vector< std::string > Fasta::sequence_ids() const {
 		std::vector< std::string > result ;
 		SequenceData::const_iterator i = m_data.begin(), end_i = m_data.end() ;
 		for( ; i != end_i; ++i ) {
