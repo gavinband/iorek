@@ -501,21 +501,34 @@
 			console.log( "START DRAG", e.offsetX, e.offsetY, self.drag ) ;
 		}) ;
 		elt.on( "mousemove", function( e ) {
-			var here = self.viewer.scales.x.invert( e.offsetX ) ;
 			if( self.dragging ) {
+				var here = self.viewer.scales.x.invert( e.offsetX ) ;
 				let drag = here - self.drag.start ;
-				drag = Math.min( drag, self.viewport[0] - self.viewer.msa.scales.global.range()[0] ) ;
-				drag = Math.max( drag, self.viewport[1] - self.viewer.msa.scales.global.range()[1] ) ;
-				console.log( "     DRAG", self.drag, self.viewport, self.viewer.msa.scales.global.range(), drag ) ;
+				//drag = Math.min( drag, self.viewport[0] - self.viewer.msa.scales.global.range()[0] ) ;
+				//drag = Math.max( drag, self.viewport[1] - self.viewer.msa.scales.global.range()[1] ) ;
+				console.log( "     DRAG", drag ) ;
+				/*
 				self.viewer.setViewport(
 					self.viewport[0] - drag,
 					self.viewport[1] - drag
 				) ;
 				self.viewer.draw() ;
+				*/
 			}
 		}) ;
 		elt.on( "mouseup", function(e) {
-			self.dragging = false ;
+			if( self.dragging ) {
+				let here = self.viewer.scales.x.invert( e.offsetX ) ;
+				let drag = here - self.drag.start ;
+				//drag = Math.min( drag, self.viewport[0] - self.viewer.msa.scales.global.range()[0] ) ;
+				//drag = Math.max( drag, self.viewport[1] - self.viewer.msa.scales.global.range()[1] ) ;
+				console.log( "     DRAG", self.drag, self.viewport, self.viewer.msa.scales.global.range(), drag ) ;
+				self.viewport[0] -= drag ;
+				self.viewport[1] -= drag ;
+				self.viewer.setViewport( self.viewport[0], self.viewport[1] ) ;
+				self.viewer.draw() ;
+				self.dragging = false ;
+			}
 		}) ;
 	} ;
 	let control = new Control( d3.select( 'svg.sequences'), viewer ) ;
