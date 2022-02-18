@@ -4,6 +4,10 @@
 	<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.3.0/d3.min.js"></script>
 	<script src="../../js/GeneView.js"></script>
 	<style>
+		html, body {
+			height: 100% ;
+			overscroll-behavior: none;
+		}
 		.figure {
 			position: relative ;
 		}
@@ -45,7 +49,8 @@
 <body>
 	<section class="figure">
 		<svg class = "names" width=900 height=600></svg>
-		<svg class = "sequences" width=900 height=600></svg>
+		<!--svg class = "sequences" width=900 height=600></svg>-->
+		<canvas class = "sequences" width=900 height=600></canvas>
 		<svg class = "genes" width=900 height=200></svg>
 	</section>
 </body>
@@ -289,7 +294,7 @@
 		this.elt = elt ;
 		this.panels = {
 			names: elt.select( "svg.names" ),
-			sequences: elt.select( "svg.sequences" ),
+			sequences: elt.select( "canvas.sequences" ),
 			genes: elt.select( "svg.genes" )
 		} ;
 		this.msa = msa ;
@@ -309,6 +314,10 @@
 			result.reference = new d3.scaleLinear()
 				.domain( [ reference.range.start, reference.range.end ] )
 				.range( result.x.range() ) ;
+			result.alignmentReferenceMap = new d3.scaleLinear()
+				.domain( msa.scales.global.range() )
+				.range( result.reference.domain() )
+			;
 			result.genes = new d3.scaleLinear()
 				.domain( [Math.max( genes.numberOfLevels, 5 ), 0] )
 				.range( [10, geom.layout.genePanelHeight - geom.margin.bottom ] ) ;
@@ -328,9 +337,19 @@
 		return this ;
 	}
 
-	MSAViewer.prototype.setViewport = function( start, end ) {
+	MSAViewer.prototype.setViewport = function( viewport ) {
 		//assert( end >= start && start >= 0 ) ;
-		this.scales.x.domain( [ start, end ] ) ;
+		this.scales.x.domain( viewport ) ;
+		let referenceViewport = [
+			Math.floor( this.scales.alignmentReferenceMap( viewport[0] ) ),
+			Math.ceil( this.scales.alignmentReferenceMap( viewport[1] ) )
+		] ;
+		this.scales.reference.domain( referenceViewport ) ;
+	} ;
+
+	MSAViewer.prototype.viewport = function() {
+		// current view coordinates, in msa coordinates
+		return this.scales.x.domain() ;
 	} ;
 
 	MSAViewer.prototype.updateLayout = function() {
@@ -396,102 +415,111 @@
 					level: vs.genes
 				}
 			) ;
-			panels.genes
+			let axis = panels.genes.selectAll( 'g.axis' ).data( ['axis' ]) ;
+			axis
+				.enter()
 				.append( 'g' )
 				.attr( 'class', 'axis' )
+			axis
 				.attr( 'transform', 'translate( 0,' + ( vs.genes.range()[1] + 10) + ')' )
 				.call( d3.axisBottom( vs.reference )) ;
 		}
 
-		{
-			let sequences = panels.sequences
-				.selectAll( "g.sequence" )
-				.data( data.alignment )
-				.enter()
-				.append( 'g' )
-				.attr( "class", "sequence" )
-				.attr( 'transform', ( d, i ) => ('translate(0,' + vs.y( d.name ) + ")" ))
-			;
-	
-			sequences
-				.selectAll( 'rect.base' )
-				.data( d => d.sequence )
-				.enter()
-				.append( 'rect' )
-				.attr( 'class', 'base' )
-				.attr( 'x', (d,i) => vs.x( msa.scales.global(i) ))
-				.attr( 'width', 1 )
-				.attr( 'y', d => aes.bases[d].offset )
-				.attr( 'height', d => aes.bases[d].height )
-				.attr( 'fill', d => aes.bases[d].colour )
-				.attr( 'stroke', 'none' )
-			;
-		}
+		let drawSequence = function( sequence, y, baseWidth, xScale, lower, upper, ctx ) {
+			let by = Math.max( 1, Math.floor( 1.0/baseWidth )) ;
+			for( let j = lower; j < upper; j += by ) {
+				let base = sequence[j] ;
+				let base_aes = aes.bases[base] ;
+				ctx.fillStyle = base_aes.colour ;
+				ctx.fillRect(
+					xScale( j ),
+					y + base_aes.offset,
+					Math.max( baseWidth, 1 ),
+					base_aes.height
+				) ;
+			}
+		} ;
 
 		{
-			let referenceSequence = panels.sequences
-				.selectAll( 'g.reference' )
-				.data( [ reference ] )
-				.enter()
-				.append( 'g' )
-				.attr( "class", "reference" )
-				.attr( 'transform', ( d, i ) => ('translate(0,' + vs.y("reference") + ")" )) ;
-	
-			referenceSequence
-				.selectAll( 'rect.base' )
-				.data( d => d.sequence )
-				.enter()
-				.append( 'rect' )
-				.attr( 'class', 'base' )
-				.attr( 'x', (d,i) => vs.reference( i + reference.range.start ))
-				.attr( 'width', 1 )
-				.attr( 'y', d => aes.bases[d].offset )
-				.attr( 'height', d => aes.bases[d].height )
-				.attr( 'fill', d => aes.bases[d].colour )
-			;
-
-			referenceSequence
-				.selectAll( 'line.left' )
-				.data( d => d.ranges )
-				.enter()
-				.append( 'line' )
-				.attr( 'class', 'left' )
-				.attr( 'x1', d => vs.x( msa.scales.global( d.inAlignment.start )) )
-				.attr( 'x2', d => vs.reference( d.inSequence.start ))
-				.attr( 'y1', d => -(geom.layout.sequenceHeight+10) )
-				.attr( 'y2', d => -6 )
-				.attr( 'stroke', 'grey' )
-			;
-
-			referenceSequence
-				.selectAll( 'line.right' )
-				.data( d => d.ranges )
-				.enter()
-				.append( 'line' )
-				.attr( 'class', 'right' )
-				.attr( 'x1', d => vs.x( msa.scales.global( d.inAlignment.end )) )
-				.attr( 'x2', d => vs.reference( d.inSequence.end ))
-				.attr( 'y1', d => -(geom.layout.sequenceHeight+10) )
-				.attr( 'y2', d => -6 )
-				.attr( 'stroke', 'grey' )
-			;
+			let sequences = panels.sequences.node() ;
+			let ctx = sequences.getContext( '2d' ) ;
+			let viewport = this.viewport() ;
+			let baseWidth = vs.x(1) - vs.x(0) ;
+			for( let i = 0; i < msa.alignment.length; ++i ) {
+				let sequence = msa.alignment[i].sequence ;
+				drawSequence(
+					msa.alignment[i].sequence,
+					vs.y(msa.alignment[i].name ),
+					baseWidth,
+					j => vs.x( msa.scales.global(j)),
+					Math.max( Math.floor( viewport[0] ), 0 ),
+					Math.min( Math.ceil( viewport[1] ), sequence.length ),
+					ctx
+				) ;
+			}
+			
+			drawSequence(
+				reference.sequence,
+				vs.y( "reference" ),
+				baseWidth,
+				j => vs.reference(reference.range.start + j),
+				0,
+				reference.sequence.length,
+				ctx
+			) ;
+			
+			{
+				let gs = msa.scales.global ;
+				let yoffset = geom.layout.baseHeight + 2 ;
+				let ys = {
+					"a": vs.y( "reference" ) - (2 * (geom.layout.sequenceHeight - yoffset)),
+					"b": vs.y( "reference" ) - yoffset
+				} ;
+				for( let i = 0; i < reference.ranges.length; ++i ) {
+					let range = reference.ranges[i] ;
+					let x00 = vs.x( gs( range.inAlignment.start )) ;
+					let x01 = vs.reference( range.inSequence.start ) ;
+					let x11 = vs.reference( range.inSequence.end ) ;
+					let x10 = vs.x( gs( range.inAlignment.end )) ;
+					ctx.beginPath() ;
+					// ref sequence is 2 * sequenceHeight down.
+					ctx.moveTo( x00, ys.a ) ;
+					ctx.lineTo( x01, ys.b ) ;
+					ctx.moveTo( x11, ys.b ) ;
+					ctx.lineTo( x10, ys.a ) ;
+					ctx.strokeStyle = "grey" ;
+					ctx.stroke() ;
+				}
+			}
 		}
+
 	}
+
 	let viewer = new MSAViewer(
 			d3.select( ".figure" ),
 			msa,
 			reference,
 			new GeneView( data.genes, reference.range )
 	) ;
-	viewer.setViewport( 100, 1000 ) ;
 	viewer.draw() ;
 
 	let Control = function( elt, viewer ) {
 		this.elt = elt ;
 		this.viewer = viewer ;
-		this.viewport = viewer.scales.x.domain() ;
 		this.drag = { start: 0 } ;
 		let self = this ;
+		let doDrag = function( x ) {
+			let here = self.viewer.scales.x.invert( x ) ;
+			let drag = here - self.drag.start ;
+			let viewport = self.viewer.viewport() ;
+			drag = Math.min( drag, viewport[0] - self.viewer.msa.scales.global.range()[0] + 50 ) ;
+			drag = Math.max( drag, viewport[1] - self.viewer.msa.scales.global.range()[1] - 50 ) ;
+			console.log( "     DRAG", self.drag, self.viewport, self.viewer.msa.scales.global.range(), drag ) ;
+			self.viewer.setViewport( [ viewport[0] - drag, viewport[1] - drag ] ) ;
+			self.viewer.draw() ;
+		} ;
+		
+		// set up dragging
 		elt.on( "mousedown", function( e ) {
 //			self.dragging = true ;
 //			self.dragStartRegion = self.viewport ;
@@ -502,36 +530,62 @@
 		}) ;
 		elt.on( "mousemove", function( e ) {
 			if( self.dragging ) {
-				var here = self.viewer.scales.x.invert( e.offsetX ) ;
-				let drag = here - self.drag.start ;
-				//drag = Math.min( drag, self.viewport[0] - self.viewer.msa.scales.global.range()[0] ) ;
-				//drag = Math.max( drag, self.viewport[1] - self.viewer.msa.scales.global.range()[1] ) ;
-				console.log( "     DRAG", drag ) ;
-				/*
-				self.viewer.setViewport(
-					self.viewport[0] - drag,
-					self.viewport[1] - drag
-				) ;
-				self.viewer.draw() ;
-				*/
+				doDrag( e.offsetX ) ;
 			}
 		}) ;
 		elt.on( "mouseup", function(e) {
 			if( self.dragging ) {
-				let here = self.viewer.scales.x.invert( e.offsetX ) ;
-				let drag = here - self.drag.start ;
-				//drag = Math.min( drag, self.viewport[0] - self.viewer.msa.scales.global.range()[0] ) ;
-				//drag = Math.max( drag, self.viewport[1] - self.viewer.msa.scales.global.range()[1] ) ;
-				console.log( "     DRAG", self.drag, self.viewport, self.viewer.msa.scales.global.range(), drag ) ;
-				self.viewport[0] -= drag ;
-				self.viewport[1] -= drag ;
-				self.viewer.setViewport( self.viewport[0], self.viewport[1] ) ;
-				self.viewer.draw() ;
+				doDrag( e.offsetX ) ;
 				self.dragging = false ;
 			}
 		}) ;
+		elt.on( "mouseout", function(e) {
+			if( self.dragging ) {
+				doDrag( e.offsetX ) ;
+				self.dragging = false ;
+			}
+		}) ;
+		
+		let zoomRegion = function( viewport, focus, zoom ) {
+			// Expand or contract region around given centre point
+			// which must lie in the region.
+			// The way this works is that the chosen point stays fixed on the screen
+			// And everything else zooms.
+			// zoom=1 means no zoom
+			// zoom>1 means zoom in
+			// zoom<1 means zoom out
+			return(
+					[
+						focus + ((viewport[0] - focus) / zoom),
+						focus + ((viewport[1] - focus) / zoom)
+					]
+			) ;
+		} ;
+		// Set up zooming
+		elt.on( 'mousewheel', function(e) {
+			let viewport = self.viewer.viewport() ;
+			let focus = self.viewer.scales.x.invert( e.offsetX ) ;
+			//console.log( "zooming:", e.wheelDelta, viewport, focus, self.viewer.msa ) ;
+			if( e.wheelDelta > 5 && (viewport[1] - viewport[0]) > 100 ) {
+				self.viewer.setViewport(
+					zoomRegion( viewport, focus, 1.05 )
+				) ;
+				self.viewer.draw() ;
+			}
+			else if( e.wheelDelta < -5 && (viewport[1] - viewport[0]) < ( self.viewer.msa.alignmentLength )) {
+				let viewport = zoomRegion( self.viewer.viewport(), focus, 1/1.05 ) ;
+				viewport[0] = Math.max( viewport[0], 0 ) ;
+				viewport[1] = Math.min( viewport[1], self.viewer.msa.alignmentLength ) ;
+				self.viewer.setViewport( viewport ) ;
+				self.viewer.draw() ;
+			}
+			e.stopPropagation() ;
+			return false ;
+		}) ;
+		
 	} ;
-	let control = new Control( d3.select( 'svg.sequences'), viewer ) ;
+	
+	let control = new Control( d3.select( 'canvas.sequences'), viewer ) ;
 
 </script>
 </html>

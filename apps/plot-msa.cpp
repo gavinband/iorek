@@ -62,12 +62,18 @@ public:
 		options[ "-distinguish" ]
 			.set_description( "Specify the name of a single sequence to distinguish" )
 			.set_takes_single_value() ;
-		
-		options[ "-genes" ]
-			.set_description( "Specific a sqlite file of genes to load" )
+
+		options[ "-range" ]
+			.set_description( "Specify the reference sequence range that the sequence defined by -distinguish "
+				"corresponds to." )
 			.set_takes_single_value() ;
 		
-		options.option_implies_option( "-genes", "-distinguish" ) ;
+		options[ "-genes" ]
+			.set_description( "Specific a gff file of genes to load" )
+			.set_takes_single_value() ;
+		
+		options.option_implies_option( "-range", "-distinguish" ) ;
+		options.option_implies_option( "-genes", "-range" ) ;
 	}
 } ;
 
@@ -119,7 +125,7 @@ public:
 			m_elts[i] = slice( m_data, m_elts[i].get_start(), m_elts[i].get_end() ) ;
 		}
 	}
-		
+	
 private:
 	GFFRecord() {}
 		
@@ -190,45 +196,96 @@ public:
 private:
 
 	void unsafe_process() {
-		using genfile::string_utils::to_string ;
+		genfile::Fasta::UniquePtr fasta = load_fasta(
+			options().get_values< std::string >( "-msa" )
+		) ;
+		check_sequence_lengths( *fasta ) ;
 
-		genfile::Fasta fasta ;
-		auto filenames = options().get_values< std::string >( "-msa" ) ;
-		for( auto& filename: filenames ) {
-			auto progress_context = ui().get_progress_context( "Loading \"" + filename + "\"" ) ;
-			fasta.add_sequences_from_file( filename, progress_context ) ;
-		}
-		ui().logger() << "Loaded MSA with " << fasta.number_of_sequences() << " sequences.\n" ;
-
-		ui().logger() << "Checking sequences...\n" ;
-		{
-			std::size_t sequence_length = 0 ;
-			std::vector< std::string > const& sequence_ids = fasta.sequence_ids() ;
-			for( std::size_t i = 0; i < sequence_ids.size(); ++i ) {
-				genfile::Fasta::PositionedSequenceRange p = fasta.get_sequence( sequence_ids[i] ) ;
-				std::string sequence( p.second.first, p.second.second ) ; 
-				if( i == 0 ) {
-					sequence_length = sequence.size() ;
-				} else {
-					if( sequence_length != sequence.size() ) {
-						throw genfile::BadArgumentError(
-							"PlotMSAApplication::unsafe_process()",
-							"-msa",
-							"Sequences \"" + sequence_ids[0] + "\" and \"" + sequence_ids[i] + "\" have different lengths "
-							"(" + to_string(sequence_length) + " vs. " + to_string(sequence.size()) + ")"
-						) ;
-					}
-				}
+		std::vector< std::string > sequence_ids = fasta->sequence_ids() ;
+		if( options().check( "-distinguish" )) {
+			std::string const distinguish = options().get_value< std::string >( "-distinguish" ) ;
+			auto where = std::find( sequence_ids.begin(), sequence_ids.end(), distinguish ) ;
+			if( where == sequence_ids.end() ) {
+				throw genfile::BadArgumentError(
+					"PlotMSAApplication::unsafe_process()",
+					"-distinguish",
+					"ID \"" + distinguish + "\" is not among the sequence IDs in the alignment."
+				) ;
 			}
+			sequence_ids.erase( where ) ;
+			sequence_ids.insert( sequence_ids.begin(), distinguish ) ;
 		}
 
+		ui().logger() << "Loaded MSA with " << fasta->number_of_sequences() << " sequences.\n" ;
+		std::vector< GFFRecord > genes ;
+		if( options().check( "-genes" )) {
+			genes = load_genes(
+				options().get_value< std::string >( "-genes" ),
+				genfile::GenomePositionRange::parse( options().get_value< std::string >( "-range" ))
+			) ;
+		}
+		
 		std::string const& output = options().get< std::string >( "-o" ) ;
 		ui().logger() << "Writing output to \"" << output << "\"....\n" ;
 		std::auto_ptr< std::ostream > ostr = genfile::open_text_file_for_output( output ) ;
-		write_html( *ostr, fasta ) ;
+		write_html( *ostr, *fasta, sequence_ids, genes ) ;
 	}
 	
-	void write_html( std::ostream& out, genfile::Fasta const& fasta ) const {
+	genfile::Fasta::UniquePtr load_fasta( std::vector< std::string > const& filenames ) const {
+		genfile::Fasta::UniquePtr result = genfile::Fasta::create() ;
+		for( auto& filename: filenames ) {
+			auto progress_context = ui().get_progress_context( "Loading \"" + filename + "\"" ) ;
+			result->add_sequences_from_file( filename, progress_context ) ;
+		}
+		return result ;
+	}
+	
+	void check_sequence_lengths( genfile::Fasta const& fasta ) const {
+		using genfile::string_utils::to_string ;
+		std::size_t sequence_length = 0 ;
+		std::vector< std::string > const& sequence_ids = fasta.sequence_ids() ;
+		for( std::size_t i = 0; i < sequence_ids.size(); ++i ) {
+			genfile::Fasta::PositionedSequenceRange p = fasta.get_sequence( sequence_ids[i] ) ;
+			std::string sequence( p.second.first, p.second.second ) ; 
+			if( i == 0 ) {
+				sequence_length = sequence.size() ;
+			} else {
+				if( sequence_length != sequence.size() ) {
+					throw genfile::BadArgumentError(
+						"PlotMSAApplication::unsafe_process()",
+						"-msa",
+						"Sequences \"" + sequence_ids[0] + "\" and \"" + sequence_ids[i] + "\" have different lengths "
+						"(" + to_string(sequence_length) + " vs. " + to_string(sequence.size()) + ")"
+					) ;
+				}
+			}
+		}
+	}
+	
+	std::vector< GFFRecord > load_genes(
+		std::string const& filename,
+		genfile::GenomePositionRange const& range
+	) const {
+		std::vector< GFFRecord > result ;
+		auto input = genfile::open_text_file_for_input( filename ) ;
+		parse_gff( *input, [&]( GFFRecord const& record ) {
+			if(
+				(record.sequence() == range.chromosome())
+				&& (record.end() >= range.start().position())
+				&& (record.start() <= range.end().position())
+			) {
+				result.push_back( record ) ;
+			}
+		}) ;
+		return result ;
+	}
+	
+	void write_html(
+		std::ostream& out,
+		genfile::Fasta const& fasta,
+		std::vector< std::string > const& sequence_ids,
+		std::vector< GFFRecord > const& genes
+	) const {
 		// This is a C++11 raw string literal
 		out << R""""(<!DOCTYPE html>
 <html>
@@ -240,18 +297,26 @@ private:
 </body>
 <script>
 	data = )"""" ;
-		out << toJSON( fasta ) ;
 		out
-			<< ";\n</script>\n"
+			<< "{\n"
+			<< "  \"alignment\": "
+			<< toJSON( fasta, sequence_ids )
+			<< ",\n"
+			<< "  \"genes\": "
+			<< toJSON( genes )
+			<< "\n"
+			<< "};" ;
+		out
+			<< "\n</script>\n"
 			<< "</html>\n" ;
 	}
 
-	std::string toJSON( genfile::Fasta const& fasta ) const {
+	std::string toJSON( genfile::Fasta const& fasta, std::vector< std::string > const& sequence_ids ) const {
 		std::ostringstream s ;
 		s << "[\n" ;
 		std::size_t count = 0 ;
 		std::deque< char > sequence ;
-		for( auto& name: fasta.sequence_ids() ) {
+		for( auto& name: sequence_ids ) {
 			genfile::Fasta::PositionedSequenceRange p = fasta.get_sequence( name ) ;
 			s << (count>0 ? ",\n" : "" )
 				<< "{ \"name\": \""
@@ -264,8 +329,26 @@ private:
 		s << "\n]" ;
 		return s.str() ;
 	}
-} ;
 
+	std::string toJSON( std::vector< GFFRecord > const& genes ) const {
+		std::ostringstream s ;
+		s << "[\n" ;
+		for( std::size_t i = 0; i < genes.size(); ++i ) {
+			GFFRecord const& gene = genes[i] ;
+			s << ((i>0) ? ",\n" : "") ;
+			s << "{ "
+				<< "\"ID\": \"" << gene.ID() << "\", "
+				<< "\"feature\": \"" << gene.feature() << "\", "
+				<< "\"parent\": \"" << gene.parent() << "\", "
+				<< "\"chromosome\": \"" << gene.sequence() << "\", "
+				<< "\"start\": " << gene.start() << ", "
+				<< "\"end\": " << gene.end() << ", "
+				<< "\"strand\": \"" << gene.strand() << "\" }" ;
+		}
+		s << "\n]" ;
+		return s.str() ;
+	}
+} ;
 
 int main( int argc, char** argv )
 {
