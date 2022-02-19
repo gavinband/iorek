@@ -214,15 +214,16 @@
 					end: range.end + 1
 				}
 			) ;
-			let scales = []
+			let scales = [] ;
 			for( let j = 0; j < ungapped.ranges.length; ++j ) {
 				let range = ungapped.ranges[j] ;
 				scales.push(
 					new d3.scaleLinear()
 						.domain( [ range.inSequence.start, range.inSequence.end ] )
-						.domain( [ range.inAlignment.start, range.inAlignment.end ] )
+						.range( [ range.inAlignment.start, range.inAlignment.end ] )
 				) ;
 			}
+			this.ranges[alignment[i].name] = scales ;
 			this.ungappedSequences[alignment.name] = ungapped ;
 		}
 		this.global = d3.scaleLinear()
@@ -340,11 +341,27 @@
 	MSAViewer.prototype.setViewport = function( viewport ) {
 		//assert( end >= start && start >= 0 ) ;
 		this.scales.x.domain( viewport ) ;
-		let referenceViewport = [
-			Math.floor( this.scales.alignmentReferenceMap( viewport[0] ) ),
-			Math.ceil( this.scales.alignmentReferenceMap( viewport[1] ) )
+		let ranges = this.msa.scales.ranges[ this.msa.alignment[ this.msa.alignment.length - 1 ].name ] ;
+		let choice = { left: -1, right: -1 } ;
+		for( let i = 0; i < ranges.length; ++i ) {
+			let range = ranges[i] ;
+			if( range.range()[1] >= viewport[0] && choice.left == -1 ) {
+				choice.left = i ;
+			}
+			if( range.range()[0] < viewport[1] ) {
+				choice.right = i ;
+			}
+		}
+		console.log( "RVP", choice ) ;
+		let lr = ranges[choice.left] ;
+		let rr = ranges[choice.right] ;
+		
+		let refViewport = [
+			lr.invert( Math.max( viewport[0], lr.range()[0] )),
+			rr.invert( Math.min( viewport[1], rr.range()[1] ))
 		] ;
-		this.scales.reference.domain( referenceViewport ) ;
+
+		this.scales.reference.domain( refViewport ) ;
 	} ;
 
 	MSAViewer.prototype.viewport = function() {
@@ -461,7 +478,7 @@
 			drawSequence(
 				reference.sequence,
 				vs.y( "reference" ),
-				baseWidth,
+				vs.reference(1) - vs.reference(0),
 				j => vs.reference(reference.range.start + j),
 				0,
 				reference.sequence.length,
