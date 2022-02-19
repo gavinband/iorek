@@ -15,18 +15,18 @@
 			position: fixed ;
 			top: 20px ;
 			left: 20px ;
-			width: 300px ;
+			width: 200px ;
 			z-index: 10 ;
 			background: white ;
 			border-right: 1px solid gray ;
-			border: 1px solid black ;
+			/*border: 1px solid black ;*/
 			padding: 0px ;
 			margin: 0px ;
 		}
 		.sequences {
 			position: fixed ;
 			top: 20px;
-			left: 320px ;
+			left: 220px ;
 			border-left: 1px solid gray ;
 			border-right: 1px solid gray ;
 			border: 1px solid black ;
@@ -35,7 +35,7 @@
 		}
 		.genes {
 			position: fixed ;
-			left: 320px ;
+			left: 220px ;
 			top: 600px ;
 			height: 200px ;
 			border-left: 1px solid gray ;
@@ -278,9 +278,9 @@
 				sequenceHeight: 20,
 				width: {
 					all: window.innerWidth - 40,
-					names: 300,
-					sequences: window.innerWidth - 340,
-					reference: window.innerWidth - 340
+					names: 200,
+					sequences: window.innerWidth - 240,
+					reference: window.innerWidth - 240
 				},
 				genePanelHeight: 100
 			},
@@ -352,7 +352,6 @@
 				choice.right = i ;
 			}
 		}
-		console.log( "RVP", choice ) ;
 		let lr = ranges[choice.left] ;
 		let rr = ranges[choice.right] ;
 		
@@ -372,9 +371,8 @@
 	MSAViewer.prototype.updateLayout = function() {
 		let geom = this.geom ;
 		geom.layout.width.all = window.innerWidth - 40 ;
-		geom.layout.width.names = 300 ;
-		geom.layout.width.sequences = window.innerWidth - 340 ;
-		geom.layout.width.reference = window.innerWidth - 340 ;
+		geom.layout.width.sequences = window.innerWidth - geom.layout.width.names - 40 ;
+		geom.layout.width.reference = window.innerWidth - geom.layout.width.names - 40 ;
 		this.scales.x.range( [ geom.margin.left, geom.layout.width.sequences - geom.margin.right ] ) ;
 	}
 	
@@ -406,11 +404,12 @@
 			let renderName = function( selection ) {
 				selection
 					.append( 'text' )
-					.attr( 'x', -10 )
+					.attr( 'x', 0 )
 					.attr( 'y', 0 )
 					.attr( 'text-anchor', 'end' )
 					.attr( 'alignment-baseline', 'middle' )
-					.attr( 'font-size', '8pt')
+					.attr( 'font-size', '10pt')
+					.attr( 'font-family', 'Palatino' )
 					.text( name => name ) ;
 			} ;
 			let names = panels.names.selectAll( 'g.name' )
@@ -582,15 +581,18 @@
 		elt.on( 'mousewheel', function(e) {
 			let viewport = self.viewer.viewport() ;
 			let focus = self.viewer.scales.x.invert( e.offsetX ) ;
-			//console.log( "zooming:", e.wheelDelta, viewport, focus, self.viewer.msa ) ;
-			if( e.wheelDelta > 5 && (viewport[1] - viewport[0]) > 100 ) {
+		//	console.log( "zooming:", e.wheelDeltaY, viewport, focus, self.viewer.msa ) ;
+			
+			if( e.wheelDeltaY > 0 && (viewport[1] - viewport[0]) > 100 ) {
+				let scale = Math.pow( 2, Math.min( e.wheelDeltaY, 50.0 ) / 50.0 ) ;
 				self.viewer.setViewport(
-					zoomRegion( viewport, focus, 1.05 )
+					zoomRegion( viewport, focus, scale )
 				) ;
 				self.viewer.draw() ;
 			}
-			else if( e.wheelDelta < -5 && (viewport[1] - viewport[0]) < ( self.viewer.msa.alignmentLength )) {
-				let viewport = zoomRegion( self.viewer.viewport(), focus, 1/1.05 ) ;
+			else if( e.wheelDeltaY < 0 && (viewport[1] - viewport[0]) < ( self.viewer.msa.alignmentLength )) {
+				let scale = Math.pow( 2, Math.min( -e.wheelDeltaY, 50.0 ) / 50.0 ) ;
+				let viewport = zoomRegion( self.viewer.viewport(), focus, 1/scale ) ;
 				viewport[0] = Math.max( viewport[0], 0 ) ;
 				viewport[1] = Math.min( viewport[1], self.viewer.msa.alignmentLength ) ;
 				self.viewer.setViewport( viewport ) ;
