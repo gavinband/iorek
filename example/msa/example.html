@@ -1,67 +1,26 @@
 <!DOCTYPE html>
 <html>
 <head>
+	<meta charset="utf-8">
+	<title>Multiple sequence aligmnet viewer</title>
 	<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.3.0/d3.min.js"></script>
-	<script src="../../js/assert.js"></script>
-	<script src="../../js/GeneView.js"></script>
-	<script src="../../js/MSA.js"></script>
-	<script src="../../js/MSAView.js"></script>
-	<script src="../../js/MSAController.js"></script>
-	<script src="../../js/run_msa_viewer.js"></script>
-	<style>
-		html, body {
-			height: 100% ;
-		}
-		body {
-			position: fixed ;
-			overflow: hidden ;
-		}
-		.figure {
-			position: relative ;
-		}
-		.names, .sequences, .genes, .controls {
-			position: fixed ;
-			padding: 0px ;
-			margin: 0px ;
-		}
-		.names, .sequences {
-			top: 40px ;
-		}
-		.genes {
-			top: 600px ;
-		}
-		.controls: {
-			top: 20px ;
-		}
-		.names {
-			left: 20px ;
-			width: 200px ;
-			z-index: 10 ;
-			background: white ;
-			border-right: 1px solid gray ;
-		}
-		
-		.sequences, .genes, .controls {
-			left: 220px ;
-		}
-		
-		.sequences, .genes {
-			border-left: 1px solid gray ;
-			border-right: 1px solid gray ;
-		}
-	</style>
+	<script src="https://www.well.ox.ac.uk/~gav/projects/msa_viewer/js/assert.js"></script>
+	<script src="https://www.well.ox.ac.uk/~gav/projects/msa_viewer/js/GeneView.js"></script>
+	<script src="https://www.well.ox.ac.uk/~gav/projects/msa_viewer/js/MSA.js"></script>
+	<script src="https://www.well.ox.ac.uk/~gav/projects/msa_viewer/js/MSAView.js"></script>
+	<script src="https://www.well.ox.ac.uk/~gav/projects/msa_viewer/js/MSAController.js"></script>
+	<script src="https://www.well.ox.ac.uk/~gav/projects/msa_viewer/js/run_msa_viewer.js"></script>
+	<link href="https://www.well.ox.ac.uk/~gav/projects/msa_viewer/css/msa_viewer.css" rel="stylesheet" >
 </head>
 <body>
 	<section class="figure">
 		<svg class = "names" width=900 height=600></svg>
-		<!--svg class = "sequences" width=900 height=600></svg>-->
 		<svg class = "controls" width=900 height=200></svg>
 		<canvas class = "sequences" width=900 height=600></canvas>
 		<svg class = "genes" width=900 height=200></svg>
 	</section>
 </body>
 <script>
-	console.log( "DATA" ) ;
 	let data = {
 		"alignment": [
 			{ "name": "PPRFG01_11", "sequence": "-------------------------------------caaataatttttttatatagcttaataatttttcctccgaatatactcctaaac-aaaaaaaaaaaaaaaaaaaaaatgagataattaagaaaatatatatactaatataatgtattatatatatatgtatgaaaatatatactttcctttttcaaatattaaacaattctgtttactcattatttttctcatttttattcttaccattaaataatggaatactacttcttaatatataattattattttctgtattcacatcgacaatatgtaacctttcagctaaaaataaaaatatataaatataaaaaaaaaaaaaaaaaat----atatatatatatatatatatatatatatatatggttgtaattacat-atattttatatatattcattttatcaaataatttaaaatatataataataaatcacttacgtttaaaacttgggaatttatagtttagacatcttgcatttaaatcattacaatttaatttaaaatcaccatctgtaaaaatt-aaaaaaaaaatacattaggtattacaaatattatatgcacaatgtatatttatatttcctttttttattctttcttcttttttcta-tttttttatctttatcttttcctttt-----------tgacgtactttttttaaagtagtattcataaaaggcatatataattagcgaagccattaaaaacccaaaaaacaaataaaaaaaggtcttatattttttcagacgttgaaaaaaaccattccttggctctacaaacaagaataagtaattttaacatattaaaaatattatacacataatatatatatatatatatatatattaaaatagatatatagatttgtacatgtattattatttatttatatgctataattatcttcaaacaaaaaaaaaaaggaaatcatgtctgtttattaacacatgtacatgtaatatat----------------tatatatatatatatatatatatattttaggtgtcataatattttattttgttttgttttttctagttcataccaccatgattatcaacgtctgtattttctgcatcatttaatttattccacatttttc-tttttttttttaataatatataacaaattttaaaactagaaaaaatcaagtttttttcttgttttttttatta-ttttttttttcaacaaatatatattttatataaagatgaatgtatatattatgaatattcaaaaaatataaaaaaaatgttattaatatataatg----------------tatatatatatatatattataaattacaatattatgaatataactatatttacaacaaaaa--cccccccaaaaaaaaag-aattgcttttttatatcatatacat-----------------------------------------------------------------------------------------------------tatatatatatatattataaaataatagtaggttaaaatttaatatgtttaattaataattattaaaa------------------------atatatatatatatatatatataagaaaaatataattataaaatataattaaaaacagaaatgaatataatatataataattgttatttaaatttgccaaaagatcaaaagttcaataaatattcaaaagcattattattaactaaaggctccataatataaaaaaatatatttcataaataattcttttatacaattataatata-------------------------------atatatatatataataataaataaaagattaaaaaaaaaacaaaaattcaacttttctatttttagaaaaaatatatatgaaaaaaaaataagaaataaattta-ggtagttttatttatatagaattcgtaaagatctatgatttctttatattatatgtatatataaaaaacaaaaaaacaaacaaattagtgttatatatatata-atatatatatataaatattttataataatatatggtttaattttatttta---tattaatacgtat-aattatatataata--tatttttttatatatattaaagaatctaatactatgtaacgat---ataatatatatatttctaaaaataattataacaaatttgatcatttatattattatacataaaataaccctttctttctaaaatctttt-aaaaaaaaaaacccaaataaaaaaagaataatatattataatatatatatatataaagaaaaaaa----------------------------------------" },
@@ -119,12 +78,7 @@
 			{ "chromosome": "Pf3D7_11_v3", "ID": "PF3D7_1127000.dummy.2", "feature": "mRNA", "parent": "PF3D7_1127000", "start": 1056998, "end": 1058064, "strand": "-" },
 			{ "chromosome": "Pf3D7_11_v3", "ID": "exon_PF3D7_1127000.dummy-E1", "feature": "exon", "parent": "PF3D7_1127000.dummy.2", "start": 1057508, "end": 1058064, "strand": "-" },
 			{ "chromosome": "Pf3D7_11_v3", "ID": "exon_PF3D7_1127000.dummy-E2", "feature": "exon", "parent": "PF3D7_1127000.dummy.2", "start": 1056998, "end": 1057208, "strand": "-" }
-		],
-		"region": {
-			"chromosome": "Pf3D7_11_v3",
-			"start": 1057985,
-			"end": 1058085 
-		}
+		]
 	} ;
 
 	run_msa_viewer( data ) ;

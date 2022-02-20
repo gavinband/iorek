@@ -63,17 +63,11 @@ public:
 			.set_description( "Specify the name of a single sequence to distinguish" )
 			.set_takes_single_value() ;
 
-		options[ "-range" ]
-			.set_description( "Specify the reference sequence range that the sequence defined by -distinguish "
-				"corresponds to." )
-			.set_takes_single_value() ;
-		
 		options[ "-genes" ]
 			.set_description( "Specific a gff file of genes to load" )
 			.set_takes_single_value() ;
 		
-		options.option_implies_option( "-range", "-distinguish" ) ;
-		options.option_implies_option( "-genes", "-range" ) ;
+		options.option_implies_option( "-genes", "-distinguish" ) ;
 	}
 } ;
 
@@ -202,6 +196,13 @@ private:
 		check_sequence_lengths( *fasta ) ;
 
 		std::vector< std::string > sequence_ids = fasta->sequence_ids() ;
+		std::map< std::string, genfile::GenomePositionRange > ranges ;
+		for( std::size_t i = 0; i < sequence_ids.size(); ++i ) {
+			auto range = genfile::GenomePositionRange::parse( sequence_ids[i] ) ;
+			ranges.insert( std::make_pair( range.chromosome(), range )) ;
+			sequence_ids[i] = range.chromosome() ;
+		}
+		
 		if( options().check( "-distinguish" )) {
 			std::string const distinguish = options().get_value< std::string >( "-distinguish" ) ;
 			auto where = std::find( sequence_ids.begin(), sequence_ids.end(), distinguish ) ;
@@ -221,14 +222,14 @@ private:
 		if( options().check( "-genes" )) {
 			genes = load_genes(
 				options().get_value< std::string >( "-genes" ),
-				genfile::GenomePositionRange::parse( options().get_value< std::string >( "-range" ))
+				ranges.find( sequence_ids[0] )->second
 			) ;
 		}
 		
 		std::string const& output = options().get< std::string >( "-o" ) ;
 		ui().logger() << "Writing output to \"" << output << "\"....\n" ;
 		std::auto_ptr< std::ostream > ostr = genfile::open_text_file_for_output( output ) ;
-		write_html( *ostr, *fasta, sequence_ids, genes ) ;
+		write_html( *ostr, *fasta, sequence_ids, ranges, genes ) ;
 	}
 	
 	genfile::Fasta::UniquePtr load_fasta( std::vector< std::string > const& filenames ) const {
@@ -284,16 +285,31 @@ private:
 		std::ostream& out,
 		genfile::Fasta const& fasta,
 		std::vector< std::string > const& sequence_ids,
+		std::map< std::string, genfile::GenomePositionRange > const& ranges,
 		std::vector< GFFRecord > const& genes
 	) const {
 		// This is a C++11 raw string literal
 		out << R""""(<!DOCTYPE html>
 <html>
 <head>
+	<meta charset="utf-8">
+	<title>Multiple sequence aligmnet viewer</title>
+	<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.3.0/d3.min.js"></script>
+	<script src="https://www.well.ox.ac.uk/~gav/projects/msa_viewer/js/assert.js"></script>
+	<script src="https://www.well.ox.ac.uk/~gav/projects/msa_viewer/js/GeneView.js"></script>
+	<script src="https://www.well.ox.ac.uk/~gav/projects/msa_viewer/js/MSA.js"></script>
+	<script src="https://www.well.ox.ac.uk/~gav/projects/msa_viewer/js/MSAView.js"></script>
+	<script src="https://www.well.ox.ac.uk/~gav/projects/msa_viewer/js/MSAController.js"></script>
+	<script src="https://www.well.ox.ac.uk/~gav/projects/msa_viewer/js/run_msa_viewer.js"></script>
+	<link href="https://www.well.ox.ac.uk/~gav/projects/msa_viewer/css/msa_viewer.css" rel="stylesheet" >
 </head>
 <body>
-	<svg width=900 height=800 style="border: 1px solid black;">
-				<rect x=10 y=10 width=2 height = 2></rect></svg>
+	<section class="figure">
+		<svg class = "names" width=900 height=600></svg>
+		<svg class = "controls" width=900 height=200></svg>
+		<canvas class = "sequences" width=900 height=600></canvas>
+		<svg class = "genes" width=900 height=200></svg>
+	</section>
 </body>
 <script>
 	data = )"""" ;
@@ -302,12 +318,14 @@ private:
 			<< "  \"alignment\": "
 			<< toJSON( fasta, sequence_ids )
 			<< ",\n"
-			<< "  \"genes\": "
+			<< "  \"ranges\": "
+			<< toJSON( ranges )
+			<< ",\n  \"genes\": "
 			<< toJSON( genes )
 			<< "\n"
-			<< "};" ;
-		out
-			<< "\n</script>\n"
+			<< "};\n"
+			<< "run_msa_viewer( data ) ;\n"
+			<< "</script>\n"
 			<< "</html>\n" ;
 	}
 
@@ -346,6 +364,30 @@ private:
 				<< "\"strand\": \"" << gene.strand() << "\" }" ;
 		}
 		s << "\n]" ;
+		return s.str() ;
+	}
+
+	std::string toJSON( std::map< std::string, genfile::GenomePositionRange > const& ranges ) const {
+		std::ostringstream s ;
+		s << "{\n" ;
+		typedef std::map< std::string, genfile::GenomePositionRange > Map ;
+		Map::const_iterator i = ranges.begin(), end_i = ranges.end() ;
+		
+		for( std::size_t count = 0 ; i != end_i; ++i, ++count ) {
+			s
+				<< ((count>0) ? ",\n" : "" )
+				<< "\""
+				<< i->first
+				<< "\": { "
+				<< "\"chromosome\": \""
+				<< i->first
+				<< "\", \"start\": "
+				<< i->second.start().position()
+				<< ", \"end\": "
+				<< i->second.end().position() + 1 // adjust to open-ended ranges.
+				<< " }" ;
+		}
+		s << "\n}" ;
 		return s.str() ;
 	}
 } ;
