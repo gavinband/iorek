@@ -453,7 +453,7 @@ private:
 		using genfile::string_utils::to_string ;
 		statfile::BuiltInTypeStatSink::UniquePtr sink = statfile::BuiltInTypeStatSink::open( options().get< std::string >( "-o" ) ) ;
 		std::vector< int > mq_bins = options().get_values< int > ( "-mq-bins" ) ;
-		bool by_strand = options().get_value< bool >( "-by-strand" ) ;
+		bool by_strand = options().check( "-by-strand" ) ;
 		{
 			*sink | "file" | "chromosome" | "position" ;
 			for( std::size_t i = 0; i < mq_bins.size(); ++i ) {
@@ -549,7 +549,7 @@ private:
 			ui().logger() << "!! Error processing \"" << name << "\", results for this file will be zero.\n" ;
 		}
 
-		bool by_strand = options().get< bool >( "-by-strand" ) ;
+		bool by_strand = options().check( "-by-strand" ) ;
 
 		for( int position = region.start().position(); position < region.end().position(); ++position ) {
 			sink << name
