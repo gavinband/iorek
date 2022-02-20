@@ -169,6 +169,23 @@ MSAView.prototype.draw = function( force ) {
 	}
 
 	{
+		let guide = panels.controls.selectAll( 'g.guide' )
+			.data( ['guide'] )
+			.enter()
+			.append( 'g' )
+			.attr( 'class', 'guide' )
+			.attr( 'transform', (d,i) => ('translate(' + (geom.layout.width.reference/2) + ", 10)" ))
+			.append( 'text' ) ;
+		guide
+			.append( 'tspan' )
+			.attr( 'font-size', '10pt' )
+			.attr( 'font-family', 'Palatino' )
+			.attr( 'dominant-baseline', 'middle' )
+			.attr( 'text-anchor', 'middle' )
+			.text( "Use mouse to scroll and zoom" )
+		;
+	}
+	{
 		let logo = panels.controls.selectAll( 'g.logo' )
 			.data( ['seemsa'] )
 			.enter()

@@ -345,7 +345,7 @@ private:
 <html>
 <head>
 	<meta charset="utf-8">
-	<title>Multiple sequence aligmnet viewer</title>
+	<title>Multiple sequence alignment viewer</title>
 	<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.3.0/d3.min.js"></script>
 	<script src="[URLBASE]/js/assert.js"></script>
 	<script src="[URLBASE]/js/GeneView.js"></script>
