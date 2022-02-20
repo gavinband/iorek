@@ -60,8 +60,10 @@ public:
 			.set_takes_values_until_next_option() ;
 		
 		options[ "-distinguish" ]
-			.set_description( "Specify the name of a single sequence to distinguish" )
-			.set_takes_single_value() ;
+			.set_description( "Specify the names sequences to distinguish. "
+				" These will be displayed prominently in the output (e.g. by placing them at the bottom). "
+				"The *last value* specified here represents a 'reference' sequence against which genes will be plotted." )
+			.set_takes_values_until_next_option() ;
 
 		options[ "-genes" ]
 			.set_description( "Specific a gff file of genes to load" )
@@ -189,32 +191,67 @@ public:
 
 private:
 
+	struct SequenceIdentifier {
+		SequenceIdentifier( std::string spec ):
+			m_spec( spec ),
+			m_range( genfile::GenomePositionRange::parse( spec )),
+			m_id( m_range.chromosome() )
+		{}
+
+		SequenceIdentifier( SequenceIdentifier const& other ):
+			m_spec( other.m_spec ),
+			m_id( other.m_id ),
+			m_range( other.m_range )
+		{}
+
+		SequenceIdentifier& operator=( SequenceIdentifier const& other ) {
+			m_id = other.m_id ;
+			m_spec = other.m_spec ;
+			m_range = other.m_range ;
+			return *this ;
+		}
+		
+		std::string const& spec() const { return m_spec ; }
+		std::string const& id() const { return m_id ; }
+		genfile::GenomePositionRange const& range() const { return m_range ; }
+		
+	private:
+		SequenceIdentifier() ;
+		
+	private:
+		std::string m_spec ;
+		genfile::GenomePositionRange m_range ;
+		std::string m_id ;
+	} ;
+
 	void unsafe_process() {
 		genfile::Fasta::UniquePtr fasta = load_fasta(
 			options().get_values< std::string >( "-msa" )
 		) ;
 		check_sequence_lengths( *fasta ) ;
 
-		std::vector< std::string > sequence_ids = fasta->sequence_ids() ;
-		std::map< std::string, genfile::GenomePositionRange > ranges ;
-		for( std::size_t i = 0; i < sequence_ids.size(); ++i ) {
-			auto range = genfile::GenomePositionRange::parse( sequence_ids[i] ) ;
-			ranges.insert( std::make_pair( range.chromosome(), range )) ;
-			sequence_ids[i] = range.chromosome() ;
-		}
-		
+		auto sequence_ids = parse_sequence_ids( *fasta ) ;
+
 		if( options().check( "-distinguish" )) {
-			std::string const distinguish = options().get_value< std::string >( "-distinguish" ) ;
-			auto where = std::find( sequence_ids.begin(), sequence_ids.end(), distinguish ) ;
-			if( where == sequence_ids.end() ) {
-				throw genfile::BadArgumentError(
-					"PlotMSAApplication::unsafe_process()",
-					"-distinguish",
-					"ID \"" + distinguish + "\" is not among the sequence IDs in the alignment."
-				) ;
+			std::vector< std::string > const& distinguished = options().get_values< std::string >( "-distinguish" ) ;
+			for( auto& id: distinguished ) {
+				std::size_t i = 0 ;
+				for( ; i < sequence_ids.size(); ++i ) {
+					if( sequence_ids[i].id() == id ) {
+						break ;
+					}
+				}
+				if( i == sequence_ids.size() ) {
+					throw genfile::BadArgumentError(
+						"PlotMSAApplication::unsafe_process()",
+						"-distinguish",
+						"ID \"" + id + "\" is not among the sequence IDs in the alignment."
+					) ;
+				}
+				SequenceIdentifier tmp = sequence_ids[i] ;
+				sequence_ids.erase( sequence_ids.begin() + i ) ;
+				sequence_ids.insert( sequence_ids.begin(), tmp ) ;
 			}
-			sequence_ids.erase( where ) ;
-			sequence_ids.insert( sequence_ids.begin(), distinguish ) ;
 		}
 
 		ui().logger() << "Loaded MSA with " << fasta->number_of_sequences() << " sequences.\n" ;
@@ -222,14 +259,14 @@ private:
 		if( options().check( "-genes" )) {
 			genes = load_genes(
 				options().get_value< std::string >( "-genes" ),
-				ranges.find( sequence_ids[0] )->second
+				sequence_ids[0].range()
 			) ;
 		}
 		
 		std::string const& output = options().get< std::string >( "-o" ) ;
 		ui().logger() << "Writing output to \"" << output << "\"....\n" ;
 		std::auto_ptr< std::ostream > ostr = genfile::open_text_file_for_output( output ) ;
-		write_html( *ostr, *fasta, sequence_ids, ranges, genes ) ;
+		write_html( *ostr, *fasta, sequence_ids, genes ) ;
 	}
 	
 	genfile::Fasta::UniquePtr load_fasta( std::vector< std::string > const& filenames ) const {
@@ -263,6 +300,12 @@ private:
 		}
 	}
 	
+	std::vector< SequenceIdentifier > parse_sequence_ids( genfile::Fasta const& fasta ) const {
+		std::vector< SequenceIdentifier > result ;
+		fasta.sequence_ids( [&result]( std::string const& id ) { result.push_back( SequenceIdentifier( id )) ; }) ;
+		return result ;
+	}
+	
 	std::vector< GFFRecord > load_genes(
 		std::string const& filename,
 		genfile::GenomePositionRange const& range
@@ -284,8 +327,7 @@ private:
 	void write_html(
 		std::ostream& out,
 		genfile::Fasta const& fasta,
-		std::vector< std::string > const& sequence_ids,
-		std::map< std::string, genfile::GenomePositionRange > const& ranges,
+		std::vector< SequenceIdentifier > const& sequence_ids,
 		std::vector< GFFRecord > const& genes
 	) const {
 		// This is a C++11 raw string literal
@@ -316,12 +358,12 @@ private:
 		out
 			<< "{\n"
 			<< "  \"alignment\": "
-			<< toJSON( fasta, sequence_ids )
+			<< sequencesToJSON( fasta, sequence_ids )
 			<< ",\n"
 			<< "  \"ranges\": "
-			<< toJSON( ranges )
+			<< rangesToJSON( sequence_ids )
 			<< ",\n  \"genes\": "
-			<< toJSON( genes )
+			<< genesToJSON( genes )
 			<< "\n"
 			<< "};\n"
 			<< "run_msa_viewer( data ) ;\n"
@@ -329,16 +371,19 @@ private:
 			<< "</html>\n" ;
 	}
 
-	std::string toJSON( genfile::Fasta const& fasta, std::vector< std::string > const& sequence_ids ) const {
+	std::string sequencesToJSON(
+		genfile::Fasta const& fasta,
+		std::vector< SequenceIdentifier > const& sequence_ids
+	) const {
 		std::ostringstream s ;
 		s << "[\n" ;
 		std::size_t count = 0 ;
 		std::deque< char > sequence ;
-		for( auto& name: sequence_ids ) {
-			genfile::Fasta::PositionedSequenceRange p = fasta.get_sequence( name ) ;
+		for( auto& sequence_id: sequence_ids ) {
+			genfile::Fasta::PositionedSequenceRange p = fasta.get_sequence( sequence_id.spec() ) ;
 			s << (count>0 ? ",\n" : "" )
 				<< "{ \"name\": \""
-				<< name
+				<< sequence_id.id()
 				<< "\", \"sequence\": \""
 				<< std::string( p.second.first, p.second.second )
 				<< "\" }" ;
@@ -348,7 +393,7 @@ private:
 		return s.str() ;
 	}
 
-	std::string toJSON( std::vector< GFFRecord > const& genes ) const {
+	std::string genesToJSON( std::vector< GFFRecord > const& genes ) const {
 		std::ostringstream s ;
 		s << "[\n" ;
 		for( std::size_t i = 0; i < genes.size(); ++i ) {
@@ -367,24 +412,22 @@ private:
 		return s.str() ;
 	}
 
-	std::string toJSON( std::map< std::string, genfile::GenomePositionRange > const& ranges ) const {
+	std::string rangesToJSON( std::vector< SequenceIdentifier > const& sequence_ids ) const {
 		std::ostringstream s ;
 		s << "{\n" ;
-		typedef std::map< std::string, genfile::GenomePositionRange > Map ;
-		Map::const_iterator i = ranges.begin(), end_i = ranges.end() ;
-		
-		for( std::size_t count = 0 ; i != end_i; ++i, ++count ) {
+		for( std::size_t i = 0; i < sequence_ids.size(); ++i ) {
+			auto& sequence_id = sequence_ids[i] ;
 			s
-				<< ((count>0) ? ",\n" : "" )
+				<< ((i>0) ? ",\n" : "" )
 				<< "\""
-				<< i->first
+				<< sequence_id.id()
 				<< "\": { "
 				<< "\"chromosome\": \""
-				<< i->first
+				<< sequence_id.range().chromosome()
 				<< "\", \"start\": "
-				<< i->second.start().position()
+				<< sequence_id.range().start().position()
 				<< ", \"end\": "
-				<< i->second.end().position() + 1 // adjust to open-ended ranges.
+				<< sequence_id.range().end().position() + 1 // adjust to open-ended ranges.
 				<< " }" ;
 		}
 		s << "\n}" ;

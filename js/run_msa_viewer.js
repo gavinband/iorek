@@ -5,7 +5,7 @@ function run_msa_viewer( data ) {
 		data.alignment[i].sequence = data.alignment[i].sequence.split( "" ) ;
 	}
 
-	let reference_name = data.alignment[ data.alignment.length - 1 ].name ;
+	let reference_name = data.alignment[ 0 ].name ;
 	let msa = new MSA( data.alignment, data.ranges ) ;
 	let reference = msa.scales.ungappedSequences[reference_name] ;
 

@@ -42,8 +42,8 @@ let MSAView = function(
 	this.scales = function(){
 		let result = {} ;
 		result.y = new d3.scaleBand()
-			.domain( msa.alignment.map( d => d.name ).concat( ["", "reference"] ))
-			.range( [ geom.margin.top, geom.layout.height ] ) ;
+			.domain( [ "reference", "" ].concat( msa.alignment.map( d => d.name ) ))
+			.range( [ geom.layout.height, geom.margin.top ] ) ;
 		result.x = new d3.scaleLinear()
 			.domain( msa.scales.global.range() )
 			.range( [ geom.margin.left, geom.layout.width.sequences - geom.margin.right ] ) ;
@@ -78,7 +78,7 @@ let MSAView = function(
 MSAView.prototype.setViewport = function( viewport ) {
 	//assert( end >= start && start >= 0 ) ;
 	this.scales.x.domain( viewport ) ;
-	let ranges = this.msa.scales.ranges[ this.msa.alignment[ this.msa.alignment.length - 1 ].name ] ;
+	let ranges = this.msa.scales.ranges[ this.reference.name ] ;
 	let choice = { left: -1, right: -1 } ;
 	for( let i = 0; i < ranges.length; ++i ) {
 		let range = ranges[i] ;
