@@ -208,10 +208,16 @@ private:
 			m_id( m_range.chromosome() )
 		{}
 
+		SequenceIdentifier( std::string spec, genfile::GenomePositionRange const& range ):
+			m_spec(spec),
+			m_range( range ),
+			m_id( spec )
+		{}	
+
 		SequenceIdentifier( SequenceIdentifier const& other ):
 			m_spec( other.m_spec ),
-			m_id( other.m_id ),
-			m_range( other.m_range )
+			m_range( other.m_range ),
+			m_id( other.m_id )
 		{}
 
 		SequenceIdentifier& operator=( SequenceIdentifier const& other ) {
@@ -312,7 +318,20 @@ private:
 	
 	std::vector< SequenceIdentifier > parse_sequence_ids( genfile::Fasta const& fasta ) const {
 		std::vector< SequenceIdentifier > result ;
-		fasta.sequence_ids( [&result]( std::string const& id ) { result.push_back( SequenceIdentifier( id )) ; }) ;
+		fasta.sequence_ids( [&result,&fasta]( std::string const& id ) {
+			try {
+				result.push_back( SequenceIdentifier( id )) ;
+			}
+			catch( genfile::string_utils::StringConversionError const& e ) {
+				result.push_back( 
+					SequenceIdentifier(
+						id,
+						fasta.get_sequence( id ).first
+					)
+				) ;
+			}
+		}) ;
+
 		return result ;
 	}
 	
