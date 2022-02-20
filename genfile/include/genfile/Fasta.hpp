@@ -43,6 +43,7 @@ namespace genfile {
 
 		std::size_t number_of_sequences() const { return m_data.size() ; }
 		std::vector< std::string > sequence_ids() const ;
+		void sequence_ids( boost::function< void( std::string ) > callback ) const ;
 
 		SequenceData const& sequence() const { return m_data ; }
 		std::string const get_spec() const ;

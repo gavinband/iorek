@@ -293,4 +293,11 @@ namespace genfile {
 		return result ;
 	}
 
+	void Fasta::sequence_ids( boost::function< void( std::string ) > callback ) const {
+		SequenceData::const_iterator i = m_data.begin(), end_i = m_data.end() ;
+		for( ; i != end_i; ++i ) {
+			callback( i->first ) ;
+		}
+	}
+
 }

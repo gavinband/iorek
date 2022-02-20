@@ -111,11 +111,12 @@ MSAView.prototype.updateLayout = function() {
 	geom.layout.width.sequences = window.innerWidth - geom.layout.width.names - 40 ;
 	geom.layout.width.reference = window.innerWidth - geom.layout.width.names - 40 ;
 	this.scales.x.range( [ geom.margin.left, geom.layout.width.sequences - geom.margin.right ] ) ;
+	this.scales.reference.range( this.scales.x.range() ) ;
 }
 
-MSAView.prototype.draw = function() {
+MSAView.prototype.draw = function( force ) {
 	let viewport = this.viewport() ;
-	if( this.drawn_viewport[0] == viewport[0] && this.drawn_viewport[1] == viewport[1] ) {
+	if( !force && (this.drawn_viewport[0] == viewport[0] && this.drawn_viewport[1] == viewport[1] )) {
 		return ;
 	}
 	let panels = this.panels ;
@@ -168,6 +169,28 @@ MSAView.prototype.draw = function() {
 	}
 
 	{
+		let logo = panels.controls.selectAll( 'g.logo' )
+			.data( ['seemsa'] )
+			.enter()
+			.append( 'g' )
+			.attr( 'class', 'logo' )
+			.attr( 'transform', (d,i) => ('translate(' + (geom.layout.width.reference - 100) + ", 10)" ))
+			.append( 'text' ) ;
+		logo
+			.append( 'tspan' )
+			.attr( 'font-size', '10pt' )
+			.attr( 'font-family', 'Helvetica' )
+			.attr( 'dominant-baseline', 'middle' )
+			.text( d => d ) ;
+		logo
+			.append( 'tspan' )
+			.attr( 'font-size', '6pt' )
+			.attr( 'font-family', 'Palatino' )
+			.attr( 'font-style', 'italic' )
+			.attr( 'dominant-baseline', 'middle' )
+			.attr( 'baseline-shift', 'super' )
+			.text( "beta" ) ;
+
 		let base_aes = this.aes.bases ;
 		panels.controls.selectAll( 'g.base' )
 			.data( [ 'a', 'c', 'g', 't' ] )

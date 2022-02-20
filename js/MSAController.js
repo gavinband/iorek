@@ -80,5 +80,9 @@ let MSAController = function( elt, view ) {
 		return false ;
 	}) ;
 
+	window.addEventListener( 'resize', function() {
+		self.view.draw( true ) ;
+	} ) ;
+
 	return this ;
 } ;
