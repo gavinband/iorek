@@ -25,10 +25,10 @@ namespace genfile {
 
 	void Fasta::add_sequences_from_file(
 		std::string const& fasta_filename,
-		ProgressCallback callback
+		ProgressCallback progress_callback
 	)
 	{
-		load_sequence( std::vector< std::string >( 1, fasta_filename ), callback ) ;
+		load_sequence( std::vector< std::string >( 1, fasta_filename ), progress_callback ) ;
 	}
 
 	void Fasta::add_sequences_from_files(
@@ -39,13 +39,25 @@ namespace genfile {
 		load_sequence( fasta_filenames, callback ) ;
 	}
 
+	void Fasta::add_sequence( std::string const& name, std::string const& bases ) {
+		ContigSequence sequence( bases.begin(), bases.end() ) ;
+		auto range = std::make_pair( 1, 1 + sequence.size() ) ;
+		if( m_data.find( name ) != m_data.end() ) {
+			throw genfile::DuplicateKeyError( name, "sequence name = \"" + name + "\", stored as = \"" + name + "\"" ) ;
+		}
+		m_data[ name ] = ChromosomeRangeAndSequence(
+			range,
+			sequence
+		) ;
+	}
+
 	std::string const Fasta::get_spec() const {
 		return "Fasta()" ;
 	}
 
 	void Fasta::load_sequence(
 		std::vector< std::string > const& filenames,
-		ProgressCallback callback
+		ProgressCallback progress_callback
 	) {
 		for( std::size_t i = 0; i < filenames.size(); ++i ) {
 			std::vector< std::string > elts = genfile::string_utils::split( filenames[i], "=" ) ;
@@ -59,8 +71,8 @@ namespace genfile {
 				) ;
 			}
 			load_sequence( elts[0], elts[1] ) ;
-			if( callback ) {
-				callback( i + 1, filenames.size() ) ;
+			if( progress_callback ) {
+				progress_callback( i + 1, filenames.size() ) ;
 			}
 		}
 	}

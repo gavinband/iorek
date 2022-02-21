@@ -45,6 +45,11 @@ namespace appcontext {
 		m_progress_context->notify_progress( count, total_count ) ;
 	}
 
+	void ProgressContextProxy::notify_progress() const {
+		assert( m_progress_context ) ;
+		m_progress_context->notify_progress() ;
+	}
+
 	void ProgressContextProxy::finish() const {
 		assert( m_progress_context ) ;
 		m_progress_context->finish() ;

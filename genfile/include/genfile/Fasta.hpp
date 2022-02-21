@@ -12,6 +12,7 @@
 #include <deque>
 #include <string>
 #include <memory>
+#include <boost/noncopyable.hpp>
 #include <boost/function.hpp>
 #include <boost/optional.hpp>
 #include "genfile/Chromosome.hpp"
@@ -20,7 +21,7 @@
 #include "genfile/GenomePositionRange.hpp"
 
 namespace genfile {
-	struct Fasta {
+	struct Fasta: public boost::noncopyable {
 	public:
 		typedef std::unique_ptr< Fasta > UniquePtr ;
 		typedef std::deque< char > ContigSequence ;
@@ -40,6 +41,7 @@ namespace genfile {
 
 		void add_sequences_from_file( std::string const& fasta_filename, ProgressCallback ) ;
 		void add_sequences_from_files( std::vector< std::string > const& fasta_filenames, ProgressCallback ) ;
+		void add_sequence( std::string const& name, std::string const& sequence ) ;
 
 		std::size_t number_of_sequences() const { return m_data.size() ; }
 		std::vector< std::string > sequence_ids() const ;
