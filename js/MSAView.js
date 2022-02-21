@@ -297,9 +297,9 @@ MSAView.prototype.draw = function( force ) {
 			let gs = msa.scales.global ;
 			let yoffset = geom.layout.baseHeight + 2 ;
 			let ys = {
-				"a": vs.y( "reference" ) - (2 * (geom.layout.sequenceHeight - yoffset)),
+				"a": vs.y( this.reference.name ) + yoffset,
 				"b": vs.y( "reference" ) - yoffset
-			} ;
+ 			} ;
 			for( let i = 0; i < this.reference.ranges.length; ++i ) {
 				let range = this.reference.ranges[i] ;
 				let x00 = vs.x( gs( range.inAlignment.start )) ;
