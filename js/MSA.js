@@ -110,3 +110,7 @@ let MSA = function( alignment, coordinateRanges ) {
 	return this ;
 } ;
 
+MSA.prototype.sequence_ids = function() {
+	return this.alignment.map( elt => elt.name ) ;
+}
+

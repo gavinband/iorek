@@ -5,17 +5,22 @@ let MSAView = function(
 	msa,
 	reference,
 	genes,
+	annotations,
 	geom = {
 		layout: {
-			baseHeight: 8,
-			sequenceHeight: 20,
+			heights: {
+				base: 8,
+				sequence: 10,
+				annotation: 10,
+				genes: 100,
+				min_per_sequence: 15
+			},
 			width: {
 				all: window.innerWidth - 40,
 				names: 200,
 				sequences: window.innerWidth - 240,
 				reference: window.innerWidth - 240
-			},
-			genePanelHeight: 100
+			}
 		},
 		margin: {
 			top: 20,
@@ -34,16 +39,21 @@ let MSAView = function(
 	} ;
 	this.msa = msa ;
 	this.reference = reference ;
-
 	this.genes = genes ;
+	this.annotations = annotations ;
+
 	this.geom = geom ;
-	this.geom.layout.height = ((msa.alignment.length + 2) * geom.layout.sequenceHeight) + geom.margin.top + geom.margin.bottom ;
 
 	this.scales = function(){
 		let result = {} ;
-		result.y = new d3.scaleBand()
-			.domain( [ "reference", "" ].concat( msa.alignment.map( d => d.name ) ))
-			.range( [ geom.layout.height, geom.margin.top ] ) ;
+		result.tracks = new AlignmentTrackScale(
+			msa,
+			annotations,
+			geom
+		) ;
+		result.y = new d3.scaleLinear()
+			.domain( [ 0, result.tracks.total_height() ])
+			.range( [ 0, result.tracks.total_height() ] ) ;
 		result.x = new d3.scaleLinear()
 			.domain( msa.scales.global.range() )
 			.range( [ geom.margin.left, geom.layout.width.sequences - geom.margin.right ] ) ;
@@ -56,17 +66,17 @@ let MSAView = function(
 		;
 		result.genes = new d3.scaleLinear()
 			.domain( [Math.max( genes.numberOfLevels, 1 ), 0] )
-			.range( [geom.margin.top, geom.layout.genePanelHeight - geom.margin.bottom ] ) ;
+			.range( [geom.margin.top, geom.layout.heights.genes - geom.margin.bottom ] ) ;
 		return result ;
 	}() ;
 
 	this.aes = {
 		bases: {
-			'-': { 'colour': 'lightgrey', "offset": -1, "height": 2 },
-			'a': { 'colour': '#02AAE9', "offset": -4, "height": 8 },
-			't': { 'colour': '#1A356C', "offset": -4, "height": 8 },
-			'c': { 'colour': '#F44B1A', "offset": -4, "height": 8 },
-			'g': { 'colour': '#941504', "offset": -4, "height": 8 }
+			'-': { 'colour': 'lightgrey', "offset": -5, "height": 2 },
+			'a': { 'colour': '#02AAE9', "offset": -8, "height": 8 },
+			't': { 'colour': '#1A356C', "offset": -8, "height": 8 },
+			'c': { 'colour': '#F44B1A', "offset": -8, "height": 8 },
+			'g': { 'colour': '#941504', "offset": -8, "height": 8 }
 		}
 	} ;
 	
@@ -126,18 +136,21 @@ MSAView.prototype.draw = function( force ) {
 	let vs = this.scales ;
 	let aes = this.aes ;
 
+	let canvas_height = vs.tracks.total_height() + geom.margin.top + geom.margin.bottom  ;
+
+	vs.y.range( [ canvas_height - geom.margin.bottom, geom.margin.top ] ) ;
 	// put panels in the right place
 	d3.select( '.figure' )
 		.attr( 'width', geom.layout.width.all )
-		.attr( 'height', geom.layout.height + 300 ) ;
+		.attr( 'height', canvas_height + 300 ) ;
 
 	panels.names.attr( 'width', geom.layout.width.names ) ;
-	panels.names.attr( 'height', geom.layout.height ) ;
+	panels.names.attr( 'height', canvas_height ) ;
 
 	panels.sequences.attr( 'width', geom.layout.width.sequences ) ;
-	panels.sequences.attr( 'height', geom.layout.height ) ;
+	panels.sequences.attr( 'height', canvas_height ) ;
 
-	panels.genes.style( 'top', geom.layout.height + 40 ) ;
+	panels.genes.style( 'top', canvas_height + 40 ) ;
 	panels.genes.attr( 'width', geom.layout.width.reference ) ;
 
 	panels.controls.style( 'top', '20px' ) ;
@@ -163,7 +176,7 @@ MSAView.prototype.draw = function( force ) {
 			.enter()
 			.append( 'g' )
 			.attr( "class", "name" )
-			.attr( 'transform', ( name, i ) => ('translate(' + (geom.layout.width.names - geom.margin.right) + ',' + vs.y(name) + ")" ))
+			.attr( 'transform', ( name, i ) => ('translate(' + (geom.layout.width.names - geom.margin.right) + ',' + vs.y(vs.tracks.map(name, "sequence").baseline) + ")" ))
 		;
 		names.call( renderName ) ;
 	}
@@ -274,7 +287,7 @@ MSAView.prototype.draw = function( force ) {
 			let sequence = msa.alignment[i].sequence ;
 			drawSequence(
 				msa.alignment[i].sequence,
-				vs.y(msa.alignment[i].name ),
+				vs.y(vs.tracks.map(msa.alignment[i].name, "sequence").baseline),
 				baseWidth,
 				j => vs.x( msa.scales.global(j)),
 				Math.max( Math.floor( viewport[0] ), 0 ),
@@ -285,7 +298,7 @@ MSAView.prototype.draw = function( force ) {
 		
 		drawSequence(
 			this.reference.sequence,
-			vs.y( "reference" ),
+			vs.y(vs.tracks.map( "reference", "sequence" ).baseline),
 			vs.reference(1) - vs.reference(0),
 			j => vs.reference(this.reference.coordinateRange.start + j),
 			0,
@@ -295,10 +308,10 @@ MSAView.prototype.draw = function( force ) {
 		
 		{
 			let gs = msa.scales.global ;
-			let yoffset = geom.layout.baseHeight + 2 ;
+			let yoffset = 2 ;
 			let ys = {
-				"a": vs.y( this.reference.name ) + yoffset,
-				"b": vs.y( "reference" ) - yoffset
+				"a": vs.y(vs.tracks.map( this.reference.name, "sequence" ).baseline) + yoffset,
+				"b": vs.y(vs.tracks.map( "reference", "sequence" ).baseline) - geom.layout.heights.base - yoffset
  			} ;
 			for( let i = 0; i < this.reference.ranges.length; ++i ) {
 				let range = this.reference.ranges[i] ;
@@ -307,7 +320,7 @@ MSAView.prototype.draw = function( force ) {
 				let x11 = vs.reference( range.inSequence.end ) ;
 				let x10 = vs.x( gs( range.inAlignment.end )) ;
 				ctx.beginPath() ;
-				// ref sequence is 2 * sequenceHeight down.
+				// ref sequence is 2 * heights.sequence down.
 				ctx.moveTo( x00, ys.a ) ;
 				ctx.lineTo( x01, ys.b ) ;
 				ctx.moveTo( x11, ys.b ) ;
@@ -316,8 +329,42 @@ MSAView.prototype.draw = function( force ) {
 				ctx.stroke() ;
 			}
 		}
-		
-		this.drawn_viewport[0] = viewport[0] ;
-		this.drawn_viewport[1] = viewport[1] ;
 	}
+	
+	{
+		let sequences = panels.sequences.node() ;
+		let ctx = sequences.getContext( '2d' ) ;
+		for( let sequence_id in this.annotations ) {
+			let sequence_annotations = this.annotations[sequence_id] ;
+			let ranges = this.msa.scales.ranges[sequence_id] ;
+			for( let track_name in sequence_annotations ) {
+				let track = sequence_annotations[track_name] ;
+				vs.tracks.map( sequence_id, track_name )
+				for( let i = 0; i < ranges.length; ++i ) {
+					let sequenceToAlignment = ranges[i] ;
+					let domain = sequenceToAlignment.domain() ;
+					let range_track = track.filter( elt => elt.end >= domain[0] && elt.start <= domain[1] ) ;
+					for( let j = 0; j < range_track.length; ++j ) {
+						let a = range_track[j] ;
+						let rd = {
+							x1: vs.x( sequenceToAlignment( Math.max( a.start, domain[0] ))),
+							y1: vs.y( vs.tracks.map( sequence_id, track_name ).baseline + vs.tracks.scale_value( sequence_id, track_name, a.value ) ),
+							x2: vs.x( sequenceToAlignment( Math.min( a.end, domain[1] ))),
+							y2: vs.y( vs.tracks.map( sequence_id, track_name ).baseline)
+						} ;
+						ctx.fillStyle = '#6a6a6a' ;
+						ctx.fillRect(
+							rd.x1,
+							rd.y1,
+							rd.x2 - rd.x1,
+							rd.y2 - rd.y1
+						) ;
+					}
+				} 
+			}
+		}
+	}
+	
+	this.drawn_viewport[0] = viewport[0] ;
+	this.drawn_viewport[1] = viewport[1] ;
 }

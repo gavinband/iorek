@@ -2,15 +2,16 @@
 <html>
 <head>
 	<meta charset="utf-8">
-	<title>Multiple sequence aligmnet viewer</title>
+	<title>Multiple sequence alignment viewer</title>
 	<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.3.0/d3.min.js"></script>
-	<script src="../../js/assert.js"></script>
-	<script src="../../js/GeneView.js"></script>
-	<script src="../../js/MSA.js"></script>
-	<script src="../../js/MSAView.js"></script>
-	<script src="../../js/MSAController.js"></script>
-	<script src="../../js/run_msa_viewer.js"></script>
-	<link href="../../css/msa_viewer.css" rel="stylesheet" >
+	<script src="../..//js/assert.js"></script>
+	<script src="../..//js/GeneView.js"></script>
+	<script src="../..//js/MSA.js"></script>
+	<script src="../..//js/AlignmentTrackScale.js"></script>
+	<script src="../..//js/MSAView.js"></script>
+	<script src="../..//js/MSAController.js"></script>
+	<script src="../..//js/run_msa_viewer.js"></script>
+	<link href="../..//css/msa_viewer.css" rel="stylesheet" >
 </head>
 <body>
 	<section class="figure">
@@ -83,7 +84,21 @@
 { "ID": "PF3D7_1127000.1-p1-CDS3", "feature": "CDS", "parent": "PF3D7_1127000.1", "chromosome": "Pf3D7_11_v3", "start": 1057419, "end": 1057490, "strand": "-" },
 { "ID": "PF3D7_1127000.1-p1-CDS2", "feature": "CDS", "parent": "PF3D7_1127000.1", "chromosome": "Pf3D7_11_v3", "start": 1057622, "end": 1057741, "strand": "-" },
 { "ID": "PF3D7_1127000.1-p1-CDS1", "feature": "CDS", "parent": "PF3D7_1127000.1", "chromosome": "Pf3D7_11_v3", "start": 1058003, "end": 1058054, "strand": "-" }
-]
+],
+  "highlights": [
+{ "name": "Pfsa3+", "sequence": "attttctgcaacatttaattt" },
+{ "name": "Pfsa3-", "sequence": "attttctgcatcatttaattt" }
+],
+  "annotations": {
+  "Pf3D7_11_v3": {
+    "test": [
+      { "chromosome": "Pf3D7_11_v3", "start": 1056984, "end": 1057035, "value": 10},
+      { "chromosome": "Pf3D7_11_v3", "start": 1057435, "end": 1057535, "value": 25},
+      { "chromosome": "Pf3D7_11_v3", "start": 1058235, "end": 1058535, "value": 20},
+      { "chromosome": "Pf3D7_11_v3", "start": 1058535, "end": 1059085, "value": 10}
+    ]
+  }
+}
 };
 run_msa_viewer( data ) ;
 </script>

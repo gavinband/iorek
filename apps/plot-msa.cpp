@@ -528,6 +528,7 @@ private:
 	<script src="[URLBASE]/js/assert.js"></script>
 	<script src="[URLBASE]/js/GeneView.js"></script>
 	<script src="[URLBASE]/js/MSA.js"></script>
+	<script src="[URLBASE]/js/AlignmentTrackScale.js"></script>
 	<script src="[URLBASE]/js/MSAView.js"></script>
 	<script src="[URLBASE]/js/MSAController.js"></script>
 	<script src="[URLBASE]/js/run_msa_viewer.js"></script>

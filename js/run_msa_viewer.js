@@ -10,10 +10,11 @@ function run_msa_viewer( data ) {
 	let reference = msa.scales.ungappedSequences[reference_name] ;
 
 	let viewer = new MSAView(
-			d3.select( ".figure" ),
-			msa,
-			reference,
-			new GeneView( data.genes, reference.coordinateRange )
+		d3.select( ".figure" ),
+		msa,
+		reference,
+		new GeneView( data.genes, reference.coordinateRange ),
+		data.annotations
 	) ;
 	let controller = new MSAController( viewer.panels.sequences, viewer ) ;
 
