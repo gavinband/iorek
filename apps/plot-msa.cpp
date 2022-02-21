@@ -26,6 +26,7 @@ namespace seqlib = SeqLib;
 #include "genfile/Error.hpp"
 #include "genfile/Fasta.hpp"
 #include "statfile/BuiltInTypeStatSink.hpp"
+#include "statfile/BuiltInTypeStatSource.hpp"
 
 // #define DEBUG 1
 
@@ -72,6 +73,11 @@ public:
 		
 		options.option_implies_option( "-genes", "-distinguish" ) ;
 		
+		options[ "-annotation" ]
+			.set_description( "Specify one or more bed4 files to annotate with."
+				" Value must be one or more key=filename pair(s)." )
+			.set_takes_values_until_next_option() ;
+
 		options.declare_group( "URL options" ) ;
 		options[ "-url-base" ]
 			.set_description(
@@ -240,6 +246,35 @@ private:
 		std::string m_id ;
 	} ;
 
+	struct RegionValue {
+		//RegionValue() {} ;
+		RegionValue( genfile::GenomePositionRange const& range, double value ):
+			m_range( range ),
+			m_value( value )
+		{}
+		RegionValue( RegionValue const& other ):
+			m_range( other.m_range ),
+			m_value( other.m_value )
+		{}
+		RegionValue& operator=( RegionValue const& other ) {
+			m_range = other.m_range ;
+			m_value = other.m_value ;
+			return *this ;
+		}
+
+		genfile::GenomePositionRange const range() const { return m_range ; }
+		double value() const { return m_value ; }
+
+	private:
+		genfile::GenomePositionRange m_range ;
+		double m_value ;
+	} ;
+
+	typedef std::map< std::string, std::vector< RegionValue > > Annotation ;
+	typedef std::map< std::string, Annotation > Annotations ;
+	
+private:
+	
 	void unsafe_process() {
 		genfile::Fasta::UniquePtr fasta = load_fasta(
 			options().get_values< std::string >( "-msa" )
@@ -271,6 +306,17 @@ private:
 		}
 
 		ui().logger() << "Loaded MSA with " << fasta->number_of_sequences() << " sequences.\n" ;
+
+		genfile::Fasta::UniquePtr highlights ;
+		if( options().check( "-highlight" )) {
+			highlights = load_highlights( options().get< std::string >( "-highlight" )) ;
+		}
+		
+		Annotations annotations ;
+		if( options().check( "-annotation" )) {
+			annotations = load_annotations( options().get_values< std::string >( "-annotation" ), sequence_ids ) ;
+		}
+
 		std::vector< GFFRecord > genes ;
 		if( options().check( "-genes" )) {
 			genes = load_genes(
@@ -279,10 +325,11 @@ private:
 			) ;
 		}
 		
+
 		std::string const& output = options().get< std::string >( "-o" ) ;
 		ui().logger() << "Writing output to \"" << output << "\"....\n" ;
 		std::auto_ptr< std::ostream > ostr = genfile::open_text_file_for_output( output ) ;
-		write_html( *ostr, *fasta, sequence_ids, genes ) ;
+		write_html( *ostr, *fasta, sequence_ids, genes, highlights, annotations ) ;
 	}
 	
 	genfile::Fasta::UniquePtr load_fasta( std::vector< std::string > const& filenames ) const {
@@ -341,23 +388,135 @@ private:
 	) const {
 		std::vector< GFFRecord > result ;
 		auto input = genfile::open_text_file_for_input( filename ) ;
-		parse_gff( *input, [&]( GFFRecord const& record ) {
-			if(
-				(record.sequence() == range.chromosome())
-				&& (record.end() >= range.start().position())
-				&& (record.start() <= range.end().position())
-			) {
-				result.push_back( record ) ;
-			}
-		}) ;
+		{
+			auto progress_context = ui().get_progress_context( "Loading genes" ) ;
+			parse_gff( *input, [&]( GFFRecord const& record ) {
+				progress_context.notify_progress() ;
+				if(
+					(record.sequence() == range.chromosome())
+					&& (record.end() >= range.start().position())
+					&& (record.start() <= range.end().position())
+				) {
+					result.push_back( record ) ;
+				}
+			}) ;
+		}
+		ui().logger() << "++ Loaded "
+			<< result.size()
+			<< " records in range "
+			<< range << ".\n" ;
 		return result ;
 	}
+	
+	genfile::Fasta::UniquePtr load_highlights( std::string const& filename ) {
+		auto result = genfile::Fasta::create() ;
+
+		auto source = statfile::BuiltInTypeStatSource::open( filename ) ;
+		{
+			auto progress_context = ui().get_progress_context( "Loading highlights" ) ;
+			std::size_t const nameIndex = source->index_of_column( "primer_name" ) ;
+			std::size_t const sequenceIndex = source->index_of_column( "sequence" ) ;
+			std::cerr << "COLUMN INDEX: " << nameIndex << ", " << sequenceIndex << ".\n" ;
+			assert( nameIndex < sequenceIndex ) ; // TODO: allow this either way.
+			std::string name, sequence ;
+			while(
+				(*source)
+					>> statfile::ignore( nameIndex )
+					>> name
+					>> statfile::ignore( sequenceIndex - nameIndex - 1 )
+					>> sequence
+			) {
+				result->add_sequence( name, sequence ) ;
+				progress_context.notify_progress() ;
+				(*source) >> statfile::ignore_all() ;
+			}
+		}
+		ui().logger() << "++ Loaded "
+			<< result->number_of_sequences()
+			<< " from \"" << filename << "\".\n" ;
+		return result ;
+	}
+	
+	Annotations load_annotations(
+		std::vector< std::string > const& specs,
+		std::vector< SequenceIdentifier > const& sequence_ids
+	) {
+		using genfile::string_utils::slice ;
+		Annotations result ;
+		for( std::string const& spec: specs ) {
+			std::vector< slice > elts = slice( spec ).split( "=" );
+			if( elts.size() != 2 ) {
+				throw genfile::BadArgumentError(
+					"load_annotations()",
+					"spec=\"" + spec + "\"",
+					"Expected name=value pair."
+				) ;
+			}
+			load_bed4_annotation(
+				elts[1],
+				[&] ( RegionValue const& value ) {
+					for( SequenceIdentifier const& sequence_id: sequence_ids ) {
+						if(
+							(value.range().chromosome() == sequence_id.id())
+							&& (value.range().end().position() >= sequence_id.range().start().position())
+							&& (value.range().start().position() <= sequence_id.range().end().position())
+						) {
+							result[value.range().chromosome()][elts[0]].push_back( value ) ;
+						}
+					}
+				}
+			) ;
+		}
+		return result ;
+	}
+
+	void load_bed4_annotation(
+		std::string const& filename,
+		boost::function< void( RegionValue const& ) > callback
+	) {
+		using genfile::string_utils::slice ;
+		using genfile::string_utils::to_string ;
+		using genfile::string_utils::to_repr ;
+		auto input = genfile::open_text_file_for_input( filename ) ;
+		{
+			auto progress_context = ui().get_progress_context( "Loading annotations from \"" + filename + "\"" ) ;
+			std::string line ;
+			std::vector< slice > elts ;
+			std::size_t count = 0 ;
+			while( std::getline( *input, line )) {
+				elts = slice( line ).split( "\t" ) ;
+				if( elts.size() != 4 ) {
+					throw genfile::MalformedInputError(
+						filename,
+						"Line " + to_string( count+1 ) + " contains wrong number of values (" + to_string( elts.size()) + ", should be 4).",
+						count + 1
+					) ;
+				}
+				
+				callback(
+					RegionValue(
+						genfile::GenomePositionRange(
+							genfile::Chromosome( elts[0] ),
+							to_repr< genfile::Position >( elts[1] ),
+							to_repr< genfile::Position >( elts[2] )
+						),
+						to_repr< double >( elts[3] )
+					)
+				) ;
+				progress_context.notify_progress() ;
+				++count ;
+			}
+		}
+	}
+	
 	
 	void write_html(
 		std::ostream& out,
 		genfile::Fasta const& fasta,
 		std::vector< SequenceIdentifier > const& sequence_ids,
-		std::vector< GFFRecord > const& genes
+		std::vector< GFFRecord > const& genes,
+		genfile::Fasta::UniquePtr const& highlights,
+		Annotations const& annotations
 	) const {
 		// This is a C++11 raw string literal
 		std::string preamble = R""""(<!DOCTYPE html>
@@ -395,7 +554,27 @@ private:
 			<< rangesToJSON( sequence_ids )
 			<< ",\n  \"genes\": "
 			<< genesToJSON( genes )
-			<< "\n"
+			<< ",\n" ;
+		if( highlights.get() ) { 
+			out
+				<< "  \"highlights\": "
+				<< sequencesToJSON( *highlights )
+				<< ",\n" ;
+		} else {
+			out
+				<< "  \"highlights\": {}"
+				<< ",\n" ;
+		}
+		if( annotations.size() > 0 ) {
+			out
+ 				<< "  \"annotations\": "
+				<< annotationsToJSON( annotations )
+				<< "\n" ;
+		} else {
+			out
+				<< "  \"annotations\": {}\n" ;
+		}
+		out
 			<< "};\n"
 			<< "run_msa_viewer( data ) ;\n"
 			<< "</script>\n"
@@ -423,6 +602,13 @@ private:
 		s << "\n]" ;
 		return s.str() ;
 	}
+	
+	std::string sequencesToJSON(
+		genfile::Fasta const& fasta
+	) const {
+		return sequencesToJSON( fasta, parse_sequence_ids( fasta )) ;
+	}
+	
 
 	std::string genesToJSON( std::vector< GFFRecord > const& genes ) const {
 		std::ostringstream s ;
@@ -460,6 +646,37 @@ private:
 				<< ", \"end\": "
 				<< sequence_id.range().end().position() + 1 // adjust to open-ended ranges.
 				<< " }" ;
+		}
+		s << "\n}" ;
+		return s.str() ;
+	}
+
+	std::string annotationsToJSON( Annotations const& annotations ) const {
+		std::ostringstream s ;
+		s << "{\n" ;
+		Annotations::const_iterator i = annotations.begin(), end_i = annotations.end() ;
+		for( std::size_t icount = 0; i != end_i; ++i, ++icount ) {
+			std::string const& sequence_name = i->first ;
+			Annotation::const_iterator j = i->second.begin(), end_j = i->second.end() ;
+			s	<< ((icount>0) ? ",\n" : "")
+				<< "  \"" << sequence_name << "\": {\n" ;
+			for( std::size_t jcount = 0; j != end_j; ++j, ++jcount ) {
+				std::string const& annotation_name = j->first ;
+				s	<< ((jcount>0) ? ",\n" : "")
+					<< "    \"" << annotation_name << "\": [\n" ;
+				std::vector< RegionValue > const& values = j->second ;
+				for( std::size_t i = 0; i < values.size(); ++i ) {
+					RegionValue const& v = values[i] ;
+					s << ((i>0) ? ",\n" : "" )
+						<< "      { \"chromosome\": \"" << v.range().chromosome() << "\", "
+						<< "\"start\": " << v.range().start().position() << ", "
+						<< "\"end\": " << v.range().end().position() << ", "
+						<< "\"value\": " << v.value()
+						<< "}" ;
+				}
+				s << "\n    ]" ;
+			}
+			s << "\n  }" ;
 		}
 		s << "\n}" ;
 		return s.str() ;
