@@ -5,6 +5,18 @@ function run_msa_viewer( data ) {
 		data.alignment[i].sequence = data.alignment[i].sequence.split( "" ) ;
 	}
 
+	if( !data.hasOwnProperty( 'genes' )) {
+		data.genes = [] ;
+	}
+
+	if( !data.hasOwnProperty( 'annotations' )) {
+		data.annotations = {} ;
+	}
+
+	if( !data.hasOwnProperty( 'highlights' )) {
+		data.highlights = [] ;
+	}
+
 	let reference_name = data.alignment[ 0 ].name ;
 	let msa = new MSA( data.alignment, data.ranges ) ;
 	let reference = msa.scales.ungappedSequences[reference_name] ;

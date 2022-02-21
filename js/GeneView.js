@@ -2,7 +2,11 @@
 
 // data be an array of objects representing genes, including
 // ID, feature, chromosome, start, and end columns.
-function GeneView( data, region, highlight = [] ) {
+function GeneView(
+	data,
+	region,
+	highlight = []
+) {
 	this.data = data ;
 	this.region = region ;
 	this.highlight = highlight ;
@@ -102,7 +106,19 @@ function GeneView( data, region, highlight = [] ) {
 // elt is a D3 selection
 // genes is an array of objects with keys: chromosome, feature,. start, end, ID, symbol, strand, name, txStart and txEnd
 // scales is an object containing 'position' and 'level' keys, each a d3 scale.
-GeneView.prototype.draw = function( elt, scales, direction = "horizontal" ) {
+GeneView.prototype.draw = function(
+	elt,
+	scales,
+	direction = "horizontal",
+	aesthetic = {
+		"colour": {
+			"highlight": "#FF4444",
+			"text": "#eeeeee",
+			"line": "#eeeeee"
+		}
+	}
+) {
+	let aes = aesthetic ;
 	let e = 0.2 ;
 	let h = 0.2 ;
 	let H = 0.4 ;
@@ -294,7 +310,7 @@ GeneView.prototype.draw = function( elt, scales, direction = "horizontal" ) {
 		.attr( 'text-anchor', 'start' )
 		.attr( 'font-size', elt => ( elt.symbol == elt.ID ? '7pt' : '7pt' ))
 		.attr( 'font-weight', elt => ( elt.highlight == 1 ) ? 'bold' : 'normal' )
-		.attr( 'fill', elt => ( elt.highlight == 1 ) ? '#FF0000' : '#000000' )
+		.attr( 'fill', elt => ( elt.highlight == 1 ) ? aes.colour.highlight : aes.colour.text )
 		.attr( 'font-style', 'italic' )
 		.text( elt => elt.ID ) //( elt.name === null ? elt.ID : elt.symbol  ).replace( /P[Ff][A-Z0-9]*_/, '' ))
 	;

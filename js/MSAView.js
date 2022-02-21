@@ -77,6 +77,11 @@ let MSAView = function(
 			't': { 'colour': '#1A356C', "offset": -8, "height": 8 },
 			'c': { 'colour': '#F44B1A', "offset": -8, "height": 8 },
 			'g': { 'colour': '#941504', "offset": -8, "height": 8 }
+		},
+		colour: {
+			"text": "#eeeeee",
+			"highlight": "#FF4444",
+			"background": '#222222'
 		}
 	} ;
 	
@@ -166,9 +171,12 @@ MSAView.prototype.draw = function( force ) {
 				.attr( 'x', 0 )
 				.attr( 'y', 0 )
 				.attr( 'text-anchor', 'end' )
-				.attr( 'alignment-baseline', 'middle' )
-				.attr( 'font-size', '10pt')
-				.attr( 'font-family', 'Palatino' )
+				.attr( 'dominant-baseline', 'middle' )
+				.attr( 'font-size', '12px')
+				.attr( 'dy', -aes.bases['a'].height/2 )
+				.attr( 'font-family', 'Courier' )
+				.attr( 'font-style', 'italic' )
+				.attr( 'fill', aes.colour.text )
 				.text( name => name ) ;
 		} ;
 		let names = panels.names.selectAll( 'g.name' )
