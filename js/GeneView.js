@@ -16,7 +16,7 @@ function GeneView(
 		console.log( "getRegionalGenes", genes, region ) ;
 		let result = genes.filter(
 			elt => (
-				[ 'gene', 'mRNA', 'tRNA', 'rRNA', 'snoRNA', 'ncRNA', 'snRNA' ].indexOf( elt.feature ) != -1
+				[ 'gene', 'transcript', 'mRNA', 'tRNA', 'rRNA', 'snoRNA', 'ncRNA', 'snRNA' ].indexOf( elt.feature ) != -1
 				&& elt.chromosome == region.chromosome
 				&& elt.end >= region.start
 				&& elt.start <= region.end
@@ -161,7 +161,7 @@ GeneView.prototype.draw = function(
 	let max = Math.max ;
 	let abs = Math.abs ;
 	let enter = elt.selectAll( 'g.gene' )
-		.data( this.genes.filter( elt => elt.feature == "mRNA" ) )
+		.data( this.genes.filter( elt => elt.feature == "mRNA" || elt.feature == "transcript" ) )
 		.enter()
 		.append( 'g' )
 		.attr( 'class', 'gene' ) ;

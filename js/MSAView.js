@@ -42,6 +42,11 @@ let MSAView = function(
 	this.genes = genes ;
 	this.annotations = annotations ;
 
+	geom.layout.heights.genes = Math.max(
+		geom.layout.heights.genes,
+		20 * genes.numberOfLevels
+	) ;
+
 	this.geom = geom ;
 
 	this.scales = function(){
@@ -66,7 +71,7 @@ let MSAView = function(
 		;
 		result.genes = new d3.scaleLinear()
 			.domain( [Math.max( genes.numberOfLevels, 1 ), 0] )
-			.range( [geom.margin.top, geom.layout.heights.genes - geom.margin.bottom ] ) ;
+			.range( [geom.margin.top, geom.layout.heights.genes - geom.margin.bottom - 10 ] ) ;
 		return result ;
 	}() ;
 
@@ -267,7 +272,7 @@ MSAView.prototype.draw = function( force ) {
 			.append( 'g' )
 			.attr( 'class', 'axis' )
 		panels.genes.selectAll( 'g.axis' )
-			.attr( 'transform', 'translate( 0,' + ( vs.genes.range()[1] - geom.margin.bottom + 2 ) + ')' )
+			.attr( 'transform', 'translate( 0,' + ( vs.genes.range()[1] + 10 ) + ')' )
 			.call( d3.axisBottom( vs.reference )) ;
 	}
 
