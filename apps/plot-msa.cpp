@@ -120,6 +120,7 @@ public:
 		result.m_ID = GFFRecord::parse_attributes( result.m_elts[8], "ID" ) ;
 		result.m_parent = GFFRecord::parse_attributes( result.m_elts[8], "Parent" ) ;
 		result.m_description = GFFRecord::parse_attributes( result.m_elts[8], "description" ) ;
+		result.m_gene_name = GFFRecord::parse_attributes( result.m_elts[8], "gene_name" ) ;
 		return result ;
 	}
 
@@ -130,7 +131,8 @@ public:
 		m_end( other.m_end ),
 		m_ID( other.m_ID ),
 		m_parent( other.m_parent ),
-		m_description( other.m_description )
+		m_description( other.m_description ),
+		m_gene_name( other.m_gene_name )
 	{
 		// fix elts to refer to our own data
 		for( std::size_t i = 0; i < m_elts.size(); ++i ) {
@@ -154,6 +156,7 @@ public:
 	slice const& attributes() const { return m_elts[8] ; }
 	genfile::VariantEntry const& ID() const { return m_ID ; }
 	genfile::VariantEntry const& parent() const { return m_parent ; }
+	genfile::VariantEntry const& gene_name() const { return m_gene_name ; }
 private:
 	std::string m_data ;
 	std::vector< slice > m_elts ;
@@ -162,6 +165,7 @@ private:
 	genfile::VariantEntry m_ID ;
 	genfile::VariantEntry m_parent ;
 	genfile::VariantEntry m_description ;
+	genfile::VariantEntry m_gene_name ;
 } ;
 
 void parse_gff( std::istream& input, std::function< void( GFFRecord const& record ) > callback ) {
@@ -616,6 +620,7 @@ private:
 		s << "[\n" ;
 		for( std::size_t i = 0; i < genes.size(); ++i ) {
 			GFFRecord const& gene = genes[i] ;
+			genfile::VariantEntry const display = (gene.gene_name().is_missing() ? gene.ID() : gene.gene_name() ) ;
 			s << ((i>0) ? ",\n" : "") ;
 			s << "{ "
 				<< "\"ID\": \"" << gene.ID() << "\", "
@@ -624,7 +629,8 @@ private:
 				<< "\"chromosome\": \"" << gene.sequence() << "\", "
 				<< "\"start\": " << gene.start() << ", "
 				<< "\"end\": " << gene.end() << ", "
-				<< "\"strand\": \"" << gene.strand() << "\" }" ;
+				<< "\"strand\": \"" << gene.strand() << "\", "
+				<< "\"display\": \"" << display << "\" }" ;
 		}
 		s << "\n]" ;
 		return s.str() ;

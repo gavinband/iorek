@@ -308,10 +308,10 @@ GeneView.prototype.draw = function(
 //		.attr( axes.y, elt => scales.level( elt.level ))
 		.attr( 'alignment-baseline', 'middle' )
 		.attr( 'text-anchor', 'start' )
-		.attr( 'font-size', elt => ( elt.symbol == elt.ID ? '7pt' : '7pt' ))
+		.attr( 'font-size', '7pt' )
 		.attr( 'font-weight', elt => ( elt.highlight == 1 ) ? 'bold' : 'normal' )
 		.attr( 'fill', elt => ( elt.highlight == 1 ) ? aes.colour.highlight : aes.colour.text )
 		.attr( 'font-style', 'italic' )
-		.text( elt => elt.ID ) //( elt.name === null ? elt.ID : elt.symbol  ).replace( /P[Ff][A-Z0-9]*_/, '' ))
+		.text( elt => elt.display ? elt.display : elt.ID )
 	;
 }
