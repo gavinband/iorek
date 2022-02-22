@@ -73,7 +73,7 @@ public:
 		
 		options.option_implies_option( "-genes", "-distinguish" ) ;
 		
-		options[ "-annotation" ]
+		options[ "-annotate-bed4" ]
 			.set_description( "Specify one or more bed4 files to annotate with."
 				" Value must be one or more key=filename pair(s)." )
 			.set_takes_values_until_next_option() ;
@@ -211,38 +211,53 @@ public:
 
 private:
 
-	struct SequenceIdentifier {
-		SequenceIdentifier( std::string spec ):
+	// This class handles a specification of a subsequence of a larger contig.
+	// The subsequence exists at a given (1-based) coordinate range on the larger contig
+	// Additionally, it can represent a forward or a reverse-complement portion.
+	struct ContigSubsequenceSpec {
+		enum { eForward = 0, eReverse = 1 } Orientation ;
+		
+		// Spec should be of the form:
+		// contig:start-end
+		// and we expect one-based coordinates.
+		ContigSubsequenceSpec( std::string spec ):
 			m_spec( spec ),
 			m_range( genfile::GenomePositionRange::parse( spec )),
-			m_id( m_range.chromosome() )
+			m_id( m_range.chromosome() ),
+			m_orientation( eForward )
 		{}
 
-		SequenceIdentifier( std::string spec, genfile::GenomePositionRange const& range ):
+		ContigSubsequenceSpec( std::string spec, genfile::GenomePositionRange const& range ):
 			m_spec(spec),
 			m_range( range ),
-			m_id( spec )
+			m_id( spec ),
+			m_orientation( eForward )
 		{}	
 
-		SequenceIdentifier( SequenceIdentifier const& other ):
+		ContigSubsequenceSpec( ContigSubsequenceSpec const& other ):
 			m_spec( other.m_spec ),
 			m_range( other.m_range ),
-			m_id( other.m_id )
+			m_id( other.m_id ),
+			m_orientation( other.m_orientation )
 		{}
 
-		SequenceIdentifier& operator=( SequenceIdentifier const& other ) {
+		ContigSubsequenceSpec& operator=( ContigSubsequenceSpec const& other ) {
 			m_id = other.m_id ;
 			m_spec = other.m_spec ;
 			m_range = other.m_range ;
+			m_orientation = other.m_orientation ;
 			return *this ;
 		}
 		
 		std::string const& spec() const { return m_spec ; }
 		std::string const& id() const { return m_id ; }
 		genfile::GenomePositionRange const& range() const { return m_range ; }
-		
+		Orientation const orientation() {
+			return (m_range.start().position() >= m_range.end().position()) ? eForward : eReverse ;
+		}
+
 	private:
-		SequenceIdentifier() ;
+		ContigSubsequenceSpec() ;
 		
 	private:
 		std::string m_spec ;
@@ -277,6 +292,43 @@ private:
 	typedef std::map< std::string, std::vector< RegionValue > > Annotation ;
 	typedef std::map< std::string, Annotation > Annotations ;
 	
+	struct SequenceCoordinates {
+		SequenceCoordinates(
+			std::string const& sequence_id,
+			bool reversed,
+			genfile::Position const contig_length
+		):
+			m_sequence_id( sequence_id ),
+			m_reversed( reversed ),
+			m_contig_length( contig_length)
+		{}
+
+		SequenceCoordinates( SequenceCoordinates const& other ):
+			m_sequence_id( other.m_sequence_id ),
+			m_reversed( other.m_reversed ),
+			m_contig_length( other.m_contig_length)
+		{}
+
+		SequenceCoordinates& operator=( SequenceCoordinates const& other ) {
+			m_sequence_id = other.m_sequence_id ;
+			m_reversed = other.m_reversed ;
+			m_contig_length = other.m_contig_length ;
+			return *this ;
+		}
+
+		std::string const& sequence_id() const { return m_sequence_id ; }
+		bool& reversed() const { return m_reversed ; }
+		genfile::Position contig_length() const { return m_contig_length ; }
+
+	private:
+		
+		std::string m_sequence_id ;
+		bool m_reversed ;
+		genfile::Position m_contig_length ;
+		
+		SequenceCoordinates() ;
+	} ;
+	
 private:
 	
 	void unsafe_process() {
@@ -303,7 +355,7 @@ private:
 						"ID \"" + id + "\" is not among the sequence IDs in the alignment."
 					) ;
 				}
-				SequenceIdentifier tmp = sequence_ids[i] ;
+				ContigSubsequenceSpec tmp = sequence_ids[i] ;
 				sequence_ids.erase( sequence_ids.begin() + i ) ;
 				sequence_ids.insert( sequence_ids.begin(), tmp ) ;
 			}
@@ -317,8 +369,8 @@ private:
 		}
 		
 		Annotations annotations ;
-		if( options().check( "-annotation" )) {
-			annotations = load_annotations( options().get_values< std::string >( "-annotation" ), sequence_ids ) ;
+		if( options().check( "-annotate-bed4" )) {
+			annotations = load_annotations( options().get_values< std::string >( "-annotate-bed4" ), sequence_ids ) ;
 		}
 
 		std::vector< GFFRecord > genes ;
@@ -367,15 +419,15 @@ private:
 		}
 	}
 	
-	std::vector< SequenceIdentifier > parse_sequence_ids( genfile::Fasta const& fasta ) const {
-		std::vector< SequenceIdentifier > result ;
+	std::vector< ContigSubsequenceSpec > parse_sequence_ids( genfile::Fasta const& fasta ) const {
+		std::vector< ContigSubsequenceSpec > result ;
 		fasta.sequence_ids( [&result,&fasta]( std::string const& id ) {
 			try {
-				result.push_back( SequenceIdentifier( id )) ;
+				result.push_back( ContigSubsequenceSpec( id )) ;
 			}
 			catch( genfile::string_utils::StringConversionError const& e ) {
 				result.push_back( 
-					SequenceIdentifier(
+					ContigSubsequenceSpec(
 						id,
 						fasta.get_sequence( id ).first
 					)
@@ -443,7 +495,7 @@ private:
 	
 	Annotations load_annotations(
 		std::vector< std::string > const& specs,
-		std::vector< SequenceIdentifier > const& sequence_ids
+		std::vector< ContigSubsequenceSpec > const& sequence_ids
 	) {
 		using genfile::string_utils::slice ;
 		Annotations result ;
@@ -459,7 +511,7 @@ private:
 			load_bed4_annotation(
 				elts[1],
 				[&] ( RegionValue const& value ) {
-					for( SequenceIdentifier const& sequence_id: sequence_ids ) {
+					for( ContigSubsequenceSpec const& sequence_id: sequence_ids ) {
 						if(
 							(value.range().chromosome() == sequence_id.id())
 							&& (value.range().end().position() >= sequence_id.range().start().position())
@@ -517,7 +569,7 @@ private:
 	void write_html(
 		std::ostream& out,
 		genfile::Fasta const& fasta,
-		std::vector< SequenceIdentifier > const& sequence_ids,
+		std::vector< ContigSubsequenceSpec > const& sequence_ids,
 		std::vector< GFFRecord > const& genes,
 		genfile::Fasta::UniquePtr const& highlights,
 		Annotations const& annotations
@@ -588,7 +640,7 @@ private:
 
 	std::string sequencesToJSON(
 		genfile::Fasta const& fasta,
-		std::vector< SequenceIdentifier > const& sequence_ids
+		std::vector< ContigSubsequenceSpec > const& sequence_ids
 	) const {
 		std::ostringstream s ;
 		s << "[\n" ;
@@ -636,7 +688,7 @@ private:
 		return s.str() ;
 	}
 
-	std::string rangesToJSON( std::vector< SequenceIdentifier > const& sequence_ids ) const {
+	std::string rangesToJSON( std::vector< ContigSubsequenceSpec > const& sequence_ids ) const {
 		std::ostringstream s ;
 		s << "{\n" ;
 		for( std::size_t i = 0; i < sequence_ids.size(); ++i ) {
@@ -651,7 +703,7 @@ private:
 				<< "\", \"start\": "
 				<< sequence_id.range().start().position()
 				<< ", \"end\": "
-				<< sequence_id.range().end().position() + 1 // adjust to open-ended ranges.
+				<< sequence_id.range().end().position()
 				<< " }" ;
 		}
 		s << "\n}" ;

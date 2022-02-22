@@ -59,9 +59,9 @@ namespace genfile {
 		m_end( GenomePosition( Chromosome(), end ) ),
 		m_have_chromosome( false )
 	{
-		if( m_end < m_start ) {
-			throw BadArgumentError( "genfile::GenomePositionRange::GenomePositionRange( start, end )", "start, end" ) ;
-		}
+//		if( m_end < m_start ) {
+//			throw BadArgumentError( "genfile::GenomePositionRange::GenomePositionRange( start, end )", "start, end" ) ;
+//		}
 	}
 
 	GenomePositionRange::GenomePositionRange( Chromosome chromosome, Position start, Position end ):
@@ -69,9 +69,9 @@ namespace genfile {
 		m_end( GenomePosition( chromosome, end ) ),
 		m_have_chromosome( true )
 	{
-		if( m_end < m_start ) {
-			throw BadArgumentError( "genfile::GenomePositionRange::GenomePositionRange( start, end )", "start, end" ) ;
-		}
+//		if( m_end < m_start ) {
+//			throw BadArgumentError( "genfile::GenomePositionRange::GenomePositionRange( start, end )", "start, end" ) ;
+//		}
 	}
 
 	GenomePositionRange::GenomePositionRange( GenomePosition start, GenomePosition end ):
@@ -83,9 +83,9 @@ namespace genfile {
 			throw BadArgumentError( "genfile::GenomePositionRange::GenomePositionRange( start, end )", "start, end" ) ;
 		}
 
-		if( m_end < m_start ) {
-			throw BadArgumentError( "genfile::GenomePositionRange::GenomePositionRange( start, end )", "start, end" ) ;
-		}
+//		if( m_end < m_start ) {
+//			throw BadArgumentError( "genfile::GenomePositionRange::GenomePositionRange( start, end )", "start, end" ) ;
+//		}
 	}
 	
 	GenomePositionRange::GenomePositionRange( GenomePositionRange const& other ):

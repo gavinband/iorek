@@ -11,10 +11,11 @@ let computeUngappedSequence = function( gappedSequence, coordinateRange ) {
 	let inRange = false ;
 	let sequencePosition = 0 ;
 	let ungappedSequence = [] ;
+	let orientation = Math.sign( coordinateRange.end - coordinateRange.start ) ;
 	for( let i = 0; i < gappedSequence.length; ++i ) {
 		if( gappedSequence[i] == "-" && inRange ) {
 			range.inAlignment.end = i ;
-			range.inSequence.end = coordinateRange.start + ungappedSequence.length ;
+			range.inSequence.end = coordinateRange.start + orientation * ungappedSequence.length ;
 			// take care here to push a newly-built range object otherwise
 			// they all refer to the same one.
 			ranges.push( {
@@ -44,13 +45,13 @@ let computeUngappedSequence = function( gappedSequence, coordinateRange ) {
 	//console.log( "S", gappedSequence, ungappedSequence ) ;
 	// sanity check
 	assert(
-		ungappedSequence.length == (coordinateRange.end - coordinateRange.start),
+		ungappedSequence.length == Math.abs(coordinateRange.end - coordinateRange.start)+1,
 		(
 			"!! ERROR: computeUngappedSequence(): sequence length (" +
 			ungappedSequence.length +
 			") does not match coordinate range (" +
 			coordinateRange.start + " - " + coordinateRange.end +
-			 " (length " + (coordinateRange.end - coordinateRange.start) + ")."
+			 " (length " + (Math.abs(coordinateRange.end - coordinateRange.start)+1) + ")."
 		)
 	) ;
 	
