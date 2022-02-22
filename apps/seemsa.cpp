@@ -215,7 +215,7 @@ private:
 	// The subsequence exists at a given (1-based) coordinate range on the larger contig
 	// Additionally, it can represent a forward or a reverse-complement portion.
 	struct ContigSubsequenceSpec {
-		enum { eForward = 0, eReverse = 1 } Orientation ;
+		typedef enum { eForward = 0, eReverse = 1 } Orientation ;
 		
 		// Spec should be of the form:
 		// contig:start-end
@@ -223,29 +223,25 @@ private:
 		ContigSubsequenceSpec( std::string spec ):
 			m_spec( spec ),
 			m_range( genfile::GenomePositionRange::parse( spec )),
-			m_id( m_range.chromosome() ),
-			m_orientation( eForward )
+			m_id( m_range.chromosome() )
 		{}
 
 		ContigSubsequenceSpec( std::string spec, genfile::GenomePositionRange const& range ):
 			m_spec(spec),
 			m_range( range ),
-			m_id( spec ),
-			m_orientation( eForward )
+			m_id( spec )
 		{}	
 
 		ContigSubsequenceSpec( ContigSubsequenceSpec const& other ):
 			m_spec( other.m_spec ),
 			m_range( other.m_range ),
-			m_id( other.m_id ),
-			m_orientation( other.m_orientation )
+			m_id( other.m_id )
 		{}
 
 		ContigSubsequenceSpec& operator=( ContigSubsequenceSpec const& other ) {
 			m_id = other.m_id ;
 			m_spec = other.m_spec ;
 			m_range = other.m_range ;
-			m_orientation = other.m_orientation ;
 			return *this ;
 		}
 		
@@ -291,43 +287,6 @@ private:
 
 	typedef std::map< std::string, std::vector< RegionValue > > Annotation ;
 	typedef std::map< std::string, Annotation > Annotations ;
-	
-	struct SequenceCoordinates {
-		SequenceCoordinates(
-			std::string const& sequence_id,
-			bool reversed,
-			genfile::Position const contig_length
-		):
-			m_sequence_id( sequence_id ),
-			m_reversed( reversed ),
-			m_contig_length( contig_length)
-		{}
-
-		SequenceCoordinates( SequenceCoordinates const& other ):
-			m_sequence_id( other.m_sequence_id ),
-			m_reversed( other.m_reversed ),
-			m_contig_length( other.m_contig_length)
-		{}
-
-		SequenceCoordinates& operator=( SequenceCoordinates const& other ) {
-			m_sequence_id = other.m_sequence_id ;
-			m_reversed = other.m_reversed ;
-			m_contig_length = other.m_contig_length ;
-			return *this ;
-		}
-
-		std::string const& sequence_id() const { return m_sequence_id ; }
-		bool& reversed() const { return m_reversed ; }
-		genfile::Position contig_length() const { return m_contig_length ; }
-
-	private:
-		
-		std::string m_sequence_id ;
-		bool m_reversed ;
-		genfile::Position m_contig_length ;
-		
-		SequenceCoordinates() ;
-	} ;
 	
 private:
 	
