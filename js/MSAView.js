@@ -80,8 +80,9 @@ let MSAView = function(
 			'-': { 'colour': 'lightgrey', "offset": -5, "height": 2 },
 			'a': { 'colour': '#02AAE9', "offset": -8, "height": 8 },
 			't': { 'colour': '#1A356C', "offset": -8, "height": 8 },
-			'c': { 'colour': '#F44B1A', "offset": -8, "height": 8 },
-			'g': { 'colour': '#941504', "offset": -8, "height": 8 }
+			'c': { 'colour': '#941504', "offset": -8, "height": 8 },
+			'g': { 'colour': '#F44B1A', "offset": -8, "height": 8 },
+			'n': { 'colour': '#555555', "offset": -6, "height": 6 }
 		},
 		colour: {
 			"text": "#eeeeee",
