@@ -471,10 +471,18 @@ private:
 				elts[1],
 				[&] ( RegionValue const& value ) {
 					for( ContigSubsequenceSpec const& sequence_id: sequence_ids ) {
+						genfile::Position const a = std::min(
+							sequence_id.range().start().position(),
+							sequence_id.range().end().position()
+						),
+						b = std::max(
+							sequence_id.range().start().position(),
+							sequence_id.range().end().position()
+						) ;
 						if(
 							(value.range().chromosome() == sequence_id.id())
-							&& (value.range().end().position() >= sequence_id.range().start().position())
-							&& (value.range().start().position() <= sequence_id.range().end().position())
+							&& (value.range().end().position() >= a )
+							&& (value.range().start().position() <= b )
 						) {
 							result[value.range().chromosome()][elts[0]].push_back( value ) ;
 						}
