@@ -1,0 +1,57 @@
+/* colour scheme - dark mode */
+html, body, .names, svg, canvas {
+	background-color: #222222 ;
+}
+.names {
+	background-color: #222222 ;
+}
+svg {
+	background-color: #222222 ;
+	color: #eeeeee ;
+}
+g line {
+	stroke: #eeeeee ;
+}
+g text {
+	fill: #eeeeee ;
+}
+/* layout */
+html, body {
+	height: 100% ;
+}
+body {
+	position: fixed ;
+	overflow: hidden ;
+}
+.figure {
+	position: relative ;
+}
+.names, .sequences, .genes, .controls {
+	position: fixed ;
+	padding: 0px ;
+	margin: 0px ;
+}
+.names, .sequences {
+	top: 40px ;
+}
+.genes {
+	top: 600px ;
+}
+.controls: {
+	top: 20px ;
+}
+.names {
+	left: 20px ;
+	width: 200px ;
+	z-index: 10 ;
+	border-right: 1px solid gray ;
+}
+
+.sequences, .genes, .controls {
+	left: 220px ;
+}
+
+.sequences, .genes {
+	border-left: 1px solid gray ;
+	border-right: 1px solid gray ;
+}
