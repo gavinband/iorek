@@ -36,8 +36,8 @@ let AlignmentTrackScale = function(
 					let track = id_annotations[track_name] ;
 					let minmax = [1000000,-100000] ;
 					for( let z = 0; z < track.length; ++z ) {
-						minmax[1] = Math.max( minmax[0], track[z].value ) ;
-						minmax[0] = Math.min( minmax[1], track[z].value ) ;
+						minmax[0] = Math.min( minmax[0], track[z].value ) ;
+						minmax[1] = Math.max( minmax[1], track[z].value ) ;
 					}
 					minmax[0] = 0 ;
 					result[sequence_id].tracks[track_name] = {
@@ -71,6 +71,17 @@ AlignmentTrackScale.prototype.total_height = function() {
 // return the absolute and relative baseline for the track, and its height.
 AlignmentTrackScale.prototype.map = function( sequence_id, track_name ) {
 	return this.sizes[ sequence_id ].tracks[ track_name ] ;
+}
+
+// return the absolute and relative baseline for the track, and its height.
+AlignmentTrackScale.prototype.tracks = function() {
+	let result = [] ;
+	for( let sequence_id in this.sizes ) {
+		for( let track_name in this.sizes[sequence_id].tracks ) {
+			result.push({sequence_id: sequence_id, track_name: track_name }) ;
+		}
+	}
+	return result ;
 }
 
 AlignmentTrackScale.prototype.scale_value = function( sequence_id, track_name, value, margin = 2 ) {

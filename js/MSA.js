@@ -1,6 +1,6 @@
 'use strict';
 
-let computeUngappedSequence = function( gappedSequence, coordinateRange ) {
+let computeUngappedSequence = function( name, gappedSequence, coordinateRange ) {
 	let ranges = [] ;
 	let range = {
 		inAlignment: {start: 0, end: 0 },
@@ -32,7 +32,7 @@ let computeUngappedSequence = function( gappedSequence, coordinateRange ) {
 			lastAlignmentBase = i ;
 		} else if( gappedSequence[i] != "-" && !inRange ) {
 			range.inAlignment.start = i ;
-			range.inSequence.start = coordinateRange.start + ungappedSequence.length ;
+			range.inSequence.start = coordinateRange.start + orientation * ungappedSequence.length ;
 			inRange = true ;
 			if( ranges.length == 0 ) {
 				firstAlignmentBase = i ;
@@ -42,12 +42,30 @@ let computeUngappedSequence = function( gappedSequence, coordinateRange ) {
 			ungappedSequence.push( gappedSequence[i] ) ;
 		}
 	}
+	
+	if( inRange ) {
+		range.inAlignment.end = gappedSequence.length ;
+		range.inSequence.end = coordinateRange.start + orientation * ungappedSequence.length ;
+		// take care here to push a newly-built range object otherwise
+		// they all refer to the same one.
+		ranges.push( {
+			inAlignment: {
+				start: range.inAlignment.start,
+				end: range.inAlignment.end
+			},
+			inSequence: {
+				start: range.inSequence.start,
+				end: range.inSequence.end
+			}
+		} ) ;
+	}
+	
 	//console.log( "S", gappedSequence, ungappedSequence ) ;
 	// sanity check
 	assert(
 		ungappedSequence.length == Math.abs(coordinateRange.end - coordinateRange.start)+1,
 		(
-			"!! ERROR: computeUngappedSequence(): sequence length (" +
+			"!! ERROR: computeUngappedSequence(): (\"" + name + "\"): sequence length (" +
 			ungappedSequence.length +
 			") does not match coordinate range (" +
 			coordinateRange.start + " - " + coordinateRange.end +
@@ -62,7 +80,7 @@ let computeUngappedSequence = function( gappedSequence, coordinateRange ) {
 	} ;
 } ;
 
-// scales that map sequence coords to MSA coords
+// scales that map sequence/contig coords to MSA coords
 let MSAScales = function( alignment, coordinateRanges ) {
 	this.alignment = alignment ;
 	this.alignmentLength = alignment[0].sequence.length ;
@@ -79,6 +97,7 @@ let MSAScales = function( alignment, coordinateRanges ) {
 				+ this.alignmentLength +" )"
 		) ;
 		let ungapped = computeUngappedSequence(
+			alignment[i].name,
 			gappedSequence,
 			coordinateRanges[ alignment[i].name ]
 		) ;

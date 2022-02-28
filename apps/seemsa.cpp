@@ -403,14 +403,23 @@ private:
 	) const {
 		std::vector< GFFRecord > result ;
 		auto input = genfile::open_text_file_for_input( filename ) ;
+		genfile::Position const a = std::min(
+			range.start().position(),
+			range.end().position()
+		),
+		b = std::max(
+			range.start().position(),
+			range.end().position()
+		) ;
+		
 		{
 			auto progress_context = ui().get_progress_context( "Loading genes" ) ;
 			parse_gff( *input, [&]( GFFRecord const& record ) {
 				progress_context.notify_progress() ;
 				if(
 					(record.sequence() == range.chromosome())
-					&& (record.end() >= range.start().position())
-					&& (record.start() <= range.end().position())
+					&& (record.end() >= a)
+					&& (record.start() <= b)
 				) {
 					result.push_back( record ) ;
 				}
@@ -695,7 +704,7 @@ private:
 					RegionValue const& v = values[i] ;
 					s << ((i>0) ? ",\n" : "" )
 						<< "      { \"chromosome\": \"" << v.range().chromosome() << "\", "
-						<< "\"start\": " << v.range().start().position() << ", "
+						<< "\"start\": " << v.range().start().position() + 1 << ", "
 						<< "\"end\": " << v.range().end().position() << ", "
 						<< "\"value\": " << v.value()
 						<< "}" ;

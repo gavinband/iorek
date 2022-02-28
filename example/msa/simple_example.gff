@@ -1,0 +1,3 @@
+seq4	me	mRNA	20	30	.	+	.	ID=mygene
+seq4	me	exon	25	29	.	+	.	ID=mygene.1;Parent=mygene
+seq4	me	exon	21	23	.	+	.	ID=mygene.2;Parent=mygene

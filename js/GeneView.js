@@ -8,12 +8,20 @@ function GeneView(
 	highlight = []
 ) {
 	this.data = data ;
-	this.region = region ;
+	this.region = function( region ) {
+		return {
+			chromosome: region.chromosome,
+			start: Math.min( region.start, region.end ),
+			end: Math.max( region.start, region.end )
+		} ;
+	}( region ) ;
+
 	this.highlight = highlight ;
 
-	let getRegionalGenes = function( genes, region, highlight ) {
+	this.genes = function( genes, region, highlight ) {
 		// decompose genes data by exons and transcripts.
 		console.log( "getRegionalGenes", genes, region ) ;
+		
 		let result = genes.filter(
 			elt => (
 				[ 'gene', 'transcript', 'mRNA', 'tRNA', 'rRNA', 'snoRNA', 'ncRNA', 'snRNA' ].indexOf( elt.feature ) != -1
@@ -50,7 +58,7 @@ function GeneView(
 			result[j].highlight = ( highlight.indexOf( gene.symbol ) != -1 ) ? 1 : 0 ;
 		}
 		return( result ) ;
-	}
+	}( this.data, this.region, highlight ) ;
 
 	let layoutIntervals = function( genes, spacer = { start: 10, end: 20000 } ) {
 	// genes should be an array of objects with start and end properties
@@ -92,7 +100,6 @@ function GeneView(
 		return( level_endpoints.length ) ;
 	}
 	
-	this.genes = getRegionalGenes( this.data, region, highlight ) ;
 
 	let direction = "horizontal" ;
 	this.numberOfLevels = layoutIntervals(
@@ -127,7 +134,6 @@ GeneView.prototype.draw = function(
 		'+': 1
 	} ;
 	let t = 4 ;
-	let orient = ( direction == "vertical" ) ? -1 : 1 ; // handles upside-downyness of svg canvas coords
 	let textTransform = ( direction == "vertical" ) ? "rotate(-90)" : "" ;
 	let axes = {} ;
 	
@@ -154,9 +160,11 @@ GeneView.prototype.draw = function(
 			"height": "width"
 		} ;
 	} else {
-		console.log( "drawGenes()", "Unrecognised direction \"" + direction + "\", quitting." )
+		console.log( "GeneView.draw()", "Unrecognised direction \"" + direction + "\", quitting." )
 		return ;
 	}
+	let orientation = Math.sign( scales.position(1) - scales.position(0) ) ;
+	console.log( "GeneView.draw()", this.genes, orientation ) ;
 	let min = Math.min ;
 	let max = Math.max ;
 	let abs = Math.abs ;
@@ -262,7 +270,7 @@ GeneView.prototype.draw = function(
 		.selectAll( 'line.dash_e' )
 		.filter( elt => !isVisible( elt.end ))
 		.attr( axes.x1, elt => scales.position( region.end ) )
-		.attr( axes.x2, elt => scales.position( region.end ) + orient * 10 )
+		.attr( axes.x2, elt => scales.position( region.end ) + orientation * 10 )
 		.attr( axes.y1, elt => scales.level( elt.level ))
 		.attr( axes.y2, elt => scales.level( elt.level ))
 		.attr( 'stroke-dasharray', '2' )
@@ -273,23 +281,23 @@ GeneView.prototype.draw = function(
 	transcripts
 		.selectAll( 'line.arrow_body' )
 		.attr( axes.x1, elt => scales.position( elt.txStart ))
-		.attr( axes.x2, elt => scales.position( elt.txStart ) + orient * a[elt.strand] * 4 )
+		.attr( axes.x2, elt => scales.position( elt.txStart ) + orientation * a[elt.strand] * 4 )
 		.attr( axes.y1, elt => scales.level( elt.level + H ))
 		.attr( axes.y2, elt => scales.level( elt.level + H ))
 		.attr( 'stroke', 'black' )
 	;
 	transcripts
 		.selectAll( 'line.arrow_lower' )
-		.attr( axes.x1, elt => scales.position( elt.txStart ) + orient * a[elt.strand] * 4 )
-		.attr( axes.x2, elt => scales.position( elt.txStart ) + orient * a[elt.strand] * 2 )
+		.attr( axes.x1, elt => scales.position( elt.txStart ) + orientation * a[elt.strand] * 4 )
+		.attr( axes.x2, elt => scales.position( elt.txStart ) + orientation * a[elt.strand] * 2 )
 		.attr( axes.y1, elt => scales.level( elt.level + H ))
 		.attr( axes.y2, elt => scales.level( elt.level + H ) - 2 )
 		.attr( 'stroke', 'black' )
 	;
 	transcripts
 		.selectAll( 'line.arrow_upper' )
-		.attr( axes.x1, elt => scales.position( elt.txStart ) + orient * a[elt.strand] * 4 )
-		.attr( axes.x2, elt => scales.position( elt.txStart ) + orient * a[elt.strand] * 2 )
+		.attr( axes.x1, elt => scales.position( elt.txStart ) + orientation * a[elt.strand] * 4 )
+		.attr( axes.x2, elt => scales.position( elt.txStart ) + orientation * a[elt.strand] * 2 )
 		.attr( axes.y1, elt => scales.level( elt.level + H ))
 		.attr( axes.y2, elt => scales.level( elt.level + H ) + 2 )
 		.attr( 'stroke', 'black' )
@@ -299,7 +307,7 @@ GeneView.prototype.draw = function(
 		.selectAll( 'text.symbol' )
 		.attr( 'transform', function( elt ) {
 			if( direction == "horizontal" ) {
-				return "translate(" + (scales.position( elt.end ) + t) + ", " + scales.level( elt.level ) + ")" ;
+				return "translate(" + (scales.position( elt.end ) + orientation * t) + ", " + scales.level( elt.level ) + ")" ;
 			} else if( direction == "vertical" ) {
 				return "translate(" + scales.level( elt.level ) + ", " + (scales.position( elt.start ) + t) + ") rotate(90)" ;
 			}
@@ -307,7 +315,7 @@ GeneView.prototype.draw = function(
 //		.attr( axes.x, elt => scales.position( elt.end ) + t )
 //		.attr( axes.y, elt => scales.level( elt.level ))
 		.attr( 'alignment-baseline', 'middle' )
-		.attr( 'text-anchor', 'start' )
+		.attr( 'text-anchor', ( orientation == 1 ) ? 'start' : 'end' )
 		.attr( 'font-size', '7pt' )
 		.attr( 'font-weight', elt => ( elt.highlight == 1 ) ? 'bold' : 'normal' )
 		.attr( 'fill', elt => ( elt.highlight == 1 ) ? aes.colour.highlight : aes.colour.text )
