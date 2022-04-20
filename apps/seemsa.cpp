@@ -219,7 +219,7 @@ private:
 		
 		// Spec should be of the form:
 		// contig:start-end
-		// and we expect one-based coordinates.
+		// and we expect one-based, closed coordinates.
 		ContigSubsequenceSpec( std::string spec ):
 			m_spec( spec ),
 			m_range( genfile::GenomePositionRange::parse( spec )),
