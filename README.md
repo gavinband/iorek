@@ -13,8 +13,19 @@ This repository contains a collection of programs for analysing sequence data.
 Iorek is released under the Boost software license.  See the LICENSE.txt file for details.
 
 Iorek makes use of several other libraries that are included in the source repository
-and released under their own respective licenses.  Please see the respective license files
-is subdirectories of 3rd_party/ for details.
+and released under their own respective licenses.  These include:
+
+* boost
+* htslib
+* SeqLib
+* parallel-hashmap
+* jellyfish2
+* Eigen
+* sqlite3
+* zstandard
+* catch2
+
+Please see the respective license files in subdirectories of 3rd_party/ for details.
 
 ## Compilation ##
 
@@ -37,14 +48,4 @@ Executables will be copied to `[installation path]/bin/`.
 
 ## Contributors ##
 
-Iorek was written by Gavin Band.  It is based on several other libraries, which are included 
-
-* boost
-* htslib
-* SeqLib
-* parallel-hashmap
-* jellyfish2
-* Eigen
-* sqlite3
-* zstandard
-* catch2
+Iorek was written by Gavin Band.
