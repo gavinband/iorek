@@ -44,3 +44,9 @@ def build( bld ):
 		use = 'package_revision appcontext genfile qcdb pthread',
 		includes = "./"
 	)
+	bld.program(
+		source = "find-homopolymers.cpp",
+		target = 'find-homopolymers',
+		use = 'package_revision appcontext genfile qcdb pthread',
+		includes = "./"
+	)
