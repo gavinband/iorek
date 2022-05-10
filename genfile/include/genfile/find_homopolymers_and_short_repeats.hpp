@@ -19,6 +19,12 @@ namespace genfile {
 		) ;
 	}
 
+	// Find all homopolymer, di- and tri-nucleotide repeats with at least 2 repeat units
+	// in the sequence supplied by the pair of iterators.
+	// Results are reported via the callback in 0-based, half-open coordinates, i.e. the first base is at 0 and the range start = 10, end = 15 representes a span of 5 bases.
+	// If repeat units overlap (e.g. CATCATAGTAG) then both overlapping ranges are reported.
+	// Non-nucleotide bases (ACGT) are ignored.
+	// Homopolymers are not reported as di- or tri-nucleotide repeats (e.g. AAA is not a repeat unit.)
 	template< typename Iterator >
 	void find_homopolymers_and_short_repeats(
 		Iterator begin,
@@ -51,14 +57,17 @@ namespace genfile {
 				std::size_t const current_length = counter - start ;
 
 				// Algorithm example: take sequence
-				// A T G A T G A C T A C  T ...
+				// A T G A T G A C G A C  G ...
 				// 0 1 2 3 4 5 6 7 8 9 10 11
 				// with repeat unit length L = 3.
 				// We accumulate sequence until the repeat length is filled.
 				// At this point we test the next base against the next repeat base.
 				// If they differ, the potential repeat is over.  If it is a genuine repeat (more than two copies) we output.
 				// To start a new repeat, we set start to (L-1) bases back to account for possible
-				// overlapping repeats, as in the example.
+				// overlapping repeats.  For the above example, we should output:
+				// (ATG) repeat for 7 bases
+				// (GAC) repeat for 7 bases
+				// etc. - noting that these overlap.
 				if( (current_length >= repeat_unit_length) && (base != repeat[counter % repeat_unit_length]) ) {
 					if( current_length >= 2 * repeat.size() ) {
 						impl::report_repeat( repeat, start, current_length, x, callback ) ;
@@ -84,6 +93,12 @@ namespace genfile {
 		progress_callback( sequence_length, sequence_length ) ;
 	}
 
+	// Find all homopolymer, di- and tri-nucleotide repeats with at least 2 repeat units
+	// in the given fasta file.
+	// Results are reported via the callback in 0-based, half-open coordinates, i.e. the first base is at 0 and the range start = 10, end = 15 representes a span of 5 bases.
+	// If repeat units overlap (e.g. CATCATAGTAG) then both overlapping ranges are reported.
+	// Non-nucleotide bases (ACGT) are ignored.
+	// Homopolymers are not reported as di- or tri-nucleotide repeats (e.g. AAA is not a repeat unit.)
 	void find_homopolymers_and_short_repeats(
 		Fasta const& fasta,
 		std::function< void( uint32_t const start, uint32_t const end, std::string const& motif ) > callback,
