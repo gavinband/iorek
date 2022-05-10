@@ -10,6 +10,7 @@
 #include <boost/filesystem.hpp>
 
 #include "appcontext/appcontext.hpp"
+#include "appcontext/get_current_time_as_string.hpp"
 #include "genfile/GenomePositionRange.hpp"
 #include "genfile/Fasta.hpp"
 #include "genfile/Error.hpp"
@@ -95,6 +96,10 @@ private:
 
 	void process( genfile::Fasta const& fasta, uint32_t const max_length, statfile::BuiltInTypeStatSink& sink ) const {
 		std::vector< std::string > const& sequence_ids = fasta.sequence_ids() ;
+		sink.write_metadata(
+				"Computed by find-homopolymers " + appcontext::get_current_time_as_string() + "\n"
+				+ "Coordinates are 1-based, closed."
+		) ;
 		sink | "sequence" | "start" | "end" | "repeat" | "length" ;
 		for( auto sequence_id: sequence_ids ) {
 			process(
@@ -152,8 +157,16 @@ private:
 					if( current_length >= 2 * repeat_unit_length ) {
 						std::copy( repeat.begin() + start, repeat.end(), repeat_units[i].begin() ) ;
 						std::copy( repeat.begin(), repeat.begin() + start, repeat_units[i].begin() + repeat_unit_length - start ) ;
+						// Avoid sequences of Ns or other missing base data
 						bool only_proper_nucleotides = ( repeat_units[i].find_first_not_of( "ACGT" ) == std::string::npos ) ;
-						if( only_proper_nucleotides ) {
+						// Avoid listing homopolymers as di- or tri-nucleotide repeats
+						// TODO: fix the following line to work for arbitrary repeat length.
+						bool valid = (
+							(repeat_unit_length == 1 )
+							|| ( repeat_unit_length == 2 && repeat[1] != repeat[0] )
+							|| ( repeat_unit_length == 3 && ( repeat[1] != repeat[0] || repeat[2] != repeat[0] ))
+						) ;
+						if( valid && only_proper_nucleotides ) {
 							// report in 0-based, half open coords
 							callback( sequence_id, x - current_length, x, repeat_units[i] ) ;
 						}
