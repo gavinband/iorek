@@ -21,14 +21,75 @@
 #include "genfile/GenomePositionRange.hpp"
 
 namespace genfile {
+	// Represents sequences from a Fasta file.
+	// This uses one-based, closed coordinates through the API.
 	struct Fasta: public boost::noncopyable {
 	public:
 		typedef std::unique_ptr< Fasta > UniquePtr ;
 		typedef std::deque< char > ContigSequence ;
 		typedef genfile::Chromosome Chromosome ;
 		typedef ContigSequence::const_iterator ConstSequenceIterator ;
-		typedef std::pair< ConstSequenceIterator, ConstSequenceIterator > ConstSequenceRange ;
-		typedef std::pair< genfile::GenomePositionRange, ConstSequenceRange > PositionedSequenceRange ;
+		//typedef std::pair< ConstSequenceIterator, ConstSequenceIterator > ConstSequenceRange ;
+		//typedef std::pair< genfile::GenomePositionRange, ConstSequenceRange > PositionedSequenceRange ;
+
+		struct ConstSequenceRange
+		{
+			ConstSequenceRange( ConstSequenceIterator const& begin, ConstSequenceIterator const& end ):
+				m_begin( begin ),
+				m_end( end )
+			{}
+
+			ConstSequenceRange( ConstSequenceRange const& other ):
+				m_begin( other.m_begin ),
+				m_end( other.m_end )
+			{}
+
+			ConstSequenceRange& operator=( ConstSequenceRange const& other ) {
+				m_begin = other.m_begin ;
+				m_end = other.m_end ;
+				return *this ;
+			}
+			
+			ConstSequenceIterator begin() const { return m_begin ; }
+			ConstSequenceIterator end() const { return m_end ; }
+			std::size_t size() const { return std::distance( m_begin, m_end ) ; }
+			
+		private:
+			ConstSequenceIterator m_begin ;
+			ConstSequenceIterator m_end ;
+		} ;
+
+		struct PositionedSequenceRange
+		{
+			PositionedSequenceRange( PositionedSequenceRange const& other ):
+				m_positions( other.m_positions ),
+				m_length( other.m_length ),
+				m_sequence( other.m_sequence )
+			{}
+
+			PositionedSequenceRange(
+				genfile::GenomePositionRange const& positions,
+				ConstSequenceRange const& sequence
+			):
+				m_positions( positions ),
+				m_length( positions.end().position() - positions.start().position() ),
+				m_sequence( sequence )
+			{}
+
+			genfile::GenomePositionRange positions() const { return m_positions ; }
+			std::size_t length() const { return m_length ; }
+			std::size_t size() const { return m_length ; }
+			ConstSequenceRange sequence() const { return m_sequence ; }
+
+		private:
+			genfile::GenomePositionRange const m_positions ;
+			std::size_t const m_length ;
+			ConstSequenceRange const m_sequence ;
+		private:
+			PositionedSequenceRange() ;
+			PositionedSequenceRange& operator=( PositionedSequenceRange const& other ) ;
+		} ;
+		
 		typedef std::pair< std::pair< genfile::Position, genfile::Position >, ContigSequence > ChromosomeRangeAndSequence ;
 		typedef std::map< Chromosome, ChromosomeRangeAndSequence > SequenceData ;
 		typedef boost::function< void ( std::size_t, boost::optional< std::size_t > ) > ProgressCallback ;
@@ -54,9 +115,20 @@ namespace genfile {
 
 		bool contains( genfile::Chromosome const& chromosome ) const ;
 		char get_base( genfile::GenomePosition const& position ) const ;
-		void get_sequence( genfile::Chromosome const& name, genfile::Position start, genfile::Position end, std::deque< char >* result ) const ;
-		PositionedSequenceRange get_sequence( genfile::Chromosome const& name ) const ;
-		PositionedSequenceRange get_sequence( genfile::Chromosome const& name, genfile::Position start, genfile::Position end ) const ;
+		void get_sequence(
+			genfile::Chromosome const& name,
+			genfile::Position start,
+			genfile::Position end,
+			std::deque< char >* result
+		) const ;
+		PositionedSequenceRange get_sequence(
+			genfile::Chromosome const& name
+		) const ;
+		PositionedSequenceRange get_sequence(
+			genfile::Chromosome const& name,
+			genfile::Position start,
+			genfile::Position end
+		) const ;
 
 	private:
 		SequenceData m_data ;

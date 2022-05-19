@@ -243,13 +243,18 @@ namespace genfile {
 		return *(where->second.second.begin() + position.position() - sequence_start) ;
 	}
 
-	void Fasta::get_sequence( genfile::Chromosome const& chromosome, genfile::Position start, genfile::Position end, std::deque<char>* result ) const {
+	void Fasta::get_sequence(
+		genfile::Chromosome const& chromosome,
+		genfile::Position start,
+		genfile::Position end,
+		std::deque<char>* result
+	) const {
 		PositionedSequenceRange range = get_sequence( chromosome, start, end ) ;
 		result->resize( end - start, '.' ) ;
 
 		std::copy(
-			range.second.first, range.second.second,
-			result->begin() + ( range.first.start().position() - start )
+			range.sequence().begin(), range.sequence().end(),
+			result->begin() + ( range.positions().start().position() - start )
 		) ;
 	}
 
