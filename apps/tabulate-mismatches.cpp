@@ -75,7 +75,7 @@ public:
 
 		options.declare_group( "Model options" ) ;
 		options[ "-mq" ]
-			.set_description( "Mapping quality threshold" )
+			.set_description( "Ignore alignments below this mapping quality threshold" )
 			.set_takes_single_value()
 			.set_default_value( 0 ) ;
 
@@ -86,6 +86,7 @@ public:
 		options[ "-threads" ]
 			.set_description( "Use this many extra threads for file reading" )
 			.set_takes_single_value()
+			.set_hidden()
 			.set_default_value( 0 ) ;
 
 	}
