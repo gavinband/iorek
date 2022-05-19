@@ -55,14 +55,11 @@ public:
 			.set_takes_values_until_next_option()
 			.set_is_required()
 		;
-
 		options[ "-o" ]
 			.set_description( "Path of output file." )
 			.set_takes_single_value()
 			.set_default_value( "-" ) ;
 
-		options.declare_group( "Model options" ) ;
-		
 		options[ "-range" ]
 			.set_description( "Genommic regions (expressed in the form <chromosome>:<start>-<end>)"
 				" to process.  Regions are expressed in 1-based, right-closed coordinates."
@@ -71,27 +68,19 @@ public:
 			)
 			.set_takes_single_value()
 		;
-		/*
-		options[ "-inference-regions" ]
-			.set_description( "Set of regions (expressed in the form <chromosome>:<start>-<end>)"
-				" to infer copy number variants in."
-				"Regions are expressed in 1-based, right-closed coordinates."
-				" Alternatively this can be the name of a file containing a list of regions."
-			)
-			.set_takes_values_until_next_option()
-			.set_is_required()
-		;
-		*/
-
 		options[ "-reference" ]
 			.set_description( "Specify reference sequence" )
 			.set_takes_single_value()
 			.set_is_required() ;
 
+		options.declare_group( "Model options" ) ;
 		options[ "-mq" ]
 			.set_description( "Mapping quality threshold" )
 			.set_takes_single_value()
 			.set_default_value( 0 ) ;
+
+		options[ "-by-position" ]
+			.set_description( "Specify that errors should be tabulated by position, not aggregated." ) ;
 
 		options.declare_group( "Miscellaneous options" ) ;
 		options[ "-threads" ]
@@ -114,12 +103,16 @@ namespace {
 	struct MismatchClass
 	{
 		MismatchClass(
+			std::string const& contig_id,
+			uint32_t position,
 			MismatchType const& type,
 			std::string const& contig_sequence,
 			std::string const& read_sequence,
 			std::string const& left_flank,
 			std::string const& right_flank
 		):
+			m_contig_id( contig_id ),
+			m_position( position ),
 			m_type( type ),
 			m_contig_sequence( contig_sequence ),
 			m_read_sequence( read_sequence ),
@@ -130,13 +123,30 @@ namespace {
 		MismatchClass(
 			MismatchClass const& other
 		):
+			m_contig_id( other.m_contig_id ),
+			m_position( other.m_position ),
 			m_type( other.m_type ),
 			m_contig_sequence( other.m_contig_sequence ),
 			m_read_sequence( other.m_read_sequence ),
 			m_left_flank( other.m_left_flank ),
 			m_right_flank( other.m_right_flank )
 		{}
-		
+
+		MismatchClass& operator=(
+				MismatchClass const& other
+		) {
+			m_contig_id = other.m_contig_id ;
+			m_position = other.m_position ;
+			m_type = other.m_type ;
+			m_contig_sequence = other.m_contig_sequence ;
+			m_read_sequence = other.m_read_sequence ;
+			m_left_flank = other.m_left_flank ;
+			m_right_flank = other.m_right_flank ;
+			return *this ;
+		}
+
+		std::string const& contig_id() const { return m_contig_id ; }
+		uint32_t position() const { return m_position ; }
 		MismatchType const type() const { return m_type ; }
 		std::string const& contig_sequence() const { return m_contig_sequence ; }
 		std::string const& read_sequence() const { return m_read_sequence ; }
@@ -146,6 +156,8 @@ namespace {
 		friend bool operator<( MismatchClass const& left, MismatchClass const& right ) ;
 		friend std::ostream& operator<<( std::ostream& out, MismatchClass const& m ) ;
 	private:
+		std::string m_contig_id ;
+		uint32_t m_position ;
 		MismatchType m_type ;
 		std::string m_contig_sequence ;
 		std::string m_read_sequence ;
@@ -154,6 +166,16 @@ namespace {
 	} ;
 	
 	bool operator<( MismatchClass const& left, MismatchClass const& right ) {
+		if( left.m_contig_id < right.m_contig_id ) {
+			return true ;
+		} else if( left.m_contig_id > right.m_contig_id ) {
+			return false ;
+		}
+		if( left.m_position < right.m_position ) {
+			return true ;
+		} else if( left.m_position > right.m_position ) {
+			return false ;
+		}
 		if( left.m_type < right.m_type ) {
 			return true ;
 		} else if( left.m_type > right.m_type ) {
@@ -183,7 +205,7 @@ namespace {
 	}
 
 	std::ostream& operator<<( std::ostream& out, MismatchClass const& m ) {
-		out << char( m.m_type ) << " "
+		out << m.m_contig_id << ":" << m.m_position << ": " << char( m.m_type ) << " "
 			<< m.m_left_flank << "[" << m.m_contig_sequence << ">" << m.m_read_sequence << "]" << m.m_right_flank ;
 		return out ;
 	}
@@ -242,7 +264,9 @@ namespace {
 
 		uint32_t read_position = 0;
 		uint32_t aligned_position = alignment.Position() ; // 0-based
-		std::cerr << "Inspecting read: " << alignment.Qname() << ", CIGAR = \"" << cigar << "\".\n" ;
+#if DEBUG
+		//std::cerr << "Inspecting read: " << alignment.Qname() << ", CIGAR = \"" << cigar << "\".\n" ;
+#endif
 		seqlib::Cigar::const_iterator i = cigar.begin(), end_i = cigar.end() ;
 		for( ; i != end_i; ++i ) {
 			char const type = i->Type() ;
@@ -304,11 +328,11 @@ namespace {
 					callback(
 						contig_id,
 						aligned_position,
-						eDeletion,
+						eInsertion,
 						(contig.sequence().begin() + aligned_position - std::min( flank, aligned_position + 1 )),
 						(contig.sequence().begin() + aligned_position),
 						(contig.sequence().begin() + aligned_position),
-						(contig.sequence().begin() + std::min( aligned_position+i->Length()+flank, uint32_t(contig.size()) )),
+						(contig.sequence().begin() + std::min( aligned_position+flank, uint32_t(contig.size()) )),
 						read_sequence.begin() + read_position,
 						read_sequence.begin() + read_position + i->Length()
 					) ;
@@ -363,7 +387,8 @@ public:
 	}
 
 private:
-
+	typedef std::map< MismatchClass, int > Result ;
+	
 	void unsafe_process() {
 		unsafe_process(
 			options().get_values< std::string >( "-reads" ),
@@ -375,6 +400,8 @@ private:
 		std::vector< std::string > const& filenames,
 		std::string const& fasta_filename
 	) {
+		Result result ;
+
 		statfile::BuiltInTypeStatSink::UniquePtr sink = statfile::BuiltInTypeStatSink::open(
 			options().get< std::string >( "-o" )
 		) ;
@@ -389,15 +416,17 @@ private:
 			process_reads(
 				filenames[file_i],
 				*fasta,
-				*sink
+				&result
 			) ;
 		}
+		
+		output_results( result, *sink ) ;
 	}
 	
 	void process_reads(
 		std::string const& filename,
 		genfile::Fasta const& fasta,
-		statfile::BuiltInTypeStatSink& sink
+		Result* result
 	) {
 		seqlib::BamReader reader;
 		std::unique_ptr< seqlib::ThreadPool > thread_pool ;
@@ -430,20 +459,22 @@ private:
 			}
 		}
 		
-		process_reads( reader, header, fasta, sink ) ;
+		auto progress_context = ui().get_progress_context( "Processing \"" + filename + "\"" ) ;
+		process_reads( reader, header, fasta, result, [&] ( std::size_t count ) { progress_context( count ) ; } ) ;
 	}
 
 	void process_reads(
 		seqlib::BamReader reader,
 		seqlib::BamHeader header,
 		genfile::Fasta const& fasta,
-		statfile::BuiltInTypeStatSink& sink
+		Result* result,
+		std::function< void( std::size_t ) > progress_callback
 	) {
-		std::map< MismatchClass, int > result ;
-
 		int32_t const mq_threshold = options().get< int32_t >( "-mq" ) ;
+		bool const by_position = options().check( "-by-position" ) ;
 		
 		seqlib::BamRecord alignment ;
+		std::size_t count = 0 ;
 		while( reader.GetNextRecord( alignment ) ) {
 			if( 
 				!alignment.SecondaryFlag()
@@ -477,19 +508,46 @@ private:
 						std::transform( right_flank.begin(), right_flank.end(), right_flank.begin(), ::toupper ) ;
 						//std::transform( read_sequence.begin(), read_sequence.end(), std::toupper ) ;
 						MismatchClass e(
+							by_position ? contig_id  : "",
+							by_position ? position : 0ul,
 							type,
 							contig_sequence,
 							read_sequence,
 							left_flank,
 							right_flank
 						) ;
+#if DEBUG
 						std::cerr << "mismatch: (" << contig_id << ":" << (position+1) << "): " << e << "\n"  ;
-						++result[e] ;
+#endif
+						++(*result)[e] ;
 					}
 				) ; 
 			}
+			++count ;
+			if( progress_callback ) {
+				progress_callback( count ) ;
+			}
 		}
-		std::cerr << "Finished.\n" ;
+	}
+
+	void output_results( Result const& result, statfile::BuiltInTypeStatSink& sink ) {
+		bool const by_position = options().check( "-by-position" ) ;
+		sink | "count" ;
+		if( by_position ) {
+			sink | "contig_id" | "position" ;
+		}
+		sink | "type" | "contig_sequence" | "read_sequence" | "left_flank" | "right_flank" ;
+		auto progress_context = ui().get_progress_context( "Storing results" ) ;
+		std::size_t count = 0 ;
+		for( auto& kv: result ) {
+			MismatchClass const& m = kv.first ;
+			sink << kv.second ; // count
+			if( by_position ) {
+				sink << m.contig_id() << (m.position()+1) ; // convert back to 1-based coords
+			}
+			sink << std::string( 1, m.type() ) << m.contig_sequence() << m.read_sequence() << m.left_flank() << m.right_flank() << statfile::end_row() ;
+			progress_context( ++count, result.size() ) ;
+		}
 	}
 } ;
 
