@@ -1,0 +1,12 @@
+@HD	VN:1.6	SO:coordinate
+@SQ	SN:contig1	LN:64
+read1	0	contig1	1	60	4M	*	0	4	ATCG	*	CM:Z:four base match
+read2	0	contig1	5	60	4M	*	0	4	ATCG	*	CM:Z:four base match
+read3	0	contig1	5	60	4M	*	0	4	AtCG	*	CM:Z:four base match w/lower case base
+read4	0	contig1	7	60	1S3M	*	0	4	GCGA	*	CM:Z:clipped initial base
+read5	0	contig1	7	60	1S3M	*	0	4	GCGT	*	CM:Z:clipped initial base w/mismatch at position 9
+read6	0	contig1	9	60	3M1S	*	0	4	ATCC	*	CM:Z:clipped terminal base
+read7	0	contig1	9	60	3M1S	*	0	4	TTCC	*	CM:Z:clipped terminal base w/mismatch at position 9
+read8	0	contig1	13	60	2M1D1M	*	0	4	ATG	*	CM:Z:interior deletion at position 15
+read9	0	contig1	17	60	2M1I2M	*	0	4	ATGCG	*	CM:Z:interior insertion at position 19
+read10	0	contig1	21	60	3M2I5M	*	0	8	ATGAAGATCG	*	CM:Z:adjacent mismatch and insertion at position 23-24
