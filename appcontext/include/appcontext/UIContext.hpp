@@ -38,7 +38,7 @@ namespace appcontext {
 
 		void operator()(
 			std::size_t const count,
-			boost::optional< std::size_t > const total_count
+			boost::optional< std::size_t > const total_count = boost::optional< std::size_t >()
 		) const {
 			notify_progress( count, total_count ) ;
 		}
