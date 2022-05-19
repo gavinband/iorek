@@ -193,7 +193,7 @@ public:
 		// walk Cigar string, count coverage for aligned bases only.
 		seqlib::Cigar const& cigar = read.GetCigar() ;
 		seqlib::Cigar::const_iterator i = cigar.begin(), end_i = cigar.end() ;
-		int position = read.Position();
+		int position = read.Position() ; // 0-based
 		for( ; i != end_i; ++i ) {
 			char const type = i->Type() ;
 
@@ -464,6 +464,9 @@ private:
 		
 		seqlib::BamHeader const& header = reader.Header() ;
 		try {
+			// Note: seqlib takes 1-baed coordinates here and holds them 1-based internally.
+			// But it converts to 0-based to talk to htslib under the hood.
+			// The alignments also come back as 0-based.
 			reader.SetRegion( seqlib::GenomicRegion( region.toString(), header )) ;
 		} catch( std::invalid_argument const& e ) {
 			throw genfile::BadArgumentError(
@@ -478,7 +481,6 @@ private:
 		seqlib::BamRecord alignment ;
 		seqlib::BamRecordVector records ;
 		std::deque< seqlib::BamRecord > alignments ;
-		std::size_t count = 0 ;
 		while( reader.GetNextRecord( alignment ) ) {
 			if( 
 				!alignment.SecondaryFlag()
