@@ -1,7 +1,7 @@
 import os.path
 import glob
 
-VERSION = '0.6'
+VERSION = '0.7'
 
 subdirs = [ '3rd_party', 'appcontext', 'apps', 'statfile', 'genfile', 'qcdb', 'lib' ]
 

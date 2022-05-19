@@ -7,6 +7,7 @@ This repository contains a collection of programs for analysing sequence data.
 - `coverotron` computes per-base or per-window sequence read coverage from a set of BAM or CRAM files.
 - `seemsa` reads a multiple sequence alignment FASTA file, and writes an interactive HTML visualisation of it.
 - `tabulate-alignments` reports the count of reads split by read base (or insertion/deletion) and mapping quality at each position in a given range or ranges.
+- `tabulate-mismatches` walks all reads and reports all mismatches / insertions / deletions stratified by their type and flanking sequence.
 
 ## License ##
 
