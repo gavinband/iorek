@@ -102,10 +102,10 @@ private:
 		sink | "sequence" | "start" | "end" | "repeat" | "length" ;
 		for( auto sequence_id: sequence_ids ) {
 			auto progress_context = ui().get_progress_context( "Processing \"" + sequence_id + "\"" ) ;
-			genfile::Fasta::PositionedSequenceRange const& sequence = fasta.get_sequence( sequence_id ) ;
+			genfile::Fasta::PositionedSequenceRange const& contig = fasta.get_sequence( sequence_id ) ;
 			genfile::find_homopolymers_and_short_repeats(
-				sequence.second.first,
-				sequence.second.second,
+				contig.sequence().begin(),
+				contig.sequence().end(),
 				[&]( uint32_t start, uint32_t end, std::string const& repeat ) {
 					sink << sequence_id << (start+1) << end << repeat << (end-start) << statfile::end_row() ;
 				},

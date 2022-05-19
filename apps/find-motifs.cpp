@@ -134,10 +134,10 @@ private:
 		sink | "sequence" | "length" | "motif" | "start" | "end" ;
 		for( auto sequence_id: sequence_ids ) {
 			auto progress_context = ui().get_progress_context( "Processing \"" + sequence_id + "\"" ) ;
-			genfile::Fasta::PositionedSequenceRange sequence = fasta.get_sequence( sequence_id ) ;
-			std::size_t const sequence_length = std::distance( sequence.second.first, sequence.second.second ) ;
-			genfile::Fasta::ConstSequenceIterator const sequence_begin = sequence.second.first ;
-			std::size_t const zero_based_start = sequence.first.start().position() - 1 ;
+			genfile::Fasta::PositionedSequenceRange contig = fasta.get_sequence( sequence_id ) ;
+			std::size_t const sequence_length = std::distance( contig.sequence().begin(), contig.sequence().end() ) ;
+			genfile::Fasta::ConstSequenceIterator const sequence_begin = contig.sequence().begin() ;
+			std::size_t const zero_based_start = contig.positions().start().position() - 1 ;
 			for( std::size_t x = 0; x < sequence_length; ++x ) {
 				for( auto motif: motifs ) {
 					if( x + motif.size() <= sequence_length ) {
