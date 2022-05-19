@@ -362,7 +362,7 @@ private:
 		std::vector< std::string > const& sequence_ids = fasta.sequence_ids() ;
 		for( std::size_t i = 0; i < sequence_ids.size(); ++i ) {
 			genfile::Fasta::PositionedSequenceRange p = fasta.get_sequence( sequence_ids[i] ) ;
-			std::string sequence( p.second.first, p.second.second ) ; 
+			std::string sequence( p.sequence().begin(), p.sequence().end() ) ; 
 			if( i == 0 ) {
 				sequence_length = sequence.size() ;
 			} else {
@@ -388,7 +388,7 @@ private:
 				result.push_back( 
 					ContigSubsequenceSpec(
 						id,
-						fasta.get_sequence( id ).first
+						fasta.get_sequence( id ).positions()
 					)
 				) ;
 			}
@@ -628,7 +628,7 @@ private:
 				<< "{ \"name\": \""
 				<< sequence_id.id()
 				<< "\", \"sequence\": \""
-				<< std::string( p.second.first, p.second.second )
+				<< std::string( p.sequence().begin(), p.sequence().end() )
 				<< "\" }" ;
 			++count ;
 		}
