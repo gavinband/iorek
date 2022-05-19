@@ -2,7 +2,13 @@
 
 `tabulate-mismatches` is a tool to help with context-specific error rate estimation for next generation sequencing datasets.
 
-In short it reads in read alignments from a BAM or CRAM file, and the reference FASTA file to which the reads are aligned.  It then walks all the reads to find mismatches, insertions and deletions, and tabulates them along with the bases involved, and the flanking sequence, and (in principle) other information such as their location within homopolymer runs.
+It:
+
+* reads in read alignments from a BAM or CRAM file;
+* reads the reference FASTA file to which the reads are aligned;
+* then it walks the reads to find all mismatches, insertions and deletions, and tabulates them along with the bases involved, and the flanking sequence.
+
+In principle other information such as the location within homopolymer runs will be collected / tabulated, but this is not implemented yet.
 
 ## Synopsis
 
