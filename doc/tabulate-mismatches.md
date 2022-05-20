@@ -52,25 +52,25 @@ ATCGATCGATCGATCGATCGATCGATCGATCGATCGATCGATCGATCGATCGATCGATCGATCG
 $ cat reads.sam
 @HD	VN:1.6	SO:coordinate
 @SQ	SN:contig1	LN:64
-read1	0	contig1	1	60	4M	*	0	4	ATCG	*	CM:Z:four base match
-read2	0	contig1	5	60	4M	*	0	4	ATCG	*	CM:Z:four base match
-read3	0	contig1	5	60	4M	*	0	4	AtCG	*	CM:Z:four base match w/lower case base
-read4	0	contig1	5	60	4M	*	0	4	TTCG	*	CM:Z:1st base mismatch, position 5
-read5	0	contig1	5	60	4M	*	0	4	AACG	*	CM:Z:2nd base mismatch, position 6
-read6	0	contig1	5	60	4M	*	0	4	ATTG	*	CM:Z:3rd base mismatch, position 7
-read7	0	contig1	5	60	4M	*	0	4	ATCT	*	CM:Z:4th base mismatch, position 8
-read8	0	contig1	11	60	1S3M	*	0	4	GCGA	*	CM:Z:clipped initial base
-read9	0	contig1	11	60	1S3M	*	0	4	GCGT	*	CM:Z:clipped initial base w/mismatch at position 13
-read10	0	contig1	13	60	3M1S	*	0	4	ATCC	*	CM:Z:clipped terminal base
-read11	0	contig1	13	60	3M1S	*	0	4	TTCC	*	CM:Z:clipped terminal base w/mismatch at position 13
-read12	0	contig1	17	60	2M1D1M	*	0	4	ATG	*	CM:Z:interior deletion at position 15
-read13	0	contig1	21	60	2M1I2M	*	0	4	ATGCG	*	CM:Z:interior insertion at position 23
-read14	0	contig1	25	60	3M2I5M	*	0	8	ATGAAGATCG	*	CM:Z:adjacent mismatch and insertion at position 27-28
-read15	0	contig1	25	60	3M2D3M	*	0	8	ATGTCG	*	CM:Z:adjacent mismatch and deletion at position 27-28
-read16	0	contig1	30	60	4M	*	0	4	TCGT	*	CM:Z:4th base mismatch, position 33
-read17	0	contig1	31	60	4M	*	0	4	CGTT	*	CM:Z:3rd base mismatch, position 33
-read18	0	contig1	32	60	4M	*	0	4	GTTC	*	CM:Z:2nd base mismatch, position 33
-read19	0	contig1	33	60	4M	*	0	4	TTCG	*	CM:Z:another 1st base mismatch, position 33
+read1	0	contig1	1	60	4M	*	0	4	ATCG	*	XC:Z:four base match
+read2	0	contig1	5	60	4M	*	0	4	ATCG	*	XC:Z:four base match
+read3	0	contig1	5	60	4M	*	0	4	AtCG	*	XC:Z:four base match w/lower case base
+read4	0	contig1	5	60	4M	*	0	4	TTCG	*	XC:Z:1st base mismatch, position 5
+read5	0	contig1	5	60	4M	*	0	4	AACG	*	XC:Z:2nd base mismatch, position 6
+read6	0	contig1	5	60	4M	*	0	4	ATTG	*	XC:Z:3rd base mismatch, position 7
+read7	0	contig1	5	60	4M	*	0	4	ATCT	*	XC:Z:4th base mismatch, position 8
+read8	0	contig1	11	60	1S3M	*	0	4	GCGA	*	XC:Z:clipped initial base
+read9	0	contig1	11	60	1S3M	*	0	4	GCGT	*	XC:Z:clipped initial base w/mismatch at position 13
+read10	0	contig1	13	60	3M1S	*	0	4	ATCC	*	XC:Z:clipped terminal base
+read11	0	contig1	13	60	3M1S	*	0	4	TTCC	*	XC:Z:clipped terminal base w/mismatch at position 13
+read12	0	contig1	17	60	2M1D1M	*	0	4	ATG	*	XC:Z:interior deletion at position 15
+read13	0	contig1	21	60	2M1I2M	*	0	4	ATGCG	*	XC:Z:interior insertion at position 23
+read14	0	contig1	25	60	3M2I5M	*	0	8	ATGAAGATCG	*	XC:Z:adjacent mismatch and insertion at position 27-28
+read15	0	contig1	25	60	3M2D3M	*	0	8	ATGTCG	*	XC:Z:adjacent mismatch and deletion at position 27-28
+read16	0	contig1	30	60	4M	*	0	4	TCGT	*	XC:Z:4th base mismatch, position 33
+read17	0	contig1	31	60	4M	*	0	4	CGTT	*	XC:Z:3rd base mismatch, position 33
+read18	0	contig1	32	60	4M	*	0	4	GTTC	*	XC:Z:2nd base mismatch, position 33
+read19	0	contig1	33	60	4M	*	0	4	TTCG	*	XC:Z:another 1st base mismatch, position 33
 ```
 
 ```
