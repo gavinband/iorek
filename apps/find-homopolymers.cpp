@@ -41,7 +41,7 @@ public:
 			.set_is_required()
 		;
 		options[ "-max-length" ]
-			.set_description( "max length of nucleotide repeat to look for." )
+			.set_description( "max length of nucleotide repeat to look for. Must be <= 3 currently." )
 			.set_default_value( 3 )
 		;
 

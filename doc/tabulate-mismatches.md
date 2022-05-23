@@ -8,7 +8,9 @@ It:
 * reads the reference FASTA file to which the reads are aligned;
 * then it walks the reads to find all mismatches, insertions and deletions, and tabulates them along with the bases involved, and the flanking sequence.
 
-In principle other information such as the location within homopolymer runs will be collected / tabulated, but this is not implemented yet.
+`tabulate-mismatches` can also keep track of genomic region annotations supplied from a seperate
+annotation file, such as homopolymer and short repeat tracts computed using
+[`find-homopolymers`](find-homopolymers.md).
 
 ## Synopsis
 
@@ -27,11 +29,15 @@ Usage: tabulate-mismatches <options>
 OPTIONS:
 Input / output file options:
              -o <a>: Path of output file.  Defaults to "-".
-         -range <a>: Genommic regions (expressed in the form <chromosome>:<start>-<end>) to process.  Regions are expres-
+         -range <a>: Genomic regions (expressed in the form <chromosome>:<start>-<end>) to process.  Regions are expres-
                      sed in 1-based, right-closed coordinates. (These regions should have few copy number variants) Alte-
                      rnatively this can be the name of a file containing a list of regions.
   -reads <a> <b>...: Path of bam/cram files to operate on.
      -reference <a>: Specify reference sequence
+    -annotation <a>: Specify a BED file or text file of annotations (for example, of homopolymer tracts.) If a .txt file,
+                     it must have columns "contig_id", "start", "end", "repeat", "length" using a 1-based, closed interv-
+                     al coordinate system. If a BED file, it must have 4 columns with no headers, representing sequence 
+                     ID, start, end, and annotation, using a 0-based, right-open coordinate system.
 
 Model options:
        -by-position: Specify that errors should be tabulated by position, not aggregated.
@@ -49,7 +55,7 @@ ATCGATCGATCGATCGATCGATCGATCGATCGATCGATCGATCGATCGATCGATCGATCGATCG
 ```
 
 ```
-$ cat reads.sam
+$ cat contig1_reads.sam
 @HD	VN:1.6	SO:coordinate
 @SQ	SN:contig1	LN:64
 read1	0	contig1	1	60	4M	*	0	4	ATCG	*	XC:Z:four base match
@@ -74,7 +80,7 @@ read19	0	contig1	33	60	4M	*	0	4	TTCG	*	XC:Z:another 1st base mismatch, position 
 ```
 
 ```
-$ tabulate-mismatches -reads example/mismatches/reads.bam -reference example/mismatches/example.fa
+$ tabulate-mismatches -reads contig1_reads.bam -reference example.fa
 
 count	type	contig_sequence	read_sequence	left_flank	right_flank
 1	D	C		GAT	GAT
@@ -93,7 +99,7 @@ Here (X = mismatch, I = insertion, D = deletion.
 `tabulate-mismatches` can also tabulate by aligned position - this is in particular helpful for debugging:
 
 ```
-$ tabulate-mismatches -reads example/mismatches/reads.bam -reference example/mismatches/example.fa -by-position
+$ tabulate-mismatches -reads contig1_reads.bam -reference example.fa -by-position
 
 count	contig_id	position	type	contig_sequence	read_sequence	left_flank	right_flank
 1	contig1	5	X	A	T	TCG	TCG
@@ -108,3 +114,69 @@ count	contig_id	position	type	contig_sequence	read_sequence	left_flank	right_fla
 1	contig1	28	I		AA	ATC	GAT
 4	contig1	33	X	A	T	TCG	TCG
 ```
+
+## Example of annotating with respect to repeat tracts
+
+```
+$ cat contig2_reads.sam
+@HD	VN:1.6	SO:coordinate
+@SQ	SN:contig2	LN:57
+read20	0	contig2	3	60	3M1I5M	*	0	8	TGAAACTGA	*	XC:Z:insertion in homopolymer, position 6
+read21	0	contig2	9	60	2M1D5M	*	0	7	GAACTGA	*	XC:Z:deletion in homopolymer, position 11
+read22	0	contig2	15	60	8M	*	0	7	GACAACTG	*	XC:Z:SNP in homopolymer, position 17
+read23	0	contig2	22	60	3M2D3M	*	0	7	GACTGA	*	XC:Z:deletion in dinucleotide repeat, position 25
+read24	0	contig2	22	60	8M	*	0	7	GACAGTGA	*	XC:Z:SNP in dinucleotide repeat, position 26
+read25	0	contig2	22	60	5M2I3M	*	0	7	GACACACTGA	*	XC:Z:insertion in dinucleotide repeat, position 27
+read26	0	contig2	35	60	4M3D1M	*	0	7	TGACT	*	XC:Z:deletion in trinucleotide repeat, position 39
+read27	0	contig2	35	60	7M3I1M	*	0	7	TGACGACGACT	*	XC:Z:insertion in trinucleotide repeat, position 42
+read28	0	contig2	35	60	8M	*	0	7	TGACGAGT	*	XC:Z:SNP in trinucleotide repeat, position 41
+read29	0	contig2	48	60	9M	*	0	7	GAGACTACT	*	XC:Z:SNP in repeat, position 50
+read30	0	contig2	48	60	9M	*	0	7	GACGCTACT	*	XC:Z:SNP in two repeats, position 51
+read31	0	contig2	48	60	9M	*	0	7	GACAGTACT	*	XC:Z:SNP in two repeats, position 52
+read32	0	contig2	48	60	9M	*	0	7	GACACGACT	*	XC:Z:SNP in repeat, position 53
+```
+
+Annotations can be listed in the `find-homopolymers` output format:
+```
+$ cat homopolymers.tsv
+# Computed by find-homopolymers 2022-05-22 23:04:49
+# Coordinates are 1-based, closed.
+sequence_id	start	end	repeat	length
+contig2	5	6	A	2
+contig2	10	12	A	3
+contig2	16	19	A	4
+contig2	23	26	AC	4
+contig2	28	31	GA	4
+contig2	31	34	AC	4
+contig2	36	41	GAC	6
+contig2	49	52	AC	4
+contig2	51	56	ACT	6
+```
+
+This uses a 1-based, closed coordinate system.
+
+(They can also be supplied in a [BED4 file](https://en.wikipedia.org/wiki/BED_(file_format)) using a 0-based, right-open coordinate system.)
+
+Given the above, `tabulate-mismatches` will output seperate rows for mismatches occuring in each annoted segment:
+
+```
+$ tabulate-mismatches -reads contig1_reads.bam -reference example.fa -annotation homopolymers.tsv -by-position
+
+count	contig_id	position	type	contig_sequence	read_sequence	left_flank	right_flank	annotation1	annotation1_length	annotation2	annotation2_length
+1	contig2	6	I		A	TGA	ACT	A	2	NA	NA
+1	contig2	11	D	A		TGA	ACT	A	3	NA	NA
+1	contig2	17	X	A	C	TGA	AAC	A	4	NA	NA
+1	contig2	25	D	AC		GAC	TGA	AC	4	NA	NA
+1	contig2	26	X	C	G	ACA	TGA	AC	4	NA	NA
+1	contig2	27	I		AC	CAC	TGA	NA	NA	NA	NA
+1	contig2	39	D	GAC		GAC	TGA	GAC	6	NA	NA
+1	contig2	41	X	C	G	CGA	TGA	GAC	6	NA	NA
+1	contig2	42	I		GAC	GAC	TGA	NA	NA	NA	NA
+1	contig2	50	X	C	G	GGA	ACT	AC	4	NA	NA
+1	contig2	51	X	A	G	GAC	CTA	AC	4	ACT	6
+1	contig2	52	X	C	G	ACA	TAC	AC	4	ACT	6
+1	contig2	53	X	T	G	CAC	ACT	ACT	6	NA	NA
+
+```
+
+**Note**.  Currently this is based on the position of the mismatch.  A TODO is to make this consider any overlapping annotations for deletions.
