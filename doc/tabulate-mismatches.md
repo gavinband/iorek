@@ -153,8 +153,8 @@ coordinate system.)  Alternatively they can be listed in the `find-homopolymers`
 
 ```
 $ cat homopolymers.tsv
-\# Computed by find-homopolymers 2022-05-22 23:04:49
-\# Coordinates are 1-based, closed.
+# Computed by find-homopolymers 2022-05-22 23:04:49
+# Coordinates are 1-based, closed.
 sequence_id	start	end	repeat	length
 contig2	5	6	A	2
 contig2	10	12	A	3
