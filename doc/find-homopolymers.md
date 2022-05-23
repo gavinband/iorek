@@ -18,7 +18,7 @@ $ find-homopolymers -help
 Welcome to find-homopolymers
 (version: 0.6, revision 0aca522)
 
-(C) 2009-2021 University of Oxford
+(C) 2009-2022 University of Oxford
 
 Usage: find-homopolymers <options>
 
@@ -48,7 +48,7 @@ Note in the above that `contig1` has no repeats <= 3 bases (it is all `ATCG`), w
 Welcome to find-homopolymers
 (version: 0.6, revision 0aca522)
 
-(C) 2009-2021 University of Oxford
+(C) 2009-2022 University of Oxford
 
 Loading "example/mismatches/example.fa"                     : [******************************] (1/1,0.0s,40.1/s)
 Processing "contig1"                                        : [******************************] (64/64,0.0s,301886.8/s)
