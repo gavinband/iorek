@@ -115,7 +115,7 @@ count	contig_id	position	type	contig_sequence	read_sequence	left_flank	right_fla
 4	contig1	33	X	A	T	TCG	TCG
 ```
 
-## Example of annotating with respect to repeat tracts
+## Example 2: tracking repeat tracts
 
 `tabulate-mismatches` can keep track of mismatches with respect to externally-supplied genomic
 region annotations. The intended use case is to track error locations within homopolymers and other

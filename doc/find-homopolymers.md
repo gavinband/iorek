@@ -26,7 +26,7 @@ OPTIONS:
 Input / output file options:
   -fasta <a> <b>...: Path of FASTA file(s) to operate on.
         -max-length: max length of nucleotide repeat to look for.  Must be <= 3.  Defaults to "3".
-            -o <a>: Path of output file.  Defaults to "-".
+             -o <a>: Path of output file.  Defaults to "-".
 ```
 
 ## Example
@@ -40,7 +40,7 @@ ATCGATCGATCGATCGATCGATCGATCGATCGATCGATCGATCGATCGATCGATCGATCGATCG
 ACTGAACTGAAACTGAAAACTGACACTGAGACACTGACGACTGACTGGACACTACT
 ```
 
-`contig1` has no repeats <= 3 bases, while `contig2` has several.  Let's find them:
+Note in the above that `contig1` has no repeats <= 3 bases (it is all `ATCG`), while `contig2` has several.  Let's find them:
 
 ```
 % find-homopolymers -fasta example/mismatches/example.fa
