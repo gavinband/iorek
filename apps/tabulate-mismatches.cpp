@@ -151,19 +151,19 @@ namespace {
 
 		bool operator<( AnnotationElt const& right ) const {
 			AnnotationElt const& left = *this ;
-			// order by annotation string size (smallest first).
-			if( left.m_annotation.size() < right.m_annotation.size() ) {
-				return true ;
-			} else if( left.m_annotation.size() > right.m_annotation.size() ) {
-				return false ;
-			}
-			// then by genomic length (largest first)
+			// order by genomic length (largest first)...
 			if( left.m_length > right.m_length ) {
 				return true ;
 			} else if( left.m_length < right.m_length ) {
 				return false ;
 			}
-			// then by annotation
+			// ...then by the length of the annotation string, smallest first...
+			if( left.m_annotation.size() < right.m_annotation.size() ) {
+				return true ;
+			} else if( left.m_annotation.size() > right.m_annotation.size() ) {
+				return false ;
+			}
+			// ...then by the annotation string itself.
 			if( left.m_annotation < right.m_annotation ) {
 				return true ;
 			} else if( left.m_annotation > right.m_annotation ) {
@@ -701,7 +701,16 @@ private:
 						if( m_annotations.size() > 0 ) {
 							Annotation::const_iterator where = m_annotations.find( genfile::GenomePosition( contig_id, position )) ;
 							if( where != m_annotations.end() ) {
-								annotations = where->second ;
+								// Currently only keep track of longest two annotations.
+								// So we need a kludge here to handle this.
+								std::set< AnnotationElt >::const_iterator begin = where->second.begin() ;
+								std::set< AnnotationElt >::const_iterator end = where->second.end() ;
+								if( where->second.size() > 2 ) {
+									end = begin ;
+									++end ;
+									++end ;
+								}
+								annotations = std::set< AnnotationElt > ( begin, end ) ;
 #if DEBUG
 								std::cerr << "Annotation found at position " << position << "!  size is " << annotations.size() << ".\n" ;
 #endif

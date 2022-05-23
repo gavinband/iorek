@@ -177,6 +177,7 @@ $ tabulate-mismatches -reads contig1_reads.bam -reference example.fa -annotation
 count	contig_id	position	type	contig_sequence	read_sequence	left_flank	right_flank	annotation1	annotation1_length	annotation2	annotation2_length
 1	contig2	6	I		A	TGA	ACT	A	2	NA	NA
 1	contig2	11	D	A		TGA	ACT	A	3	NA	NA
+1	contig2	13	I		A	AAA	CTG	NA	NA	NA	NA
 1	contig2	17	X	A	C	TGA	AAC	A	4	NA	NA
 1	contig2	25	D	AC		GAC	TGA	AC	4	NA	NA
 1	contig2	26	X	C	G	ACA	TGA	AC	4	NA	NA
@@ -185,9 +186,13 @@ count	contig_id	position	type	contig_sequence	read_sequence	left_flank	right_fla
 1	contig2	41	X	C	G	CGA	TGA	GAC	6	NA	NA
 1	contig2	42	I		GAC	GAC	TGA	NA	NA	NA	NA
 1	contig2	50	X	C	G	GGA	ACT	AC	4	NA	NA
-1	contig2	51	X	A	G	GAC	CTA	AC	4	ACT	6
-1	contig2	52	X	C	G	ACA	TAC	AC	4	ACT	6
+1	contig2	51	X	A	G	GAC	CTA	ACT	6	AC	4
+1	contig2	52	X	C	G	ACA	TAC	ACT	6	AC	4
 1	contig2	53	X	T	G	CAC	ACT	ACT	6	NA	NA
 
 ```
 
+**Note.** `tabulate-mismatches` only keeps track of the *longest two annotations*. If multiple
+annotations overlap at a mismatch position, it arranges the output so that the longest annotation
+(by genomic region length) occurs in the `annotation1` columns and the second longest in the
+`annotation2` columns.
