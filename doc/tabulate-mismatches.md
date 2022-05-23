@@ -147,7 +147,7 @@ read31	0	contig2	48	60	9M	*	0	7	GACAGTACT	*	XC:Z:SNP in two repeats, position 52
 read32	0	contig2	48	60	9M	*	0	7	GACACGACT	*	XC:Z:SNP in repeat, position 53
 ```
 
-Annotations can be passed in [BED4 format](https://en.wikipedia.org/wiki/BED_(file_format)) (i.e.
+Annotations can be passed in [BED4 format](https://en.wikipedia.org/wiki/BED_%28file_format%29) (i.e.
 four columns specifying contig, start, end and annotation detail, using a 0-based, right-open
 coordinate system.)  Alternatively they can be listed in the `find-homopolymers` output format as follows:
 
