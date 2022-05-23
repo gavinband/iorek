@@ -8,6 +8,9 @@ It:
 * walks the sequences to find homopolymer and short repeat tracts
 * and outputs a file listing their location and length.
 
+One use-case is to classify read errors by their location in homopolymer tracts - see
+[`tabulate-mismatches`](tabulate-mismatches.md) for a way to do this.
+
 ## Synopsis
 
 Get program options:
