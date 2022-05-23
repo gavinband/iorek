@@ -13,6 +13,7 @@
 #include <boost/ptr_container/ptr_vector.hpp>
 #include <boost/unordered_set.hpp>
 #include <boost/filesystem.hpp>
+#include <boost/icl/interval_map.hpp>
 
 // seqlib
 #include "SeqLib/RefGenome.h"
@@ -32,7 +33,7 @@ namespace seqlib = SeqLib;
 #include "genfile/Fasta.hpp"
 #include "statfile/BuiltInTypeStatSink.hpp"
 
-#define DEBUG 0
+#define DEBUG 1
 
 namespace globals {
 	std::string const program_name = "tabulate-mismatches" ;
@@ -40,7 +41,7 @@ namespace globals {
 	std::string const program_revision = std::string( package_revision ).substr( 0, 7 ) ;
 }
 
-struct SvelteOptionProcessor: public appcontext::CmdLineOptionProcessor
+struct IorekOptionProcessor: public appcontext::CmdLineOptionProcessor
 {
 public:
 	std::string get_program_name() const { return globals::program_name ; }
@@ -61,7 +62,7 @@ public:
 			.set_default_value( "-" ) ;
 
 		options[ "-range" ]
-			.set_description( "Genommic regions (expressed in the form <chromosome>:<start>-<end>)"
+			.set_description( "Genomic regions (expressed in the form <chromosome>:<start>-<end>)"
 				" to process.  Regions are expressed in 1-based, right-closed coordinates."
 				" (These regions should have few copy number variants)" 
 				" Alternatively this can be the name of a file containing a list of regions."
@@ -72,6 +73,15 @@ public:
 			.set_description( "Specify reference sequence" )
 			.set_takes_single_value()
 			.set_is_required() ;
+
+		options[ "-annotation" ]
+			.set_description( "Specify a BED file or text file of annotations (for example, of homopolymer tracts.)"
+				" If a .txt file, it must have columns \"contig_id\", \"start\", \"end\", \"repeat\", \"length\""
+				" using a 1-based, closed interval coordinate system."
+				" If a BED file, it must have 4 columns with no headers, representing sequence ID, start, end, and annotation,"
+				" using a 0-based, right-open coordinate system." )
+			.set_takes_single_value()
+		;
 
 		options.declare_group( "Model options" ) ;
 		options[ "-mq" ]
@@ -101,6 +111,75 @@ namespace {
 		eInsertion = 'I'
 	} ;
 	
+	// We use boost::icl::interval_map to store annotation file entries. This
+	// efficiently handles a map from positions to annotations, internally
+	// represented as intervvals
+
+	// BED file entries might overlap, and so for each position we keep a set of
+	// all annotations at that point.	(For short repeats, basically each
+	// base could be in 0, 1, or 2 repeats, but for other BED files I guess there
+	// might be more.)  A std::set works fine for this, as in the example:
+	// www.boost.org/doc/libs/1_68_0/libs/icl/doc/html/boost_icl/examples/partys_height_average.html
+	
+	struct AnnotationElt
+	{
+		AnnotationElt(
+			std::string const& annotation,
+			std::size_t length
+		):
+			m_annotation( annotation ),
+			m_length( length )
+		{
+		}
+
+		AnnotationElt( AnnotationElt const& other ):
+			m_annotation( other.m_annotation ),
+			m_length( other.m_length )
+		{}
+		
+		AnnotationElt& operator=( AnnotationElt const& other ) {
+			m_annotation = other.m_annotation ;
+			m_length = other.m_length ;
+			return *this ;
+		}
+
+		bool operator==( AnnotationElt const& right ) const {
+			AnnotationElt const& left = *this ;
+			return (left.m_annotation == right.m_annotation)
+				&& (left.m_length == right.m_length) ;
+		}
+
+		bool operator<( AnnotationElt const& right ) const {
+			AnnotationElt const& left = *this ;
+			// order by annotation string size (smallest first).
+			if( left.m_annotation.size() < right.m_annotation.size() ) {
+				return true ;
+			} else if( left.m_annotation.size() > right.m_annotation.size() ) {
+				return false ;
+			}
+			// then by genomic length (largest first)
+			if( left.m_length > right.m_length ) {
+				return true ;
+			} else if( left.m_length < right.m_length ) {
+				return false ;
+			}
+			// then by annotation
+			if( left.m_annotation < right.m_annotation ) {
+				return true ;
+			} else if( left.m_annotation > right.m_annotation ) {
+				return false ;
+			}
+			return false ;
+		}
+
+		std::string const& annotation() const { return m_annotation ; }
+		uint32_t length() const { return m_length ; }
+		
+	private:
+		std::string m_annotation ;
+		std::size_t m_length ;
+	} ;
+	
 	struct MismatchClass
 	{
 		MismatchClass(
@@ -110,7 +189,8 @@ namespace {
 			std::string const& contig_sequence,
 			std::string const& read_sequence,
 			std::string const& left_flank,
-			std::string const& right_flank
+			std::string const& right_flank,
+			std::set< AnnotationElt > const& annotations
 		):
 			m_contig_id( contig_id ),
 			m_position( position ),
@@ -118,7 +198,8 @@ namespace {
 			m_contig_sequence( contig_sequence ),
 			m_read_sequence( read_sequence ),
 			m_left_flank( left_flank ),
-			m_right_flank( right_flank )
+			m_right_flank( right_flank ),
+			m_annotations( annotations )
 		{}
 
 		MismatchClass(
@@ -130,7 +211,8 @@ namespace {
 			m_contig_sequence( other.m_contig_sequence ),
 			m_read_sequence( other.m_read_sequence ),
 			m_left_flank( other.m_left_flank ),
-			m_right_flank( other.m_right_flank )
+			m_right_flank( other.m_right_flank ),
+			m_annotations( other.m_annotations )
 		{}
 
 		MismatchClass& operator=(
@@ -143,6 +225,7 @@ namespace {
 			m_read_sequence = other.m_read_sequence ;
 			m_left_flank = other.m_left_flank ;
 			m_right_flank = other.m_right_flank ;
+			m_annotations = other.m_annotations ;
 			return *this ;
 		}
 
@@ -153,6 +236,7 @@ namespace {
 		std::string const& read_sequence() const { return m_read_sequence ; }
 		std::string const& left_flank() const { return m_left_flank ; }
 		std::string const& right_flank() const { return m_right_flank ; }
+		std::set< AnnotationElt > const& annotations() const { return m_annotations ; }
 		
 		friend bool operator<( MismatchClass const& left, MismatchClass const& right ) ;
 		friend std::ostream& operator<<( std::ostream& out, MismatchClass const& m ) ;
@@ -164,6 +248,7 @@ namespace {
 		std::string m_read_sequence ;
 		std::string m_left_flank ;
 		std::string m_right_flank ;
+		std::set< AnnotationElt > m_annotations ;
 	} ;
 	
 	bool operator<( MismatchClass const& left, MismatchClass const& right ) {
@@ -202,41 +287,22 @@ namespace {
 		} else if( left.m_right_flank > right.m_right_flank ) {
 			return false ;
 		}
+		if( left.m_annotations < right.m_annotations ) {
+			return true ;
+		} else if( left.m_annotations > right.m_annotations ) {
+			return false ;
+		}
 		return false ;
 	}
 
+#if DEBUG
 	std::ostream& operator<<( std::ostream& out, MismatchClass const& m ) {
 		out << m.m_contig_id << ":" << m.m_position << ": " << char( m.m_type ) << " "
 			<< m.m_left_flank << "[" << m.m_contig_sequence << ">" << m.m_read_sequence << "]" << m.m_right_flank ;
 		return out ;
 	}
-
-	template< typename Iterator >
-	struct SequenceRange
-	{
-		SequenceRange( Iterator begin, Iterator end ):
-			m_begin( begin ),
-			m_end( end )
-		{}
-		SequenceRange( SequenceRange const& other ):
-			m_begin( other.m_begin ),
-			m_end( other.m_end )
-		{}
-		SequenceRange& operator=( SequenceRange const& other ) {
-			m_begin = other.m_begin ;
-			m_end = other.m_end ;
-			return *this ;
-		}
-	private:
-		Iterator m_begin ;
-		Iterator m_end ;
-	} ;
-
-	template< typename Iterator >
-	SequenceRange<Iterator> sequence_range( Iterator begin, Iterator end ) {
-		return SequenceRange<Iterator>( begin, end ) ;
-	}
-
+#endif
+	
 	void classify_alignment_mismatches(
 		seqlib::BamRecord const& alignment,
 		seqlib::BamHeader const& header,
@@ -256,7 +322,27 @@ namespace {
 		> callback,
 		uint32_t const flank = 3
 	) {
-		// walk Cigar string, accumulate on mismatches
+		// Note: this function classifies read-reference mismatches by parsing the
+		// CIGAR string and comparing to the reference bases.
+		
+		// The CIGAR string alone does not contain enough information to reconstruct
+		// the mismatching bases.	Thus it is necessary to inspect the reference
+		// sequence at the same time.
+	
+		// Although CIGAR supports 'X' (mismatch) and '=' (identical match), many
+		// aligners (such as bwa or minimap2) just output 'M' for mismatches by
+		// default.	(Minimap2 does outputs X/= when given the -eqx flag; pbmm2 also
+		// seems to do this by default.)
+
+		// Aligners may also output additional information complementing the CIGAR
+		// string in the 'MD' tag, and minimap2 can also output a CS tag containing
+		// full information about the mismatches.	Use of these would avoid need to
+		// parse the reference sequence, but they're not found in every BAM file.
+	
+		// On balance it therefore seems simplest to work with the CIGAR string and
+		// the reference, and to treat 'M', 'X', and '=' as
+		// synonymous - which is what we do here.
+		
 		seqlib::Cigar const& cigar = alignment.GetCigar() ;
 
 		std::string const& read_sequence = alignment.Sequence() ;
@@ -265,14 +351,16 @@ namespace {
 
 		uint32_t read_position = 0;
 		uint32_t aligned_position = alignment.Position() ; // 0-based
+		
 #if DEBUG
-		//std::cerr << "Inspecting read: " << alignment.Qname() << ", CIGAR = \"" << cigar << "\".\n" ;
+		std::cerr << "++ Inspecting read: " << alignment.Qname() << ", CIGAR = \"" << cigar << "\".\n" ;
 #endif
+
 		seqlib::Cigar::const_iterator i = cigar.begin(), end_i = cigar.end() ;
 		for( ; i != end_i; ++i ) {
 			char const type = i->Type() ;
 #if DEBUG
-			std::cerr << "II: read position = " << read_position << "; alignment pos = " << aligned_position << "; cigar elt = \"" << *i << "\".\n" ;
+			std::cerr << "  : read position = " << read_position << "; alignment pos = " << aligned_position << "; cigar elt = \"" << *i << "\".\n" ;
 #endif
 			// The cigar ops are:
 			// M    Alignment match (can be a sequence match or mismatch)
@@ -284,16 +372,17 @@ namespace {
 			// P    Padding (silent deletion from the padded reference sequence)
 			// =    Sequence match
 			// X    Sequence mismatch
-			//
-			// ...so we only need to handle aligned bases and skipped/deleted bases here.
-			// (NB. 'skipped' bases probably only turn up in spliced RNA alignments).
-			//
+
+			// We treat mismatching aligned bases (M/X/=), deleted bases (D) and
+			// inserted bases (I) as mismatches. Soft-clipped, hard-clipped and
+			// 'skipped regions are handled to keep track of position but do not count
+			// as mismatches.
 
 			switch( type ) {
 				case 'M':
 				case 'X':
 				case '=':
-					// match or mismatch.  Compare bases
+					// matching or mismatching bases. Iterate bases and test for mismatch.
 					for( int k = 0; k < i->Length(); ++k, ++aligned_position, ++read_position ) {
 						if( std::toupper(*(contig.sequence().begin() + aligned_position)) != std::toupper( read_sequence[read_position] )) {
 							callback(
@@ -323,7 +412,7 @@ namespace {
 						read_sequence.begin() + read_position
 					) ;
 					aligned_position += i->Length() ;
-					// no change to read position
+					// purely deleted bases so no change to read position
 					break ;
 				case 'I':
 					callback(
@@ -338,7 +427,7 @@ namespace {
 						read_sequence.begin() + read_position + i->Length()
 					) ;
 					read_position += i->Length() ;
-					// no change to aligned position
+					// purely inserted bases so no change to aligned position
 					break ;
 				case 'N':
 					// no coverage but need to skip over part of reference.
@@ -346,7 +435,7 @@ namespace {
 					aligned_position += i->Length() ;
 					break ;
 				case 'S':
-					// no coverage but need to skip over part of reference.
+					// soft-clipped bases; skip this part of the read.
 					read_position += i->Length() ;
 					break ;
 				case 'H':
@@ -363,14 +452,14 @@ namespace {
 	}
 }
 
-struct SvelteApplication: public appcontext::ApplicationContext
+struct IorekApplication: public appcontext::ApplicationContext
 {
 public:
-	SvelteApplication( int argc, char** argv ):
+	IorekApplication( int argc, char** argv ):
 		appcontext::ApplicationContext(
 			globals::program_name,
 			globals::program_version + ", revision " + globals::program_revision,
-			std::auto_ptr< appcontext::OptionProcessor >( new SvelteOptionProcessor ),
+			std::auto_ptr< appcontext::OptionProcessor >( new IorekOptionProcessor ),
 			argc,
 			argv,
 			"-log"
@@ -389,12 +478,104 @@ public:
 
 private:
 	typedef std::map< MismatchClass, int > Result ;
-	
+
+	typedef std::set< AnnotationElt > Payload ;
+	typedef boost::icl::interval_map< genfile::GenomePosition, Payload > Annotation ;
+	Annotation m_annotations ;
+	std::vector< std::string > m_annotation_names ;
+
 	void unsafe_process() {
+		if( options().check( "-annotation" )) {
+			std::string const& filename = options().get< std::string >( "-annotation" ) ;
+			auto progress_context = ui().get_progress_context( "Loading annotations from \"" + filename + "\"" ) ;
+			load_annotations( filename, progress_context ) ;
+			std::cerr << "++ Annotations loaded.\n" ;
+#if 0
+			std::cerr << "++ Annotations are:\n" ;
+			for( const auto& kv: m_annotations ) {
+				std::cerr << "  \"" << k.first < "\":\n" ;
+				for( Annotation::const_iterator i = kv.second.begin(); i != kv.second.end(); ++i ) {
+					std::cerr << "    " << i->second << ".\n" ;
+				}
+			}
+#endif
+			
+		}
+		
 		unsafe_process(
 			options().get_values< std::string >( "-reads" ),
 			options().get< std::string >( "-reference" )
 		) ;
+	}
+
+	void load_annotations(
+		std::string const& filename,
+		std::function< void( std::size_t ) > progress_callback
+	) {
+		using genfile::string_utils::slice ;
+		using genfile::string_utils::to_repr ;
+
+		std::auto_ptr< std::istream > in = genfile::open_text_file_for_input( filename ) ;
+		std::string line ;
+		std::getline( *in, line ) ;
+		// We handle both bed format and find-homopolymers output format.
+		// First skip a BED track definition line if present
+		if( (line.size() >= 7 && line.substr( 0, 7 ) == "browser") || (line.size() >= 5 && line.substr(0,5) == "track" )) {
+			// skip this header line
+			std::getline( *in, line ) ;
+		}
+		// skip comments
+		while( line.size() > 0 && line[0] == '#' ) {
+			std::getline( *in, line ) ;
+		}
+		std::string separator( 1, '\t' ) ;
+		bool oneBased = false ;
+		if(
+			(line.size() >= 28)
+			&& (line.substr( 0, 11 ) == "sequence_id")
+			&& (line.substr( 12, 5 ) == "start")
+			&& (line.substr( 18, 3 ) == "end")
+			&& (line.substr( 22, 6 ) == "repeat")
+		) {
+			separator[0] = line[11] ;
+			oneBased = true ;
+			std::getline( *in, line ) ;
+		}
+
+		std::cerr << "Parsing " << filename << ".\n" ;
+		std::vector< slice > elts ;
+		std::size_t lineCount = 1 ;
+		while(*in) {
+			elts.clear() ;
+			slice( line ).split( separator, &elts ) ;
+			if( elts.size() < 4 ) {
+				throw genfile::MalformedInputError(
+					filename,
+					"Expected at least 4 columns in annotation / BED4 file",
+					lineCount
+				) ;
+			}
+			genfile::Chromosome chromosome( elts[0] ) ;
+			uint32_t start( to_repr< uint32_t >( elts[1] ) ) ;
+
+			// Bed file is 0-based, right-open.
+			// We store annotations 0-based as well
+			// Other files are treated as 1-based and must be converted here.
+			if( oneBased ) {
+				--start ;
+			}
+			uint32_t end( to_repr< uint32_t >( elts[2] ) ) ;
+			std::set< AnnotationElt > values ;
+			values.insert( AnnotationElt( elts[3], end - start )) ;
+
+			Annotation::interval_type interval(
+				genfile::GenomePosition( chromosome, start ),
+				genfile::GenomePosition( chromosome, end )
+			) ;
+			m_annotations.add( std::make_pair( interval, values )) ;
+			std::getline( *in, line ) ;
+			progress_callback( ++lineCount ) ;
+		}
 	}
 
 	void unsafe_process(
@@ -500,6 +681,9 @@ private:
 						std::string::const_iterator read_begin,
 						std::string::const_iterator read_end
 					) {
+#if DEBUG
+						std::cerr << "++ Mismatch: " << contig_id << ": " << position << ".\n" ;
+#endif
 						std::string left_flank( flank_begin, contig_begin ) ;
 						std::string contig_sequence( contig_begin, contig_end ) ;
 						std::string right_flank( contig_end, flank_end ) ;
@@ -508,6 +692,25 @@ private:
 						std::transform( contig_sequence.begin(), contig_sequence.end(), contig_sequence.begin(), ::toupper ) ;
 						std::transform( right_flank.begin(), right_flank.end(), right_flank.begin(), ::toupper ) ;
 						//std::transform( read_sequence.begin(), read_sequence.end(), std::toupper ) ;
+#if DEBUG
+						std::cerr << "++ contig_sequence: " << contig_sequence << "; read sequence: " << read_sequence << ".\n" ;
+#endif
+
+						std::set< AnnotationElt > annotations ;
+						// look up annotation.
+						if( m_annotations.size() > 0 ) {
+							Annotation::const_iterator where = m_annotations.find( genfile::GenomePosition( contig_id, position )) ;
+							if( where != m_annotations.end() ) {
+								annotations = where->second ;
+#if DEBUG
+								std::cerr << "Annotation found at position " << position << "!  size is " << annotations.size() << ".\n" ;
+#endif
+							}
+						}
+						
+#if DEBUG
+						std::cerr << "annotations.size() == " << annotations.size() << ".\n" ;
+#endif
 						MismatchClass e(
 							by_position ? contig_id  : "",
 							by_position ? position : 0ul,
@@ -515,7 +718,8 @@ private:
 							contig_sequence,
 							read_sequence,
 							left_flank,
-							right_flank
+							right_flank,
+							annotations
 						) ;
 #if DEBUG
 						std::cerr << "mismatch: (" << contig_id << ":" << (position+1) << "): " << e << "\n"  ;
@@ -533,11 +737,16 @@ private:
 
 	void output_results( Result const& result, statfile::BuiltInTypeStatSink& sink ) {
 		bool const by_position = options().check( "-by-position" ) ;
+		bool const with_annotations = options().check( "-annotation" ) ;
 		sink | "count" ;
 		if( by_position ) {
 			sink | "contig_id" | "position" ;
 		}
 		sink | "type" | "contig_sequence" | "read_sequence" | "left_flank" | "right_flank" ;
+		if( with_annotations ) {
+			sink | "annotation1" | "annotation1_length"
+			| "annotation2" | "annotation2_length" ;
+		}
 		auto progress_context = ui().get_progress_context( "Storing results" ) ;
 		std::size_t count = 0 ;
 		for( auto& kv: result ) {
@@ -546,7 +755,23 @@ private:
 			if( by_position ) {
 				sink << m.contig_id() << (m.position()+1) ; // convert back to 1-based coords
 			}
-			sink << std::string( 1, m.type() ) << m.contig_sequence() << m.read_sequence() << m.left_flank() << m.right_flank() << statfile::end_row() ;
+			sink << std::string( 1, m.type() ) << m.contig_sequence() << m.read_sequence() << m.left_flank() << m.right_flank() ;
+
+			if( with_annotations ) {
+#if DEBUG
+				std::cerr << "++ outputting annotations with length: " << m.annotations().size() << ".\n" ;
+#endif
+				std::set< AnnotationElt >::const_iterator i = m.annotations().begin() ;
+				std::size_t annotation_count = 0 ;
+				for( ; annotation_count < 2 && i != m.annotations().end(); ++annotation_count, ++i ) {
+					sink << i->annotation() << i->length() ;
+				}
+				for( ; annotation_count < 2; ++annotation_count ) {
+					sink << genfile::MissingValue() << genfile::MissingValue() ;
+				}
+			}
+
+			sink << statfile::end_row() ;
 			progress_context( ++count, result.size() ) ;
 		}
 	}
@@ -556,7 +781,7 @@ int main( int argc, char** argv )
 {
 	std::ios_base::sync_with_stdio( false ) ;
 	try {
-		SvelteApplication app( argc, argv ) ;
+		IorekApplication app( argc, argv ) ;
 		app.run() ;
 	}
 	catch( appcontext::HaltProgramWithReturnCode const& e ) {
