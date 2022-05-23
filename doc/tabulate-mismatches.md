@@ -117,6 +117,17 @@ count	contig_id	position	type	contig_sequence	read_sequence	left_flank	right_fla
 
 ## Example of annotating with respect to repeat tracts
 
+`tabulate-mismatches` can keep track of mismatches with respect to externally-supplied genomic
+region annotations. The intended use case is to track error locations within homopolymers and other
+short repeat tracts. Motivated by this, at present `tabulate-mismatches` only outputs the longest
+two annotations overlapping any mismatch (as it's possible for a base to be in two repeat segments
+at once).  
+
+**Note**. Currently this tracking is based on the position of the mismatch. For deletions this is
+the leftmost location of the deletion; a TODO is to find all overlapping annotations.
+
+Here's an example:
+
 ```
 $ cat contig2_reads.sam
 @HD	VN:1.6	SO:coordinate
@@ -136,11 +147,14 @@ read31	0	contig2	48	60	9M	*	0	7	GACAGTACT	*	XC:Z:SNP in two repeats, position 52
 read32	0	contig2	48	60	9M	*	0	7	GACACGACT	*	XC:Z:SNP in repeat, position 53
 ```
 
-Annotations can be listed in the `find-homopolymers` output format:
+Annotations can be passed in [BED4 format](https://en.wikipedia.org/wiki/BED_(file_format)) (i.e.
+four columns specifying contig, start, end and annotation detail, using a 0-based, right-open
+coordinate system.)  Alternatively they can be listed in the `find-homopolymers` output format as follows:
+
 ```
 $ cat homopolymers.tsv
-# Computed by find-homopolymers 2022-05-22 23:04:49
-# Coordinates are 1-based, closed.
+\# Computed by find-homopolymers 2022-05-22 23:04:49
+\# Coordinates are 1-based, closed.
 sequence_id	start	end	repeat	length
 contig2	5	6	A	2
 contig2	10	12	A	3
@@ -153,9 +167,7 @@ contig2	49	52	AC	4
 contig2	51	56	ACT	6
 ```
 
-This uses a 1-based, closed coordinate system.
-
-(They can also be supplied in a [BED4 file](https://en.wikipedia.org/wiki/BED_(file_format)) using a 0-based, right-open coordinate system.)
+**Note.** This format assumes a 1-based, closed coordinate system.
 
 Given the above, `tabulate-mismatches` will output seperate rows for mismatches occuring in each annoted segment:
 
@@ -179,4 +191,3 @@ count	contig_id	position	type	contig_sequence	read_sequence	left_flank	right_fla
 
 ```
 
-**Note**.  Currently this is based on the position of the mismatch.  A TODO is to make this consider any overlapping annotations for deletions.
