@@ -99,7 +99,7 @@ private:
 				"Computed by find-homopolymers " + appcontext::get_current_time_as_string() + "\n"
 				+ "Coordinates are 1-based, closed."
 		) ;
-		sink | "sequence" | "start" | "end" | "repeat" | "length" ;
+		sink | "sequence_id" | "start" | "end" | "repeat" | "length" ;
 		for( auto sequence_id: sequence_ids ) {
 			auto progress_context = ui().get_progress_context( "Processing \"" + sequence_id + "\"" ) ;
 			genfile::Fasta::PositionedSequenceRange const& contig = fasta.get_sequence( sequence_id ) ;
