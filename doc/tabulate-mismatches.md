@@ -183,7 +183,7 @@ $ tabulate-mismatches -reads contig1_reads.bam -reference example.fa -annotation
 count	contig_id	position	type	contig_sequence	read_sequence	left_flank	right_flank	annotation1	annotation1_length	annotation2	annotation2_length
 1	contig2	6	I		A	TGA	ACT	A	2	NA	NA
 1	contig2	11	D	A		TGA	ACT	A	3	NA	NA
-1	contig2	13	I		A	AAA	CTG	NA	NA	NA	NA
+1	contig2	13	I		A	AAA	CTG	NA	NA	NA	NA # !! TODO: this is homopolymer expansion, should be identified.
 1	contig2	17	X	A	C	TGA	AAC	A	4	NA	NA
 1	contig2	25	D	AC		GAC	TGA	AC	4	NA	NA
 1	contig2	26	X	C	G	ACA	TGA	AC	4	NA	NA
