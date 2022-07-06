@@ -106,7 +106,7 @@ function GeneView(
 		this.genes,
 		{ start: (direction == "vertical" ? 2000 : 10), end: (direction == "vertical" ? 10 : 1000) }
 	) ;
-	console.log( "GeneView()", this.data, region, this.genes ) ;
+	//console.log( "GeneView()", this.data, region, this.genes ) ;
 }
 // get hierarchical structure representing regional genes
 
@@ -160,11 +160,11 @@ GeneView.prototype.draw = function(
 			"height": "width"
 		} ;
 	} else {
-		console.log( "GeneView.draw()", "Unrecognised direction \"" + direction + "\", quitting." )
+		//console.log( "GeneView.draw()", "Unrecognised direction \"" + direction + "\", quitting." )
 		return ;
 	}
 	let orientation = Math.sign( scales.position(1) - scales.position(0) ) ;
-	console.log( "GeneView.draw()", this.genes, orientation ) ;
+	//console.log( "GeneView.draw()", this.genes, orientation ) ;
 	let min = Math.min ;
 	let max = Math.max ;
 	let abs = Math.abs ;

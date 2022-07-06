@@ -286,14 +286,17 @@ MSAView.prototype.draw = function( force ) {
 				level: vs.genes
 			}
 		) ;
+	}
+	{
 		let axis = panels.genes.selectAll( 'g.axis' ).data( ['axis'] ) ;
 		axis
 			.enter()
 			.append( 'g' )
 			.attr( 'class', 'axis' )
+		let axisBottom = d3.axisBottom( vs.referenceCoordinateToX ) ;
 		panels.genes.selectAll( 'g.axis' )
 			.attr( 'transform', 'translate( 0,' + ( vs.genes.range()[1] + 10 ) + ')' )
-			.call( d3.axisBottom( vs.referenceCoordinateToX )) ;
+			.call( axisBottom ) ;
 	}
 
 	let drawSequence = function( sequence, y, baseWidth, xScale, lower, upper, ctx ) {
@@ -363,6 +366,11 @@ MSAView.prototype.draw = function( force ) {
 				"a": vs.y(vs.tracks.map( this.reference.name, "sequence" ).baseline) + yoffset,
 				"b": vs.y(vs.tracks.map( "reference", "sequence" ).baseline) - geom.layout.heights.base - yoffset
  			} ;
+			// plot indels between joined and msa reference
+			// and plot axis tick points
+			
+			let ticks = vs.referenceCoordinateToX.ticks() ;
+			
 			let last_x00 = -100000000 ;
 			for( let i = 0; i < this.reference.ranges.length; ++i ) {
 				let range = this.reference.ranges[i] ;
@@ -382,6 +390,18 @@ MSAView.prototype.draw = function( force ) {
 					ctx.strokeStyle = "grey" ;
 					ctx.stroke() ;
 					last_x00 = x00 ;
+					
+					let rangeTicks = ticks.filter( t => (t >= range.inSequence.start && t <= range.inSequence.end) ) ;
+					for( let j = 0; j < rangeTicks.length; ++j ) {
+						let x0 = vs.alignmentToX( range.inAlignment.start + (rangeTicks[j] - range.inSequence.start) + 0.5 ) ;
+						let x1 = vs.referenceCoordinateToX( rangeTicks[j] ) ;
+						ctx.beginPath() ;
+						// ref sequence is 2 * heights.sequence down.
+						ctx.moveTo( x0, ys.a ) ;
+						ctx.lineTo( x1, ys.b ) ;
+						ctx.strokeStyle = "grey" ;
+						ctx.stroke() ;
+					}
 				}
 			}
 		}
