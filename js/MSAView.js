@@ -343,7 +343,6 @@ MSAView.prototype.draw = function( force ) {
 			.domain( [ 0, this.reference.sequence.length ] )
 			.range( [ vs.referenceCoordinateToX( this.reference.coordinateRange.start ), vs.referenceCoordinateToX( this.reference.coordinateRange.end ) ] )
 		;
-		console.log( "REF SEQUENCE", this.scales.referenceCoordinateToX.domain() ) ;
 		drawSequence(
 			this.reference.sequence,
 			vs.y(vs.tracks.map( "reference", "sequence" ).baseline),
@@ -364,21 +363,26 @@ MSAView.prototype.draw = function( force ) {
 				"a": vs.y(vs.tracks.map( this.reference.name, "sequence" ).baseline) + yoffset,
 				"b": vs.y(vs.tracks.map( "reference", "sequence" ).baseline) - geom.layout.heights.base - yoffset
  			} ;
+			let last_x00 = -100000000 ;
 			for( let i = 0; i < this.reference.ranges.length; ++i ) {
 				let range = this.reference.ranges[i] ;
 				//console.log( "R", range ) ;
 				let x00 = vs.alignmentToX( gs( range.inAlignment.start )) ;
-				let x01 = vs.referenceCoordinateToX( range.inSequence.start - baseOffset ) ;
-				let x11 = vs.referenceCoordinateToX( range.inSequence.end  - baseOffset ) ;
-				let x10 = vs.alignmentToX( gs( range.inAlignment.end )) ;
-				ctx.beginPath() ;
-				// ref sequence is 2 * heights.sequence down.
-				ctx.moveTo( x00, ys.a ) ;
-				ctx.lineTo( x01, ys.b ) ;
-				ctx.moveTo( x11, ys.b ) ;
-				ctx.lineTo( x10, ys.a ) ;
-				ctx.strokeStyle = "grey" ;
-				ctx.stroke() ;
+				if( (x00 - last_x00) > 5 ) {
+					let x01 = vs.referenceCoordinateToX( range.inSequence.start - baseOffset ) ;
+					let x11 = vs.referenceCoordinateToX( range.inSequence.end  - baseOffset ) ;
+					let x10 = vs.alignmentToX( gs( range.inAlignment.end )) ;
+
+					ctx.beginPath() ;
+					// ref sequence is 2 * heights.sequence down.
+					ctx.moveTo( x00, ys.a ) ;
+					ctx.lineTo( x01, ys.b ) ;
+					ctx.moveTo( x11, ys.b ) ;
+					ctx.lineTo( x10, ys.a ) ;
+					ctx.strokeStyle = "grey" ;
+					ctx.stroke() ;
+					last_x00 = x00 ;
+				}
 			}
 		}
 	}
