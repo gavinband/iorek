@@ -79,7 +79,7 @@ let MSAView = function(
 			.range( [ geom.margin.left, geom.layout.width.sequences - geom.margin.right ] ) ;
 		//console.log( "RCR", reference ) ;
 		let orientation = reference.orientation ;
-		result.referenceToX = new d3.scaleLinear()
+		result.referenceCoordinateToX = new d3.scaleLinear()
 			.domain( addRange( [ reference.coordinateRange.start, reference.coordinateRange.end + orientation ], reference.baseMargin ))
 			.range( result.alignmentToX.range() ) ;
 		result.genes = new d3.scaleLinear()
@@ -123,7 +123,6 @@ MSAView.prototype.setViewport = function( viewport ) {
 	//assert( end >= start && start >= 0 ) ;
 	this.scales.alignmentToX.domain( viewport ) ;
 	
-	
 	let ranges = this.msa.scales.ranges[ this.reference.name ] ;
 	let choice = { left: -1, right: -1 } ;
 	for( let i = 0; i < ranges.length; ++i ) {
@@ -143,7 +142,7 @@ MSAView.prototype.setViewport = function( viewport ) {
 		rr.invert( Math.min( viewport[1], rr.range()[1] ))
 	] ;
 
-	this.scales.referenceToX.domain( addRange( refViewport, this.reference.baseMargin )) ;
+	this.scales.referenceCoordinateToX.domain( addRange( refViewport, this.reference.baseMargin )) ;
 } ;
 
 MSAView.prototype.updateLayout = function() {
@@ -152,7 +151,7 @@ MSAView.prototype.updateLayout = function() {
 	geom.layout.width.sequences = window.innerWidth - geom.layout.width.names - 40 ;
 	geom.layout.width.reference = window.innerWidth - geom.layout.width.names - 40 ;
 	this.scales.alignmentToX.range( [ geom.margin.left, geom.layout.width.sequences - geom.margin.right ] ) ;
-	this.scales.referenceToX.range( this.scales.alignmentToX.range() ) ;
+	this.scales.referenceCoordinateToX.range( this.scales.alignmentToX.range() ) ;
 }
 
 MSAView.prototype.draw = function( force ) {
@@ -283,7 +282,7 @@ MSAView.prototype.draw = function( force ) {
 		//console.log( "GENES", this.genes ) ;
 		genes.draw(
 			panels.genes, {
-				position: vs.referenceToX,
+				position: vs.referenceCoordinateToX,
 				level: vs.genes
 			}
 		) ;
@@ -294,7 +293,7 @@ MSAView.prototype.draw = function( force ) {
 			.attr( 'class', 'axis' )
 		panels.genes.selectAll( 'g.axis' )
 			.attr( 'transform', 'translate( 0,' + ( vs.genes.range()[1] + 10 ) + ')' )
-			.call( d3.axisBottom( vs.referenceToX )) ;
+			.call( d3.axisBottom( vs.referenceCoordinateToX )) ;
 	}
 
 	let drawSequence = function( sequence, y, baseWidth, xScale, lower, upper, ctx ) {
@@ -316,32 +315,45 @@ MSAView.prototype.draw = function( force ) {
 	{
 		let sequences = panels.sequences.node() ;
 		let ctx = sequences.getContext( '2d' ) ;
-		let baseWidth = vs.alignmentToX(1) - vs.alignmentToX(0) ;
+		let baseWidth = (vs.alignmentToX(1) - vs.alignmentToX(0)) * 0.99 ;
 		let msa = this.msa ;
+		// only draw bases in the viewpoer
+		let visible_range = [
+			Math.max( Math.floor( viewport[0] ), 0 ),
+			Math.min( Math.ceil( viewport[1] + 1 ), msa.alignment[0].sequence.length )
+		] ;
 		for( let i = 0; i < msa.alignment.length; ++i ) {
 			let sequence = msa.alignment[i].sequence ;
 			drawSequence(
 				msa.alignment[i].sequence,
 				vs.y(vs.tracks.map(msa.alignment[i].name, "sequence").baseline),
-				baseWidth * 0.99,
+				baseWidth,
 				j => vs.alignmentToX( msa.scales.global(j)),
-				Math.max( Math.floor( viewport[0] ), 0 ),
-				Math.min( Math.ceil( viewport[1] + 1 ), sequence.length ),
+				visible_range[0],
+				visible_range[1],
 				ctx
 			) ;
 		}
 		
 		let orientation = this.reference.orientation ;
 		let baseOffset = ((orientation==-1)?-1:0) ;
-		//console.log( "DRAWING REFERENCE, starting at ", vs.referenceToX(this.reference.coordinateRange.start )) ;
-		let referenceBaseWidth = Math.abs( vs.referenceToX(this.reference.coordinateRange.start+orientation) - vs.referenceToX(this.reference.coordinateRange.start) ) ;
+		//console.log( "DRAWING REFERENCE, starting at ", vs.referenceCoordinateToX(this.reference.coordinateRange.start )) ;
+		let referenceBaseWidth = Math.abs( vs.referenceCoordinateToX(this.reference.coordinateRange.start+orientation) - vs.referenceCoordinateToX(this.reference.coordinateRange.start) ) ;
+		let refSequenceScale = d3.scaleLinear()
+			.domain( [ 0, this.reference.sequence.length ] )
+			.range( [ vs.referenceCoordinateToX( this.reference.coordinateRange.start ), vs.referenceCoordinateToX( this.reference.coordinateRange.end ) ] )
+		;
+		console.log( "REF SEQUENCE", this.scales.referenceCoordinateToX.domain() ) ;
 		drawSequence(
 			this.reference.sequence,
 			vs.y(vs.tracks.map( "reference", "sequence" ).baseline),
 			referenceBaseWidth * 0.99,
-			j => ( vs.referenceToX(this.reference.coordinateRange.start + orientation*j - baseOffset )),
-			0,
-			this.reference.sequence.length,
+			refSequenceScale,
+			//j => ( vs.referenceCoordinateToX(this.reference.coordinateRange.start + orientation*j - baseOffset )),
+			//0,
+			//this.reference.sequence.length,
+			Math.floor(this.scales.referenceCoordinateToX.domain()[0]),
+			Math.ceil( this.scales.referenceCoordinateToX.domain()[1] ),
 			ctx
 		) ;
 		
@@ -356,8 +368,8 @@ MSAView.prototype.draw = function( force ) {
 				let range = this.reference.ranges[i] ;
 				//console.log( "R", range ) ;
 				let x00 = vs.alignmentToX( gs( range.inAlignment.start )) ;
-				let x01 = vs.referenceToX( range.inSequence.start - baseOffset ) ;
-				let x11 = vs.referenceToX( range.inSequence.end  - baseOffset ) ;
+				let x01 = vs.referenceCoordinateToX( range.inSequence.start - baseOffset ) ;
+				let x11 = vs.referenceCoordinateToX( range.inSequence.end  - baseOffset ) ;
 				let x10 = vs.alignmentToX( gs( range.inAlignment.end )) ;
 				ctx.beginPath() ;
 				// ref sequence is 2 * heights.sequence down.
