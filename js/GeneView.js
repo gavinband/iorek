@@ -104,7 +104,7 @@ function GeneView(
 	let direction = "horizontal" ;
 	this.numberOfLevels = layoutIntervals(
 		this.genes,
-		{ start: (direction == "vertical" ? 2000 : 10), end: (direction == "vertical" ? 10 : 1000) }
+		{ start: (direction == "vertical" ? 5000 : 1000), end: (direction == "vertical" ? 10 : 1000) }
 	) ;
 	//console.log( "GeneView()", this.data, region, this.genes ) ;
 }
@@ -302,24 +302,39 @@ GeneView.prototype.draw = function(
 		.attr( axes.y2, elt => scales.level( elt.level + H ) + 2 )
 		.attr( 'stroke', 'black' )
 	;
-	
-	transcripts
+
+	console.log( "GeneView", Math.abs( scales.position(1000) - scales.position(0) ) ) ;
+	if( Math.abs( scales.position(1000) - scales.position(0) ) < 15 ) {
+		transcripts
 		.selectAll( 'text.symbol' )
-		.attr( 'transform', function( elt ) {
-			if( direction == "horizontal" ) {
-				return "translate(" + (scales.position( elt.end ) + orientation * t) + ", " + scales.level( elt.level ) + ")" ;
-			} else if( direction == "vertical" ) {
-				return "translate(" + scales.level( elt.level ) + ", " + (scales.position( elt.start ) + t) + ") rotate(90)" ;
-			}
-		})
-//		.attr( axes.x, elt => scales.position( elt.end ) + t )
-//		.attr( axes.y, elt => scales.level( elt.level ))
-		.attr( 'alignment-baseline', 'middle' )
-		.attr( 'text-anchor', ( orientation == 1 ) ? 'start' : 'end' )
-		.attr( 'font-size', '7pt' )
-		.attr( 'font-weight', elt => ( elt.highlight == 1 ) ? 'bold' : 'normal' )
-		.attr( 'fill', elt => ( elt.highlight == 1 ) ? aes.colour.highlight : aes.colour.text )
-		.attr( 'font-style', 'italic' )
-		.text( elt => elt.display ? elt.display : elt.ID )
-	;
+		.text( "") ;
+	}
+	else {
+		let font_size = '5pt' ;
+		if( Math.abs( scales.position(1000) - scales.position(0) ) > 25 ) {
+			font_size = '6pt' ;
+		} 
+		if( Math.abs( scales.position(1000) - scales.position(0) ) > 35 ) {
+			font_size = '7pt' ;
+		}
+		transcripts
+			.selectAll( 'text.symbol' )
+			.attr( 'transform', function( elt ) {
+				if( direction == "horizontal" ) {
+					return "translate(" + (scales.position( elt.end ) + orientation * t) + ", " + scales.level( elt.level ) + ")" ;
+				} else if( direction == "vertical" ) {
+					return "translate(" + scales.level( elt.level ) + ", " + (scales.position( elt.start ) + t) + ") rotate(90)" ;
+				}
+			})
+	//		.attr( axes.x, elt => scales.position( elt.end ) + t )
+	//		.attr( axes.y, elt => scales.level( elt.level ))
+			.attr( 'alignment-baseline', 'middle' )
+			.attr( 'text-anchor', ( orientation == 1 ) ? 'start' : 'end' )
+			.attr( 'font-size', font_size )
+			.attr( 'font-weight', elt => ( elt.highlight == 1 ) ? 'bold' : 'normal' )
+			.attr( 'fill', elt => ( elt.highlight == 1 ) ? aes.colour.highlight : aes.colour.text )
+			.attr( 'font-style', 'italic' )
+			.text( elt => elt.display ? elt.display : elt.ID )
+		;
+	}
 }
