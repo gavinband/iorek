@@ -1,7 +1,7 @@
 'use strict' ;
 
-let MSAController = function( elt, view ) {
-	this.elt = elt ;
+let MSAController = function( panels, view ) {
+	this.panels = panels ;
 	this.view = view ;
 	this.drag = { start: 0 } ;
 	let self = this ;
@@ -15,8 +15,22 @@ let MSAController = function( elt, view ) {
 		self.view.setViewport( [ viewport[0] - drag, viewport[1] - drag ] ) ;
 	} ;
 	
+	panels.controls.on( "click", function( e ) {
+		let checkbox = d3.select( e.target ) ;
+		if( checkbox.attr( 'checked' ) == 'false' ) {
+			checkbox.attr( 'checked', 'true' ) ;
+			checkbox.attr( 'fill', '#dddddd' ) ;
+			self.view.target = "mismatches" ;
+		} else {
+			checkbox.attr( 'fill', '#111111' ) ;
+			checkbox.attr( 'checked', 'false' ) ;
+			self.view.target = "sequence" ;
+		}
+		self.view.draw( true ) ;
+	}) ;
+	
 	// set up dragging
-	elt.on( "mousedown", function( e ) {
+	panels.sequences.on( "mousedown", function( e ) {
 //			self.dragging = true ;
 //			self.dragStartRegion = self.viewport ;
 //			self.dragStartCentre = (self.viewport[1] + self.viewport[0])/2 ;
@@ -24,18 +38,18 @@ let MSAController = function( elt, view ) {
 		self.dragging = true ;
 		//console.log( "START DRAG", e.offsetX, e.offsetY, self.drag ) ;
 	}) ;
-	elt.on( "mousemove", function( e ) {
+	panels.sequences.on( "mousemove", function( e ) {
 		if( self.dragging ) {
 			doDrag( e.offsetX ) ;
 		}
 	}) ;
-	elt.on( "mouseup", function(e) {
+	panels.sequences.on( "mouseup", function(e) {
 		if( self.dragging ) {
 			doDrag( e.offsetX ) ;
 			self.dragging = false ;
 		}
 	}) ;
-	elt.on( "mouseout", function(e) {
+	panels.sequences.on( "mouseout", function(e) {
 		if( self.dragging ) {
 			doDrag( e.offsetX ) ;
 			self.dragging = false ;
@@ -58,7 +72,7 @@ let MSAController = function( elt, view ) {
 		) ;
 	} ;
 	// Set up zooming
-	elt.on( 'mousewheel', function(e) {
+	panels.sequences.on( 'mousewheel', function(e) {
 		let viewport = self.view.viewport() ;
 		let focus = self.view.scales.alignmentToX.invert( e.offsetX ) ;
 	//	console.log( "zooming:", e.wheelDeltaY, viewport, focus, self.view.msa ) ;

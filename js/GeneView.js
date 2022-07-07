@@ -303,7 +303,6 @@ GeneView.prototype.draw = function(
 		.attr( 'stroke', 'black' )
 	;
 
-	console.log( "GeneView", Math.abs( scales.position(1000) - scales.position(0) ) ) ;
 	if( Math.abs( scales.position(1000) - scales.position(0) ) < 15 ) {
 		transcripts
 		.selectAll( 'text.symbol' )
@@ -328,7 +327,7 @@ GeneView.prototype.draw = function(
 			})
 	//		.attr( axes.x, elt => scales.position( elt.end ) + t )
 	//		.attr( axes.y, elt => scales.level( elt.level ))
-			.attr( 'alignment-baseline', 'middle' )
+			.attr( 'alignment-baseline', 'central' )
 			.attr( 'text-anchor', ( orientation == 1 ) ? 'start' : 'end' )
 			.attr( 'font-size', font_size )
 			.attr( 'font-weight', elt => ( elt.highlight == 1 ) ? 'bold' : 'normal' )

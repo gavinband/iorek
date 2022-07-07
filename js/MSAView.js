@@ -55,7 +55,8 @@ let MSAView = function(
 	//console.log( "R", this.reference ) ;
 	this.genes = genes ;
 	this.annotations = annotations ;
-
+	this.target = "sequence" ;
+	
 	geom.layout.heights.genes = Math.max(
 		geom.layout.heights.genes,
 		20 * genes.numberOfLevels
@@ -91,6 +92,7 @@ let MSAView = function(
 	this.aes = {
 		bases: {
 			'-': { 'colour': 'lightgrey', "offset": -5, "height": 2 },
+			'm': { 'colour': '#333618', "offset": -8, "height": 8 },
 			'a': { 'colour': '#02AAE9', "offset": -8, "height": 8 },
 			't': { 'colour': '#1A356C', "offset": -8, "height": 8 },
 			'c': { 'colour': '#941504', "offset": -8, "height": 8 },
@@ -184,7 +186,7 @@ MSAView.prototype.draw = function( force ) {
 	panels.genes.attr( 'width', geom.layout.width.reference ) ;
 
 	panels.controls.style( 'top', '20px' ) ;
-	panels.controls.attr( 'height', '20px' ) ;
+	panels.controls.attr( 'height', '30px' ) ;
 	panels.controls.attr( 'width', geom.layout.width.reference ) ;
 
 	panels.sequences.selectAll('*').remove() ;
@@ -276,6 +278,33 @@ MSAView.prototype.draw = function( force ) {
 			.attr( 'font-family', 'Palatino' )
 			.attr( 'dominant-baseline', 'middle' )
 			.text( d => d.toUpperCase() ) ;
+			
+		let switches = panels.controls.selectAll( 'g.control' )
+			.data( ['highlight mismatches?'] )
+			.enter()
+			.append( 'g' )
+			.attr( 'class', 'control' )
+			.attr( 'transform', "translate(180,5)") ;
+		switches
+			.append( 'rect' )
+			.attr( 'class', 'checkbox' )
+			.attr( 'checked', 'false' )
+			.attr( 'x', 0 )
+			.attr( 'y', 0 )
+			.attr( 'width', 8 )
+			.attr( 'height', 8 )
+			.attr( 'stroke', aes.colour.text )
+			.attr( 'fill', '#111111' ) ;
+		switches.append( 'path' )
+			.attr( 'd', 'M1 1 L7 7 M7 1 L1 7')
+			.attr( 'stroke', '#111111' ) ;
+		switches
+			.append( 'text' )
+			.attr( 'x', 12 )
+			.attr( 'y', 4 )
+			.attr( 'alignment-baseline', 'central' )
+			.attr( 'font-size', '8pt' )
+			.text( d => d ) ;
 	}
 	{
 		let genes = this.genes ;
@@ -328,7 +357,7 @@ MSAView.prototype.draw = function( force ) {
 		for( let i = 0; i < msa.alignment.length; ++i ) {
 			let sequence = msa.alignment[i].sequence ;
 			drawSequence(
-				msa.alignment[i].sequence,
+				msa.alignment[i][ this.target ],
 				vs.y(vs.tracks.map(msa.alignment[i].name, "sequence").baseline),
 				baseWidth,
 				j => vs.alignmentToX( msa.scales.global(j)),

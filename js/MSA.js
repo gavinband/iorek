@@ -80,13 +80,35 @@ let computeUngappedSequence = function( name, gappedSequence, coordinateRange ) 
 	} ;
 } ;
 
+let processAlignment = function( alignment ) {
+	for( let i = 0; i < alignment.length; ++i ) {
+		alignment[i].mismatches = [...alignment[i].sequence] ;
+	}
+	for( let j = 0; j < alignment[0].sequence.length; ++j ) {
+		let mismatch = false ;
+		for( let i = 1; i < alignment.length; ++i ) {
+			if( alignment[i].sequence[j] != alignment[0].sequence[j] ) {
+				mismatch = true ;
+				break ;
+			}
+		}
+		if( !mismatch ) {
+			for( let i = 0; i < alignment.length; ++i ) {
+				alignment[i].mismatches[j] = "m" ;
+			}
+		}
+	}
+	return alignment ;
+}
+
 // scales that map sequence/contig coords to MSA coords
 let MSAScales = function( alignment, coordinateRanges ) {
-	this.alignment = alignment ;
+	this.alignment = processAlignment( alignment ) ;
 	this.alignmentLength = alignment[0].sequence.length ;
 	this.ungappedSequences = {} ;
 	this.ranges = {} ;
-	
+
+	console.log( "MSAScales", this.alignment ) ;
 	for( let i = 0; i < alignment.length; ++i ) {
 		let gappedSequence = alignment[i].sequence ;
 		assert(

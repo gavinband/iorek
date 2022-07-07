@@ -28,7 +28,7 @@ function run_msa_viewer( data ) {
 		new GeneView( data.genes, reference.coordinateRange ),
 		data.annotations
 	) ;
-	let controller = new MSAController( viewer.panels.sequences, viewer ) ;
+	let controller = new MSAController( viewer.panels, viewer ) ;
 
 	let redraw = function() {
 		viewer.draw() ;
