@@ -245,6 +245,15 @@ namespace genfile {
 
 	void Fasta::get_sequence(
 		genfile::Chromosome const& chromosome,
+		std::deque<char>* result
+	) const {
+		SequenceData::const_iterator where = m_data.find( chromosome ) ;
+		assert( where != m_data.end() ) ;
+		result->assign( where->second.second.begin(), where->second.second.end() ) ;
+	}
+
+	void Fasta::get_sequence(
+		genfile::Chromosome const& chromosome,
 		genfile::Position start,
 		genfile::Position end,
 		std::deque<char>* result

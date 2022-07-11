@@ -382,13 +382,27 @@ private:
 		std::vector< ContigSubsequenceSpec > result ;
 		fasta.sequence_ids( [&result,&fasta]( std::string const& id ) {
 			try {
+				// Try to match sequence ID of the form contig:start-end
+				// e.g. as output by samtools view with a range.
 				result.push_back( ContigSubsequenceSpec( id )) ;
 			}
 			catch( genfile::string_utils::StringConversionError const& e ) {
+				// if that failed, assume the range is 1-length
+				std::size_t length = 0 ;
+				auto range = fasta.get_sequence( id ) ;
+				genfile::Fasta::ConstSequenceIterator i = range.sequence().begin() ;
+				for( ; i != range.sequence().end(); ++i ) {
+					if( *i != '-' ) {
+						++length ;
+					}
+				} ;
+				
 				result.push_back( 
 					ContigSubsequenceSpec(
 						id,
-						fasta.get_sequence( id ).positions()
+						genfile::GenomePositionRange(
+							id, 1, length
+						)
 					)
 				) ;
 			}

@@ -117,6 +117,10 @@ namespace genfile {
 		char get_base( genfile::GenomePosition const& position ) const ;
 		void get_sequence(
 			genfile::Chromosome const& name,
+			std::deque< char >* result
+		) const ;
+		void get_sequence(
+			genfile::Chromosome const& name,
 			genfile::Position start,
 			genfile::Position end,
 			std::deque< char >* result
