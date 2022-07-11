@@ -192,6 +192,13 @@ MSAView.prototype.draw = function( force ) {
 	panels.sequences.selectAll('*').remove() ;
 	
 	{
+		let formatName = function( name ) {
+			if( name == "reference" ) {
+				return "(concatenated)" ;
+			} else {
+				return name ;
+			}
+		}
 		let renderName = function( selection ) {
 			selection
 				.append( 'text' )
@@ -204,7 +211,7 @@ MSAView.prototype.draw = function( force ) {
 				.attr( 'font-family', 'Courier' )
 				.attr( 'font-style', 'italic' )
 				.attr( 'fill', aes.colour.text )
-				.text( d => (d.track_name == 'sequence') ? d.sequence_id : d.track_name ) ;
+				.text( d => (d.track_name == 'sequence') ? formatName( d.sequence_id ) : d.track_name ) ;
 		} ;
 		let names = panels.names.selectAll( 'g.name' )
 			.data( vs.tracks.tracks() )

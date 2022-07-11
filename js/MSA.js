@@ -86,10 +86,16 @@ let processAlignment = function( alignment ) {
 	}
 	for( let j = 0; j < alignment[0].sequence.length; ++j ) {
 		let mismatch = false ;
-		for( let i = 1; i < alignment.length; ++i ) {
-			if( alignment[i].sequence[j] != alignment[0].sequence[j] ) {
-				mismatch = true ;
-				break ;
+		let ref = -1 ;
+		for( let i = 0; i < alignment.length; ++i ) {
+			let base = alignment[i].sequence[j] ;
+			if( base != '-' ) {
+				if( ref == -1 ) {
+					ref = i ;
+				} else if( base != alignment[ref].sequence[j] ) {
+					mismatch = true ;
+					break ;
+				}
 			}
 		}
 		if( !mismatch ) {
