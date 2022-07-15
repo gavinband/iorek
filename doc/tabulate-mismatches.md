@@ -178,7 +178,7 @@ contig2	51	56	ACT	6
 Given the above, `tabulate-mismatches` will output seperate rows for mismatches occuring in each annoted segment:
 
 ```
-$ tabulate-mismatches -reads contig1_reads.bam -reference example.fa -annotation homopolymers.tsv -by-position
+$ tabulate-mismatches -reads contig2_reads.bam -reference example.fa -annotation homopolymers.tsv -by-position
 
 count	contig_id	position	type	contig_sequence	read_sequence	left_flank	right_flank	annotation1	annotation1_length	annotation2	annotation2_length
 1	contig2	6	I		A	TGA	ACT	A	2	NA	NA
@@ -187,10 +187,10 @@ count	contig_id	position	type	contig_sequence	read_sequence	left_flank	right_fla
 1	contig2	17	X	A	C	TGA	AAC	A	4	NA	NA
 1	contig2	25	D	AC		GAC	TGA	AC	4	NA	NA
 1	contig2	26	X	C	G	ACA	TGA	AC	4	NA	NA
-1	contig2	27	I		AC	CAC	TGA	NA	NA	NA	NA
+1	contig2	27	I		AC	CAC	TGA	NA	NA	NA	NA # !! TODO: this is an insertion in a trinucleotide repeat, should be identified.
 1	contig2	39	D	GAC		GAC	TGA	GAC	6	NA	NA
 1	contig2	41	X	C	G	CGA	TGA	GAC	6	NA	NA
-1	contig2	42	I		GAC	GAC	TGA	NA	NA	NA	NA
+1	contig2	42	I		GAC	GAC	TGA	NA	NA	NA	NA # !! TODO: this is an insertion in a trinucleotide repeat, should be identified.
 1	contig2	50	X	C	G	GGA	ACT	AC	4	NA	NA
 1	contig2	51	X	A	G	GAC	CTA	ACT	6	AC	4
 1	contig2	52	X	C	G	ACA	TAC	ACT	6	AC	4
