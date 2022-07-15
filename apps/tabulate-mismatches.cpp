@@ -33,7 +33,7 @@ namespace seqlib = SeqLib;
 #include "genfile/Fasta.hpp"
 #include "statfile/BuiltInTypeStatSink.hpp"
 
-#define DEBUG 1
+// #define DEBUG 1
 
 namespace globals {
 	std::string const program_name = "tabulate-mismatches" ;
@@ -124,60 +124,90 @@ namespace {
 	struct AnnotationElt
 	{
 		AnnotationElt(
-			std::string const& annotation,
-			std::size_t length
+			std::string const& name,
+			genfile::Chromosome const& contig,
+			genfile::Position start, // 0-based
+			genfile::Position end    // 0-based, half-closed
 		):
-			m_annotation( annotation ),
-			m_length( length )
+			m_name( name ),
+			m_contig( contig ),
+			m_start( start ),
+			m_end( end )
 		{
+			assert( m_start <= m_end ) ;
 		}
 
 		AnnotationElt( AnnotationElt const& other ):
-			m_annotation( other.m_annotation ),
-			m_length( other.m_length )
+			m_name( other.m_name ),
+			m_contig( other.m_contig ),
+			m_start( other.m_start ),
+			m_end( other.m_end )
 		{}
 		
 		AnnotationElt& operator=( AnnotationElt const& other ) {
-			m_annotation = other.m_annotation ;
-			m_length = other.m_length ;
+			m_name = other.m_name ;
+			m_contig = other.m_contig ;
+			m_start = other.m_start ;
+			m_end = other.m_end ;
 			return *this ;
 		}
 
 		bool operator==( AnnotationElt const& right ) const {
 			AnnotationElt const& left = *this ;
-			return (left.m_annotation == right.m_annotation)
-				&& (left.m_length == right.m_length) ;
+			return (left.m_name == right.m_name)
+				&& (left.m_contig == right.m_contig)
+				&& (left.m_start == right.m_start)
+				&& (left.m_end == right.m_end) ;
 		}
 
 		bool operator<( AnnotationElt const& right ) const {
 			AnnotationElt const& left = *this ;
 			// order by genomic length (largest first)...
-			if( left.m_length > right.m_length ) {
+			if( left.length() > right.length() ) {
 				return true ;
-			} else if( left.m_length < right.m_length ) {
+			} else if( left.length() < right.length() ) {
 				return false ;
 			}
 			// ...then by the length of the annotation string, smallest first...
-			if( left.m_annotation.size() < right.m_annotation.size() ) {
+			if( left.m_name.size() < right.m_name.size() ) {
 				return true ;
-			} else if( left.m_annotation.size() > right.m_annotation.size() ) {
+			} else if( left.m_name.size() > right.m_name.size() ) {
 				return false ;
 			}
 			// ...then by the annotation string itself.
-			if( left.m_annotation < right.m_annotation ) {
+			if( left.m_name < right.m_name ) {
 				return true ;
-			} else if( left.m_annotation > right.m_annotation ) {
+			} else if( left.m_name > right.m_name ) {
 				return false ;
 			}
+			// ...then by the position
+			if( left.m_contig < right.m_contig ) {
+				return true ;
+			} else if( left.m_contig > right.m_contig ) {
+				return false ;
+			}
+			if( left.m_start < right.m_start ) {
+				return true ;
+			} else if( left.m_start > right.m_start ) {
+				return false ;
+			}
+			// This ordering is to ensure that when we choose two
+			// elements for output below, we choose the longest ones.
 			return false ;
 		}
 
-		std::string const& annotation() const { return m_annotation ; }
-		uint32_t length() const { return m_length ; }
+		std::string const& annotation() const { return m_name ; }
+		// 0-based coords
+		genfile::Chromosome contig() const { return m_contig ; }
+		genfile::Position start() const { return m_start ; }
+		genfile::Position end() const { return m_end ; }
+		uint32_t length() const { return m_end - m_start ; }
 		
 	private:
-		std::string m_annotation ;
-		std::size_t m_length ;
+		std::string m_name ;
+		genfile::Chromosome m_contig ;
+		genfile::Position m_start ;
+		genfile::Position m_end ;
 	} ;
 	
 	struct MismatchClass
@@ -566,7 +596,7 @@ private:
 			}
 			uint32_t end( to_repr< uint32_t >( elts[2] ) ) ;
 			std::set< AnnotationElt > values ;
-			values.insert( AnnotationElt( elts[3], end - start )) ;
+			values.insert( AnnotationElt( elts[3], chromosome, start, end )) ;
 
 			Annotation::interval_type interval(
 				genfile::GenomePosition( chromosome, start ),
@@ -630,7 +660,7 @@ private:
 				// htslib uses 0-based, half-open positions throughout.  See e.g. the hts_parse_reg function which SeqLib uses here under the hood.
 				// However, SeqLib changes this back into a 1-based, closed position internally.
 				// The upshot is we pass in 1-based coords and that's how SeqLib treats them.
-				// But when we use this region below, the alignments come back 0-based.
+				// (But when we use this region below, the alignments come back 0-based).
 				reader.SetRegion( seqlib::GenomicRegion( range.toString(), header )) ;
 			} catch( std::invalid_argument const& e ) {
 				throw genfile::BadArgumentError(
@@ -699,22 +729,57 @@ private:
 						std::set< AnnotationElt > annotations ;
 						// look up annotation.
 						if( m_annotations.size() > 0 ) {
+							// Annotations are in [begin, end) format, 0-based.
+							// So are positions.
+							// An example:
+							//
+							// C A A A G
+							// 0 1 2 3 4
+							//
+							// with the AAA at [1,4)]
+							// Here is what we count as in the homopolymer:
+							// - A mismatch at positions 1-3
+							// - A deletion of positions 1-3
+							// - An insertion at (before) positions 1-4
+							// The point is there are possible 4 insertion positions but only
+							// three substitution / deletion positions.
+
+							// To account for this, we search for position and (if an insertion)
+							// also at position - 1, but in the latter case check the position
+							// against the annotation endpoints.
 							Annotation::const_iterator where = m_annotations.find( genfile::GenomePosition( contig_id, position )) ;
 							if( where != m_annotations.end() ) {
 								// Currently only keep track of longest two annotations.
 								// So we need a kludge here to handle this.
 								std::set< AnnotationElt >::const_iterator begin = where->second.begin() ;
 								std::set< AnnotationElt >::const_iterator end = where->second.end() ;
-								if( where->second.size() > 2 ) {
-									end = begin ;
-									++end ;
-									++end ;
-								}
 								annotations = std::set< AnnotationElt > ( begin, end ) ;
-#if DEBUG
-								std::cerr << "Annotation found at position " << position << "!  size is " << annotations.size() << ".\n" ;
-#endif
 							}
+							if( type == eInsertion ) {
+								where = m_annotations.find( genfile::GenomePosition( contig_id, position-1 )) ;
+								if( where != m_annotations.end() ) {
+									std::set< AnnotationElt >::const_iterator i = where->second.begin() ;
+									std::set< AnnotationElt >::const_iterator end = where->second.end() ;
+									for( ; i != end; ++i ) {
+										if( i->end() == position ) {
+											annotations.insert( *i ) ;
+										}
+									}
+								}
+							}
+						// We only keep the longest two annotations currently.
+						
+							if( annotations.size() > 2 ) {
+								std::set< AnnotationElt >::const_iterator i = annotations.begin() ;
+								++i ;
+								++i ;
+								annotations.erase( i, annotations.end() ) ;
+							}
+#if DEBUG
+							if( annotations.size() > 0 ) {
+								std::cerr << "Annotations found at position " << position << "!  size is " << annotations.size() << ".\n" ;
+							}
+#endif
 						}
 						
 #if DEBUG
