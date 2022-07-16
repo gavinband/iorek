@@ -123,13 +123,8 @@ short repeat tracts. Motivated by this, at present `tabulate-mismatches` only ou
 two annotations overlapping any mismatch (as it's possible for a base to be in two repeat segments
 at once).  
 
-**Note**. Currently this tracking is based on the position of the mismatch. For deletions this is
+**Note**. This tracking is based on the position of the mismatch. For deletions this is
 the leftmost location of the deletion; a TODO is to find all overlapping annotations.
-
-**Note**. This currently does not capture insertions at the end of annotation (like AAAG -> AAAAG).
-That happens because the insertion position above is 4 which is outside the homopolymer. **TODO**:
-fix this. (One possibility is to have a seperate category for variations flanking these repeats,
-but in any case it ought to be symmetrical around both ends of the repeat.)
 
 Here's an example:
 
