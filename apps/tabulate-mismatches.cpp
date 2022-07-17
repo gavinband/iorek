@@ -31,6 +31,7 @@ namespace seqlib = SeqLib;
 #include "genfile/string_utils/slice.hpp"
 #include "genfile/Error.hpp"
 #include "genfile/Fasta.hpp"
+#include "genfile/find_homopolymers_and_short_repeats.hpp"
 #include "statfile/BuiltInTypeStatSink.hpp"
 
 // #define DEBUG 1
@@ -82,6 +83,12 @@ public:
 				" using a 0-based, right-open coordinate system." )
 			.set_takes_single_value()
 		;
+
+		options[ "-annotate-repeat-tracts" ]
+			.set_description( "Load short repeat tracts from the reference file." )
+		;
+
+		options.option_excludes_option( "-annotate-repeat-tracts", "-annotation" ) ;
 
 		options.declare_group( "Model options" ) ;
 		options[ "-mq" ]
@@ -520,6 +527,13 @@ private:
 	std::vector< std::string > m_annotation_names ;
 
 	void unsafe_process() {
+		genfile::Fasta::UniquePtr fasta = genfile::Fasta::create() ;
+		{
+			std::string const& fasta_filename = options().get< std::string >( "-fasta" ) ;
+			auto progress_context = ui().get_progress_context( "Loading sequences from \"" + fasta_filename + "\"" ) ;
+			fasta->add_sequences_from_file( fasta_filename, progress_context ) ;
+		}
+		
 		if( options().check( "-annotation" )) {
 			std::string const& filename = options().get< std::string >( "-annotation" ) ;
 			auto progress_context = ui().get_progress_context( "Loading annotations from \"" + filename + "\"" ) ;
@@ -535,11 +549,13 @@ private:
 			}
 #endif
 			
+		} else if( options().check( "-annotate-repeat-tracts" )) {
+			load_short_repeat_tracts( *fasta ) ;
 		}
 		
 		unsafe_process(
 			options().get_values< std::string >( "-reads" ),
-			options().get< std::string >( "-reference" )
+			*fasta
 		) ;
 	}
 
@@ -613,9 +629,32 @@ private:
 		}
 	}
 
+	void load_short_repeat_tracts( genfile::Fasta const& fasta ) {
+		std::vector< std::string > const& sequence_ids = fasta.sequence_ids() ;
+		for( auto sequence_id: sequence_ids ) {
+			auto progress_context = ui().get_progress_context( "Loading repeat tracts from \"" + sequence_id + "\"" ) ;
+			genfile::Fasta::PositionedSequenceRange const& contig = fasta.get_sequence( sequence_id ) ;
+			genfile::find_homopolymers_and_short_repeats(
+				contig.sequence().begin(),
+				contig.sequence().end(),
+				3ul,
+				[&]( uint32_t start, uint32_t end, std::string const& repeat ) {
+					std::set< AnnotationElt > values ;
+					values.insert( AnnotationElt( repeat, sequence_id, start-1, end )) ;
+					Annotation::interval_type interval(
+						genfile::GenomePosition( sequence_id, start-1 ), // use 0-based, closed interval coords
+						genfile::GenomePosition( sequence_id, end )
+					) ;
+					m_annotations.add( std::make_pair( interval, values )) ;
+				},
+				progress_context
+			) ;
+		}
+	}
+
 	void unsafe_process(
 		std::vector< std::string > const& filenames,
-		std::string const& fasta_filename
+		genfile::Fasta const& fasta
 	) {
 		Result result ;
 
@@ -623,16 +662,10 @@ private:
 			options().get< std::string >( "-o" )
 		) ;
 		
-		genfile::Fasta::UniquePtr fasta = genfile::Fasta::create() ;
-		{
-			auto progress_context = ui().get_progress_context( "Loading sequences from \"" + fasta_filename + "\"" ) ;
-			fasta->add_sequences_from_file( fasta_filename, progress_context ) ;
-		}
-		
 		for( std::size_t file_i = 0; file_i < filenames.size(); ++file_i ) {
 			process_reads(
 				filenames[file_i],
-				*fasta,
+				fasta,
 				&result
 			) ;
 		}
