@@ -738,25 +738,25 @@ private:
 							//
 							// with the AAA at [1,4)]
 							// Here is what we count as in the homopolymer:
-							// - A mismatch at positions 1-3
-							// - A deletion of positions 1-3
-							// - An insertion at (before) positions 1-4
-							// The point is there are possible 4 insertion positions but only
-							// three substitution / deletion positions.
+							// - A mismatch at any of the positions 1-3
+							// - A deletion that intersects positions 1-3
+							// - An insertion between any of the positions 1-4.
+
+							// Note there are 4 possible insertion positions but only three
+							// substitution / deletion positions.
 
 							// To account for this, we search for position and (if an insertion)
 							// also at position - 1, but in the latter case check the position
 							// against the annotation endpoints.
-							Annotation::const_iterator where = m_annotations.find( genfile::GenomePosition( contig_id, position )) ;
-							if( where != m_annotations.end() ) {
-								// Currently only keep track of longest two annotations.
-								// So we need a kludge here to handle this.
-								std::set< AnnotationElt >::const_iterator begin = where->second.begin() ;
-								std::set< AnnotationElt >::const_iterator end = where->second.end() ;
-								annotations = std::set< AnnotationElt > ( begin, end ) ;
+							for( genfile::Position base_i = 0 ; base_i <= contig_sequence.size(); ++base_i ) {
+								Annotation::const_iterator where = m_annotations.find( genfile::GenomePosition( contig_id, position + base_i )) ;
+								if( where != m_annotations.end() ) {
+									annotations.insert( where->second.begin(), where->second.end() ) ;
+								}
 							}
 							if( type == eInsertion ) {
-								where = m_annotations.find( genfile::GenomePosition( contig_id, position-1 )) ;
+								assert( contig_sequence.size() == 0 ) ; // sanity check.
+								Annotation::const_iterator where = m_annotations.find( genfile::GenomePosition( contig_id, position-1 )) ;
 								if( where != m_annotations.end() ) {
 									std::set< AnnotationElt >::const_iterator i = where->second.begin() ;
 									std::set< AnnotationElt >::const_iterator end = where->second.end() ;

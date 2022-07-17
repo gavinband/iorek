@@ -14,3 +14,4 @@ read29	0	contig2	48	60	9M	*	0	7	GAGACTACT	*	XC:Z:SNP in repeat, position 50
 read30	0	contig2	48	60	9M	*	0	7	GACGCTACT	*	XC:Z:SNP in two repeats, position 51
 read31	0	contig2	48	60	9M	*	0	7	GACAGTACT	*	XC:Z:SNP in two repeats, position 52
 read32	0	contig2	48	60	9M	*	0	7	GACACGACT	*	XC:Z:SNP in repeat, position 53
+read33	0	contig2	47	60	1M6D3M	*	0	7	GACT	*	XC:Z:deletion of entire repeat, start position 48

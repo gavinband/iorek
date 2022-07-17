@@ -123,8 +123,10 @@ short repeat tracts. Motivated by this, at present `tabulate-mismatches` only ou
 two annotations overlapping any mismatch (as it's possible for a base to be in two repeat segments
 at once).  
 
-**Note**. This tracking is based on the position of the mismatch. For deletions this is
-the leftmost location of the deletion; a TODO is to find all overlapping annotations.
+**Update**. `tabulate-mismatches` has now been updated to do correctly capture all annotations that
+intersect any base of the mismatch or deletion. For insertions, it correctly captures insertions at
+either end of an annotation range as well as in the middle. Note that only the longest two annotations are
+currently output currently.
 
 Here's an example:
 
@@ -146,6 +148,7 @@ read29	0	contig2	48	60	9M	*	0	7	GAGACTACT	*	XC:Z:SNP in repeat, position 50
 read30	0	contig2	48	60	9M	*	0	7	GACGCTACT	*	XC:Z:SNP in two repeats, position 51
 read31	0	contig2	48	60	9M	*	0	7	GACAGTACT	*	XC:Z:SNP in two repeats, position 52
 read32	0	contig2	48	60	9M	*	0	7	GACACGACT	*	XC:Z:SNP in repeat, position 53
+read33	0	contig2	47	60	1M6D3M	*	0	7	GACT	*	XC:Z:deletion of entire repeat, start position 48
 ```
 
 Annotations can be passed in [BED4 format](https://en.wikipedia.org/wiki/BED_%28file_format%29) (i.e.
