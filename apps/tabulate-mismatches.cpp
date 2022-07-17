@@ -191,6 +191,11 @@ namespace {
 			} else if( left.m_start > right.m_start ) {
 				return false ;
 			}
+			if( left.m_end < right.m_end ) {
+				return true ;
+			} else if( left.m_end > right.m_end ) {
+				return false ;
+			}
 			// This ordering is to ensure that when we choose two
 			// elements for output below, we choose the longest ones.
 			return false ;

@@ -119,14 +119,22 @@ count	contig_id	position	type	contig_sequence	read_sequence	left_flank	right_fla
 
 `tabulate-mismatches` can keep track of mismatches with respect to externally-supplied genomic
 region annotations. The intended use case is to track error locations within homopolymers and other
-short repeat tracts. Motivated by this, at present `tabulate-mismatches` only outputs the longest
-two annotations overlapping any mismatch (as it's possible for a base to be in two repeat segments
-at once).  
+short repeat tracts. 
 
-**Update**. `tabulate-mismatches` has now been updated to do correctly capture all annotations that
+**Note**. `tabulate-mismatches` has now been updated to do correctly capture all annotations that
 intersect any base of the mismatch or deletion. For insertions, it correctly captures insertions at
-either end of an annotation range as well as in the middle. Note that only the longest two annotations are
-currently output currently.
+either end of an annotation range as well as in the middle. For example, if the contig sequence is:
+`CAAG`, and the read sequence is `CAAAG`, then `tabulate-mismatches` will treat the insertion as
+within the homopolymer for all the possible CIGAR strings (e.g. `1M1I3M`, `2M1I2M`, `3M1I1M`).
+
+**Note**. `tabulate-mismatches` internally tracks all annotations that overlap the mismatching /
+insertion / deleted bases. However, currently it only outputs the **longest two** annotations in
+the output. More precisely, `tabulate-mismatches` internally sorts annotations by: genomic length
+(in decreasing order), then by the length of the annotation name (increasing), then by the
+annotation name itself, and then by the start and end positions. Then the first two annotations
+from this list are output. (The intention here is that, if the annotations represent tracts of
+short repeat units, the longest tracts of the shortest repeat segments will be output, ordering in
+genomic position order if there are multiple such tracts.)
 
 Here's an example:
 
@@ -189,14 +197,10 @@ count	contig_id	position	type	contig_sequence	read_sequence	left_flank	right_fla
 1	contig2	39	D	GAC		GAC	TGA	GAC	6	NA	NA
 1	contig2	41	X	C	G	CGA	TGA	GAC	6	NA	NA
 1	contig2	42	I		GAC	GAC	TGA	GAC	6	NA	NA
-1	contig2	50	X	C	G	GGA	ACT	AC	4	NA	NA
+1	contig2	48	D	GACACT		CTG	ACT	ACT	6	AC	4
+1	contig2	50	X	C	G	GGA	ACT	ACT	6	AC	4
 1	contig2	51	X	A	G	GAC	CTA	ACT	6	AC	4
 1	contig2	52	X	C	G	ACA	TAC	ACT	6	AC	4
 1	contig2	53	X	T	G	CAC	ACT	ACT	6	NA	NA
 
 ```
-
-**Note.** `tabulate-mismatches` only keeps track of the *longest two annotations*. If multiple
-annotations overlap at a mismatch position, it arranges the output so that the longest annotation
-(by genomic region length) occurs in the `annotation1` columns and the second longest in the
-`annotation2` columns.
