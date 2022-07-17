@@ -29,6 +29,7 @@ namespace genfile {
 	void find_homopolymers_and_short_repeats(
 		Iterator begin,
 		Iterator const end,
+		std::size_t const minimum_length,
 		std::function< void( uint32_t const start, uint32_t const end, std::string const& motif ) > callback,
 		std::function< void( std::size_t, std::size_t ) > progress_callback = std::function< void (std::size_t, std::size_t) >()
 	) {
@@ -69,7 +70,10 @@ namespace genfile {
 				// (GAC) repeat for 7 bases
 				// etc. - noting that these overlap.
 				if( (current_length >= repeat_unit_length) && (base != repeat[counter % repeat_unit_length]) ) {
-					if( current_length >= 2 * repeat.size() ) {
+					if(
+						(current_length >= 2 * repeat.size())
+						&& (current_length >= minimum_length)
+					) {
 						impl::report_repeat( repeat, start, current_length, x, callback ) ;
 					}
 					start = (counter + 1) % repeat_unit_length ;
@@ -101,6 +105,7 @@ namespace genfile {
 	// Homopolymers are not reported as di- or tri-nucleotide repeats (e.g. AAA is not a repeat unit.)
 	void find_homopolymers_and_short_repeats(
 		Fasta const& fasta,
+		std::size_t const minimum_length,
 		std::function< void( uint32_t const start, uint32_t const end, std::string const& motif ) > callback,
 		std::function< void( std::size_t, std::size_t ) > progress_callback = std::function< void (std::size_t, std::size_t) >()
 	) ;
