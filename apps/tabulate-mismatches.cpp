@@ -88,7 +88,7 @@ public:
 			.set_description( "Load short repeat tracts from the reference file." )
 		;
 
-		options.option_excludes_option( "-annotate-repeat-tracts", "-annotation" ) ;
+		//options.option_excludes_option( "-annotate-repeat-tracts", "-annotation" ) ;
 
 		options.declare_group( "Model options" ) ;
 		options[ "-mq" ]
@@ -529,7 +529,7 @@ private:
 	void unsafe_process() {
 		genfile::Fasta::UniquePtr fasta = genfile::Fasta::create() ;
 		{
-			std::string const& fasta_filename = options().get< std::string >( "-fasta" ) ;
+			std::string const& fasta_filename = options().get< std::string >( "-reference" ) ;
 			auto progress_context = ui().get_progress_context( "Loading sequences from \"" + fasta_filename + "\"" ) ;
 			fasta->add_sequences_from_file( fasta_filename, progress_context ) ;
 		}
@@ -849,7 +849,7 @@ private:
 
 	void output_results( Result const& result, statfile::BuiltInTypeStatSink& sink ) {
 		bool const by_position = options().check( "-by-position" ) ;
-		bool const with_annotations = options().check( "-annotation" ) ;
+		bool const with_annotations = options().check( "-annotation" ) || options().check( "-annotate-repeat-tracts" ) ;
 		sink | "count" ;
 		if( by_position ) {
 			sink | "contig_id" | "position" ;
