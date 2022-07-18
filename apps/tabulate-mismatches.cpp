@@ -87,9 +87,14 @@ public:
 		options[ "-annotate-repeat-tracts" ]
 			.set_description( "Load short repeat tracts from the reference file." )
 		;
+		options[ "-minimum-tract-length" ]
+			.set_description( "minimum length of repeat tract to report." )
+			.set_default_value( 3 )
+		;
 
-		//options.option_excludes_option( "-annotate-repeat-tracts", "-annotation" ) ;
-
+		options.option_excludes_option( "-annotate-repeat-tracts", "-annotation" ) ;
+		options.option_implies_option( "-minimum-tract-length", "-annotate-repeat-tracts" ) ;
+		
 		options.declare_group( "Model options" ) ;
 		options[ "-mq" ]
 			.set_description( "Ignore alignments below this mapping quality threshold" )
@@ -631,13 +636,14 @@ private:
 
 	void load_short_repeat_tracts( genfile::Fasta const& fasta ) {
 		std::vector< std::string > const& sequence_ids = fasta.sequence_ids() ;
+		std::size_t const minimum_length = options().get< std::size_t >( "-minimum-tract-length" ) ;
 		for( auto sequence_id: sequence_ids ) {
 			auto progress_context = ui().get_progress_context( "Loading repeat tracts from \"" + sequence_id + "\"" ) ;
 			genfile::Fasta::PositionedSequenceRange const& contig = fasta.get_sequence( sequence_id ) ;
 			genfile::find_homopolymers_and_short_repeats(
 				contig.sequence().begin(),
 				contig.sequence().end(),
-				2ul,
+				minimum_length,
 				[&]( uint32_t start, uint32_t end, std::string const& repeat ) {
 					// uses 0-based, closed interval coords
 					std::set< AnnotationElt > values ;
