@@ -245,6 +245,13 @@ namespace genfile {
 		return *(where->second.second.begin() + position.position() - sequence_start) ;
 	}
 
+
+	genfile::GenomePositionRange Fasta::get_range(
+		genfile::Chromosome const& name
+	) const {
+		return get_sequence( name ).positions() ;
+	}
+
 	void Fasta::get_sequence(
 		genfile::Chromosome const& chromosome,
 		std::deque<char>* result
@@ -293,13 +300,15 @@ namespace genfile {
 		
 		genfile::Position const one_based_sequence_start = where->second.first.first ;
 		genfile::Position const one_based_sequence_end = where->second.first.second ; // one-past-the-end
-		if( start > one_based_sequence_end || start < one_based_sequence_start || end < one_based_sequence_start || end > one_based_sequence_end ) {
+
+			/*if( start > one_based_sequence_end || start < one_based_sequence_start || end < one_based_sequence_start || end > one_based_sequence_end ) {
 			throw genfile::BadArgumentError(
 				"Fasta::get_sequence()",
 				"start..end=" + to_string( start ) + ".." + to_string( end ),
 				"Region does not overlap the sequence (" + to_string( chromosome ) + ":" + to_string( one_based_sequence_start ) + "-" + to_string( one_based_sequence_end ) + ")."
 			) ;
 		}
+		*/
 		genfile::Position actual_start = std::max( start, one_based_sequence_start ) ;
 		genfile::Position actual_end = std::min( end, one_based_sequence_end ) ;
 

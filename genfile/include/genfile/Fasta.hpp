@@ -128,6 +128,9 @@ namespace genfile {
 		PositionedSequenceRange get_sequence(
 			genfile::Chromosome const& name
 		) const ;
+		genfile::GenomePositionRange get_range(
+			genfile::Chromosome const& name
+		) const ;
 		PositionedSequenceRange get_sequence(
 			genfile::Chromosome const& name,
 			genfile::Position start,

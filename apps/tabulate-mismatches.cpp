@@ -648,13 +648,14 @@ private:
 
 		for( auto sequence_id: sequence_ids ) {
 			auto progress_context = ui().get_progress_context( "Loading repeat tracts from \"" + sequence_id + "\"" ) ;
+			genfile::GenomePositionRange const sequence_range = fasta.get_range( sequence_id ) ;
 			genfile::Fasta::PositionedSequenceRange const& contig = (
 				use_range
 				? fasta.get_sequence(
 					sequence_id,
 					// we look up to 10kb outside range for repeat tract
 					range.start().position() - std::min( range.start().position()-1, 10000u ), 
-					range.end().position() + 10000
+					std::min( range.end().position() + 10000, sequence_range.end().position() )
 				)
 				: fasta.get_sequence( sequence_id )
 			) ;

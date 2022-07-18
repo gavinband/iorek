@@ -44,6 +44,18 @@ Model options:
             -mq <a>: Ignore alignments below this mapping quality threshold  Defaults to "0".
 ```
 
+### Basic usage
+
+This command assess all mismatches, deletions and insertions in the input reads compared to a
+reference genome, and outputs them along with information about local homopolymer, di- and
+tri-nucleotide repeat tracts.  Assume we are in the `examples/mismatches` folder:
+
+```
+tabulate-alignments -reads conting2_reads.bam -reference example.fa -annotate-repeat-tracts -o mismatches.tsv.gz
+```
+
+Additionally y
+
 ## Example
 
 Some example data can be found in the `example/mismatches/` folder.
