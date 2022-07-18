@@ -11,8 +11,8 @@ read25	0	contig2	22	60	5M2I3M	*	0	7	GACACACTGA	*	XC:Z:insertion in dinucleotide 
 read26	0	contig2	35	60	4M3D1M	*	0	7	TGACT	*	XC:Z:deletion in trinucleotide repeat, position 39
 read27	0	contig2	35	60	7M3I1M	*	0	7	TGACGACGACT	*	XC:Z:insertion in trinucleotide repeat, position 42
 read28	0	contig2	35	60	8M	*	0	7	TGACGAGT	*	XC:Z:SNP in trinucleotide repeat, position 41
-read29	0	contig2	48	60	9M	*	0	7	GAGACTACT	*	XC:Z:SNP in repeat, position 50
-read30	0	contig2	48	60	9M	*	0	7	GACGCTACT	*	XC:Z:SNP in two repeats, position 51
-read31	0	contig2	48	60	9M	*	0	7	GACAGTACT	*	XC:Z:SNP in two repeats, position 52
-read32	0	contig2	48	60	9M	*	0	7	GACACGACT	*	XC:Z:SNP in repeat, position 53
-read33	0	contig2	47	60	1M6D3M	*	0	7	GACT	*	XC:Z:deletion of entire repeat, start position 48
+read29	0	contig2	47	60	1M6D3M	*	0	7	GACT	*	XC:Z:deletion of entire repeat, start position 48
+read30	0	contig2	48	60	9M	*	0	7	GAGACTACT	*	XC:Z:SNP in repeat, position 50
+read31	0	contig2	48	60	9M	*	0	7	GACGCTACT	*	XC:Z:SNP in two repeats, position 51
+read32	0	contig2	48	60	9M	*	0	7	GACAGTACT	*	XC:Z:SNP in two repeats, position 52
+read33	0	contig2	48	60	9M	*	0	7	GACACGACT	*	XC:Z:SNP in repeat, position 53

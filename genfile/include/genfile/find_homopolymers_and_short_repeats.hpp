@@ -29,6 +29,7 @@ namespace genfile {
 	void find_homopolymers_and_short_repeats(
 		Iterator begin,
 		Iterator const end,
+		genfile::Position zero_based_start_position,
 		std::size_t const minimum_length,
 		std::function< void( uint32_t const start, uint32_t const end, std::string const& motif ) > callback,
 		std::function< void( std::size_t, std::size_t ) > progress_callback = std::function< void (std::size_t, std::size_t) >()
@@ -53,8 +54,8 @@ namespace genfile {
 				// if counter >= repeat unit length, then we are repeating.
 				auto& repeat_unit = repeats[i] ;
 				auto& counter = counters[i] ;
-				auto& start = starts[i] ;
-				std::size_t const tract_length = counter - start ;
+				auto& start_in_repeat_unit = starts[i] ;
+				std::size_t const tract_length = counter - start_in_repeat_unit ;
 
 				// Algorithm example: take sequence
 				// A T G A T G A C G A C  G ...
@@ -73,10 +74,10 @@ namespace genfile {
 						(tract_length >= 2 * repeat_unit.size())
 						&& (tract_length >= minimum_length)
 					) {
-						impl::report_repeat( repeat_unit, start, tract_length, x, callback ) ;
+						impl::report_repeat( repeat_unit, start_in_repeat_unit, tract_length, x + zero_based_start_position, callback ) ;
 					}
-					start = (counter + 1) % repeat_unit.size() ;
-					counter = start + repeat_unit.size()-1 ;
+					start_in_repeat_unit = (counter + 1) % repeat_unit.size() ;
+					counter = start_in_repeat_unit + repeat_unit.size()-1 ;
 				}
 				repeat_unit[counter % repeat_unit.size()] = base ;
 				++counter ;
@@ -90,7 +91,7 @@ namespace genfile {
 			auto& start = starts[i] ;
 			std::size_t const tract_length = counter - start ;
 			if( tract_length >= 2 * repeat_unit.size() ) {
-				impl::report_repeat( repeat_unit, start, tract_length, x, callback ) ;
+				impl::report_repeat( repeat_unit, start, tract_length, x + zero_based_start_position, callback ) ;
 			}
 		}
 		progress_callback( sequence_length, sequence_length ) ;

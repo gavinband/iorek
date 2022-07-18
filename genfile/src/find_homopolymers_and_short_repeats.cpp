@@ -11,15 +11,15 @@ namespace genfile {
 	namespace impl {
 		void report_repeat(
 			std::vector< char > const& repeat,
-			std::size_t const start,
-			std::size_t const current_length,
+			std::size_t const start_in_repeat_unit,
+			std::size_t const tract_length,
 			std::size_t zero_based_position,
 			std::function< void( uint32_t const start, uint32_t const end, std::string const& motif ) > callback
 		) {
 			std::size_t const repeat_unit_length = repeat.size() ;
 			std::string repeat_string( repeat_unit_length, ' ' ) ;
-			std::copy( repeat.begin() + start, repeat.end(), repeat_string.begin() ) ;
-			std::copy( repeat.begin(), repeat.begin() + start, repeat_string.begin() + repeat_unit_length - start ) ;
+			std::copy( repeat.begin() + start_in_repeat_unit, repeat.end(), repeat_string.begin() ) ;
+			std::copy( repeat.begin(), repeat.begin() + start_in_repeat_unit, repeat_string.begin() + repeat_unit_length - start_in_repeat_unit ) ;
 			// Avoid sequences of Ns or other missing base data
 			bool only_proper_nucleotides = ( repeat_string.find_first_not_of( "ACGT" ) == std::string::npos ) ;
 			// Avoid listing homopolymers as di- or tri-nucleotide repeats
@@ -31,7 +31,7 @@ namespace genfile {
 			) ;
 			if( valid && only_proper_nucleotides ) {
 				// report in 0-based, half open coords
-				callback( zero_based_position - current_length, zero_based_position, repeat_string ) ;
+				callback( zero_based_position - tract_length, zero_based_position, repeat_string ) ;
 			}
 		} ;
 	}
@@ -49,6 +49,7 @@ namespace genfile {
 			find_homopolymers_and_short_repeats(
 				contig.sequence().begin(),
 				contig.sequence().end(),
+				contig.positions().start().position() - 1, // this algorithm is 0-based
 				minimum_length,
 				[&]( uint32_t start, uint32_t end, std::string const& repeat ) {
 					callback( sequence_id, start, end, repeat ) ;

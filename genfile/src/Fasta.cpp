@@ -16,6 +16,8 @@
 #include "genfile/VariantEntry.hpp"
 #include "genfile/Fasta.hpp"
 
+#define DEBUG 1
+
 namespace genfile {
 	Fasta::UniquePtr Fasta::create() {
 		return Fasta::UniquePtr(
@@ -288,24 +290,26 @@ namespace genfile {
 				"Chromosome is not in the stored sequence."
 			) ;
 		}
-		genfile::Position const sequence_start = where->second.first.first ;
-		genfile::Position const sequence_end = where->second.first.second ; // one-past-the-end
-		if( start > sequence_end || start < sequence_start || end < sequence_start || end > sequence_end ) {
+		
+		genfile::Position const one_based_sequence_start = where->second.first.first ;
+		genfile::Position const one_based_sequence_end = where->second.first.second ; // one-past-the-end
+		if( start > one_based_sequence_end || start < one_based_sequence_start || end < one_based_sequence_start || end > one_based_sequence_end ) {
 			throw genfile::BadArgumentError(
 				"Fasta::get_sequence()",
 				"start..end=" + to_string( start ) + ".." + to_string( end ),
-				"Region does not overlap the sequence (" + to_string( chromosome ) + ":" + to_string( sequence_start ) + "-" + to_string( sequence_end ) + ")."
+				"Region does not overlap the sequence (" + to_string( chromosome ) + ":" + to_string( one_based_sequence_start ) + "-" + to_string( one_based_sequence_end ) + ")."
 			) ;
 		}
-		genfile::Position actual_start = std::max( start, sequence_start ) ;
-		genfile::Position actual_end = std::min( end, sequence_end ) ;
+		genfile::Position actual_start = std::max( start, one_based_sequence_start ) ;
+		genfile::Position actual_end = std::min( end, one_based_sequence_end ) ;
+
 		return PositionedSequenceRange(
 			genfile::GenomePositionRange(
 				chromosome, actual_start, actual_end
 			),
 			ConstSequenceRange(
-				where->second.second.begin() + (start - sequence_start),
-				where->second.second.begin() + (end - sequence_start)
+				where->second.second.begin() + (start - one_based_sequence_start ),
+				where->second.second.begin() + (end - one_based_sequence_start )
 			)
 		) ;
 	}
