@@ -637,12 +637,13 @@ private:
 			genfile::find_homopolymers_and_short_repeats(
 				contig.sequence().begin(),
 				contig.sequence().end(),
-				3ul,
+				2ul,
 				[&]( uint32_t start, uint32_t end, std::string const& repeat ) {
+					// uses 0-based, closed interval coords
 					std::set< AnnotationElt > values ;
-					values.insert( AnnotationElt( repeat, sequence_id, start-1, end )) ;
+					values.insert( AnnotationElt( repeat, sequence_id, start, end )) ;
 					Annotation::interval_type interval(
-						genfile::GenomePosition( sequence_id, start-1 ), // use 0-based, closed interval coords
+						genfile::GenomePosition( sequence_id, start ), 
 						genfile::GenomePosition( sequence_id, end )
 					) ;
 					m_annotations.add( std::make_pair( interval, values )) ;
@@ -786,7 +787,7 @@ private:
 							// To account for this, we search for position and (if an insertion)
 							// also at position - 1, but in the latter case check the position
 							// against the annotation endpoints.
-							for( genfile::Position base_i = 0 ; base_i <= contig_sequence.size(); ++base_i ) {
+							for( genfile::Position base_i = 0 ; base_i < contig_sequence.size(); ++base_i ) {
 								Annotation::const_iterator where = m_annotations.find( genfile::GenomePosition( contig_id, position + base_i )) ;
 								if( where != m_annotations.end() ) {
 									annotations.insert( where->second.begin(), where->second.end() ) ;

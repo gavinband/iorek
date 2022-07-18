@@ -117,24 +117,14 @@ count	contig_id	position	type	contig_sequence	read_sequence	left_flank	right_fla
 
 ## Example 2: tracking repeat tracts
 
-`tabulate-mismatches` can keep track of mismatches with respect to externally-supplied genomic
-region annotations. The intended use case is to track error locations within homopolymers and other
-short repeat tracts. 
+`tabulate-mismatches` can keep track of mismatches with respect to tracts of homopolymers and short
+repeats (or, optionally, other externally-supplied genomic region annotations). It correctly
+captures all tracts that intersect any base of mismatches and deletions, and captures tracts where
+the read contains an insertion (either internally to the tract or at the boundaries.
 
-**Note**. `tabulate-mismatches` has now been updated to do correctly capture all annotations that
-intersect any base of the mismatch or deletion. For insertions, it correctly captures insertions at
-either end of an annotation range as well as in the middle. For example, if the contig sequence is:
-`CAAG`, and the read sequence is `CAAAG`, then `tabulate-mismatches` will treat the insertion as
-within the homopolymer for all the possible CIGAR strings (e.g. `1M1I3M`, `2M1I2M`, `3M1I1M`).
-
-**Note**. `tabulate-mismatches` internally tracks all annotations that overlap the mismatching /
-insertion / deleted bases. However, currently it only outputs the **longest two** annotations in
-the output. More precisely, `tabulate-mismatches` internally sorts annotations by: genomic length
-(in decreasing order), then by the length of the annotation name (increasing), then by the
-annotation name itself, and then by the start and end positions. Then the first two annotations
-from this list are output. (The intention here is that, if the annotations represent tracts of
-short repeat units, the longest tracts of the shortest repeat segments will be output, ordering in
-genomic position order if there are multiple such tracts.)
+**Insertion example**. For example, if the contig sequence is: `CAAG`, and the read sequence is
+`CAAAG`, then `tabulate-mismatches` will treat the insertion as within the homopolymer for all the
+possible CIGAR strings (e.g. `1M1I3M`, `2M1I2M`, `3M1I1M`).
 
 Here's an example:
 
@@ -159,9 +149,7 @@ read32	0	contig2	48	60	9M	*	0	7	GACACGACT	*	XC:Z:SNP in repeat, position 53
 read33	0	contig2	47	60	1M6D3M	*	0	7	GACT	*	XC:Z:deletion of entire repeat, start position 48
 ```
 
-Annotations can be passed in [BED4 format](https://en.wikipedia.org/wiki/BED_%28file_format%29) (i.e.
-four columns specifying contig, start, end and annotation detail, using a 0-based, right-open
-coordinate system.)  Alternatively they can be listed in the `find-homopolymers` output format as follows:
+We could see the list of homopolymers / short repeat tracts using `find-homopolymers`:
 
 ```
 $ cat homopolymers.tsv
@@ -179,15 +167,15 @@ contig2	49	52	AC	4
 contig2	51	56	ACT	6
 ```
 
-**Note.** This format assumes a 1-based, closed coordinate system.
+**Note.** This format uses a 1-based, closed coordinate system.
 
-Given the above, `tabulate-mismatches` will output seperate rows for mismatches occuring in each annoted segment:
+To use `tabulate-mismatches` to track the position of mismatches within these tracts, use the `-annotate-repeat-tracts` option:
 
 ```
-$ tabulate-mismatches -reads contig2_reads.bam -reference example.fa -annotation homopolymers.tsv -by-position
+$ tabulate-mismatches -reads contig2_reads.bam -reference example.fa -annotate-repeat-tracts -by-position
 
 count	contig_id	position	type	contig_sequence	read_sequence	left_flank	right_flank	annotation1	annotation1_length	annotation2	annotation2_length
-1	contig2	6	I		A	TGA	ACT	A	2	NA	NA
+1	contig2	6	I		A	TGA	ACT	NA	NA	NA	NA
 1	contig2	11	D	A		TGA	ACT	A	3	NA	NA
 1	contig2	13	I		A	AAA	CTG	A	3	NA	NA
 1	contig2	17	X	A	C	TGA	AAC	A	4	NA	NA
@@ -198,9 +186,23 @@ count	contig_id	position	type	contig_sequence	read_sequence	left_flank	right_fla
 1	contig2	41	X	C	G	CGA	TGA	GAC	6	NA	NA
 1	contig2	42	I		GAC	GAC	TGA	GAC	6	NA	NA
 1	contig2	48	D	GACACT		CTG	ACT	ACT	6	AC	4
-1	contig2	50	X	C	G	GGA	ACT	ACT	6	AC	4
+1	contig2	50	X	C	G	GGA	ACT	AC	4	NA	NA
 1	contig2	51	X	A	G	GAC	CTA	ACT	6	AC	4
 1	contig2	52	X	C	G	ACA	TAC	ACT	6	AC	4
 1	contig2	53	X	T	G	CAC	ACT	ACT	6	NA	NA
 
 ```
+##Using external annotations
+
+Instead of `-annotate-repeat-tracts`, an externally computed set of annotations can be supplied
+using the `-annotate` option. Annotations can be passed in
+[BED4 format](https://en.wikipedia.org/wiki/BED_%28file_format%29) (i.e. four columns specifying contig,
+start, end and annotation detail, using a 0-based, right-open coordinate system.) 
+
+Alternatively they can be listed in the `find-homopolymers` output format as described above - this
+uses a 1-based, closed coordinate system.
+
+**Note.** This functionality has been superceded by `-annotate-repeat-tracts` but I've left it for
+now in case it proves useful.
+
+
