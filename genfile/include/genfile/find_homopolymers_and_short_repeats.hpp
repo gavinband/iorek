@@ -13,7 +13,7 @@ namespace genfile {
 		void report_repeat(
 			std::vector< char > const& repeat,
 			std::size_t const start,
-			std::size_t const current_length,
+			std::size_t const tract_length,
 			std::size_t zero_based_position,
 			std::function< void( uint32_t const start, uint32_t const end, std::string const& motif ) > callback
 		) ;
@@ -51,11 +51,10 @@ namespace genfile {
 			for( uint32_t i = 0; i < max_length; ++i ) {
 				// if counter < repeat unit length, then this is the first view of the repeat.
 				// if counter >= repeat unit length, then we are repeating.
-				auto& repeat = repeats[i] ;
-				std::size_t const repeat_unit_length = repeat.size() ;
+				auto& repeat_unit = repeats[i] ;
 				auto& counter = counters[i] ;
 				auto& start = starts[i] ;
-				std::size_t const current_length = counter - start ;
+				std::size_t const tract_length = counter - start ;
 
 				// Algorithm example: take sequence
 				// A T G A T G A C G A C  G ...
@@ -69,29 +68,29 @@ namespace genfile {
 				// (ATG) repeat for 7 bases
 				// (GAC) repeat for 7 bases
 				// etc. - noting that these overlap.
-				if( (current_length >= repeat_unit_length) && (base != repeat[counter % repeat_unit_length]) ) {
+				if( (tract_length >= repeat_unit.size()) && (base != repeat_unit[counter % repeat_unit.size()]) ) {
 					if(
-						(current_length >= 2 * repeat.size())
-						&& (current_length >= minimum_length)
+						(tract_length >= 2 * repeat_unit.size())
+						&& (tract_length >= minimum_length)
 					) {
-						impl::report_repeat( repeat, start, current_length, x, callback ) ;
+						impl::report_repeat( repeat_unit, start, tract_length, x, callback ) ;
 					}
-					start = (counter + 1) % repeat_unit_length ;
-					counter = start + repeat_unit_length-1 ;
+					start = (counter + 1) % repeat_unit.size() ;
+					counter = start + repeat_unit.size()-1 ;
 				}
-				repeat[counter % repeat_unit_length] = base ;
+				repeat_unit[counter % repeat_unit.size()] = base ;
 				++counter ;
 			}
 			progress_callback( x, sequence_length ) ;
 		}
 		// Handle the last repeat.
 		for( uint32_t i = 0; i < max_length; ++i ) {
-			auto& repeat = repeats[i] ;
+			auto& repeat_unit = repeats[i] ;
 			auto& counter = counters[i] ;
 			auto& start = starts[i] ;
-			std::size_t const current_length = counter - start ;
-			if( current_length >= 2 * repeat.size() ) {
-				impl::report_repeat( repeat, start, current_length, x, callback ) ;
+			std::size_t const tract_length = counter - start ;
+			if( tract_length >= 2 * repeat_unit.size() ) {
+				impl::report_repeat( repeat_unit, start, tract_length, x, callback ) ;
 			}
 		}
 		progress_callback( sequence_length, sequence_length ) ;

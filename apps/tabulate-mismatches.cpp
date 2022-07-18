@@ -99,7 +99,7 @@ public:
 		options[ "-mq" ]
 			.set_description( "Ignore alignments below this mapping quality threshold" )
 			.set_takes_single_value()
-			.set_default_value( 0 ) ;
+			.set_default_value( 20 ) ;
 
 		options[ "-by-position" ]
 			.set_description( "Specify that errors should be tabulated by position, not aggregated." ) ;
@@ -637,6 +637,7 @@ private:
 	void load_short_repeat_tracts( genfile::Fasta const& fasta ) {
 		std::vector< std::string > const& sequence_ids = fasta.sequence_ids() ;
 		std::size_t const minimum_length = options().get< std::size_t >( "-minimum-tract-length" ) ;
+		Annotation::iterator last_i = m_annotations.end() ;
 		for( auto sequence_id: sequence_ids ) {
 			auto progress_context = ui().get_progress_context( "Loading repeat tracts from \"" + sequence_id + "\"" ) ;
 			genfile::Fasta::PositionedSequenceRange const& contig = fasta.get_sequence( sequence_id ) ;
@@ -652,7 +653,7 @@ private:
 						genfile::GenomePosition( sequence_id, start ), 
 						genfile::GenomePosition( sequence_id, end )
 					) ;
-					m_annotations.add( std::make_pair( interval, values )) ;
+					last_i = m_annotations.add( last_i, std::make_pair( interval, values )) ;
 				},
 				progress_context
 			) ;
@@ -790,18 +791,16 @@ private:
 							// Note there are 4 possible insertion positions but only three
 							// substitution / deletion positions.
 
-							// To account for this, we search for position and (if an insertion)
-							// also at position - 1, but in the latter case check the position
-							// against the annotation endpoints.
-							for( genfile::Position base_i = 0 ; base_i < contig_sequence.size(); ++base_i ) {
-								Annotation::const_iterator where = m_annotations.find( genfile::GenomePosition( contig_id, position + base_i )) ;
+							if( type == eInsertion ) {
+								// To account for insertions at the beginning / middle / end of
+								// repeat tracts, we search if the insertion position is covered
+								// by a tract, but also check for tracts ending at position-1.
+								assert( contig_sequence.size() == 0 ) ; // sanity check.
+								Annotation::const_iterator where = m_annotations.find( genfile::GenomePosition( contig_id, position )) ;
 								if( where != m_annotations.end() ) {
 									annotations.insert( where->second.begin(), where->second.end() ) ;
 								}
-							}
-							if( type == eInsertion ) {
-								assert( contig_sequence.size() == 0 ) ; // sanity check.
-								Annotation::const_iterator where = m_annotations.find( genfile::GenomePosition( contig_id, position-1 )) ;
+								where = m_annotations.find( genfile::GenomePosition( contig_id, position-1 )) ;
 								if( where != m_annotations.end() ) {
 									std::set< AnnotationElt >::const_iterator i = where->second.begin() ;
 									std::set< AnnotationElt >::const_iterator end = where->second.end() ;
@@ -809,6 +808,16 @@ private:
 										if( i->end() == position ) {
 											annotations.insert( *i ) ;
 										}
+									}
+								}
+							} else {
+								// Check for any tract intersecting any contig base of
+								// the mismatch / deletion.
+								assert( contig_sequence.size() > 0 ) ; // sanity check.
+								for( genfile::Position base_i = 0 ; base_i < contig_sequence.size(); ++base_i ) {
+									Annotation::const_iterator where = m_annotations.find( genfile::GenomePosition( contig_id, position + base_i )) ;
+									if( where != m_annotations.end() ) {
+										annotations.insert( where->second.begin(), where->second.end() ) ;
 									}
 								}
 							}
@@ -863,8 +872,8 @@ private:
 		}
 		sink | "type" | "contig_sequence" | "read_sequence" | "left_flank" | "right_flank" ;
 		if( with_annotations ) {
-			sink | "annotation1" | "annotation1_length"
-			| "annotation2" | "annotation2_length" ;
+			sink | "tract1" | "tract1_length"
+			| "tract2" | "tract2_length" ;
 		}
 		auto progress_context = ui().get_progress_context( "Storing results" ) ;
 		std::size_t count = 0 ;
