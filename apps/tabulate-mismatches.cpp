@@ -664,7 +664,9 @@ private:
 				contig.positions().start().position()-1, // pass it as 0-based
 				minimum_length,
 				[&]( uint32_t start, uint32_t end, std::string const& repeat ) {
+#if DEBUG
 					std::cerr << "FOUND TRACT: " << sequence_id << ":" << start << "-" << end << ": " << repeat << ".\n" ;
+#endif
 					// uses 0-based, closed interval coords
 					std::set< AnnotationElt > values ;
 					values.insert( AnnotationElt( repeat, sequence_id, start, end )) ;
