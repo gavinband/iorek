@@ -653,7 +653,7 @@ private:
 				use_range
 				? fasta.get_sequence(
 					sequence_id,
-					// we look up to 10kb outside range for repeat tract
+					// we look up to 10kb outside range for a repeat tract
 					range.start().position() - std::min( range.start().position()-1, 10000u ), 
 					std::min( range.end().position() + 10000, sequence_range.end().position() )
 				)
@@ -753,6 +753,13 @@ private:
 		int32_t const mq_threshold = options().get< int32_t >( "-mq" ) ;
 		bool const by_position = options().check( "-by-position" ) ;
 		
+		bool use_range = options().check( "-range" ) ;
+		genfile::GenomePositionRange const range
+			= use_range
+			? genfile::GenomePositionRange::parse( options().get<std::string>( "-range" ))
+			: genfile::GenomePositionRange( 0,0 )
+		;
+		
 		seqlib::BamRecord alignment ;
 		std::size_t count = 0 ;
 		while( reader.GetNextRecord( alignment ) ) {
@@ -790,6 +797,15 @@ private:
 						std::transform( contig_sequence.begin(), contig_sequence.end(), contig_sequence.begin(), ::toupper ) ;
 						std::transform( right_flank.begin(), right_flank.end(), right_flank.begin(), ::toupper ) ;
 						//std::transform( read_sequence.begin(), read_sequence.end(), std::toupper ) ;
+						if( use_range ) {
+							if(
+								(position < (range.start().position()-1))
+								|| ((position + read_sequence.size()) > range.end().position() )
+							) {
+								return ;
+							}
+						}
+
 #if DEBUG
 						std::cerr << "++ contig_sequence: " << contig_sequence << "; read sequence: " << read_sequence << ".\n" ;
 #endif
