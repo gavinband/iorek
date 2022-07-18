@@ -62,6 +62,35 @@ namespace genfile {
 	std::ostream& operator<<( std::ostream&, GenomePosition const& ) ;
 	std::istream& operator>>( std::istream& oStream, GenomePosition& pos ) ;
 	
+	inline
+	bool operator<( GenomePosition const& left, GenomePosition const& right ) {
+		return left.m_data < right.m_data ;
+	}
+
+	inline
+	bool operator>( GenomePosition const& left, GenomePosition const& right ) {
+		return left.m_data > right.m_data ;
+	}
+
+	inline
+	bool operator<=( GenomePosition const& left, GenomePosition const& right ) {
+		return left.m_data <= right.m_data ;
+	}
+
+	inline
+	bool operator>=( GenomePosition const& left, GenomePosition const& right ) {
+		return left.m_data >= right.m_data ;
+	}
+
+	inline
+	bool operator==( GenomePosition const& left, GenomePosition const& right ) {
+		return left.m_data == right.m_data ;
+	}
+
+	inline
+	bool operator!=( GenomePosition const& left, GenomePosition const& right ) {
+		return left.m_data != right.m_data ;
+	}
 }
 
 #endif

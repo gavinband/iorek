@@ -149,26 +149,6 @@ read32	0	contig2	48	60	9M	*	0	7	GACACGACT	*	XC:Z:SNP in repeat, position 53
 read33	0	contig2	47	60	1M6D3M	*	0	7	GACT	*	XC:Z:deletion of entire repeat, start position 48
 ```
 
-We could see the list of homopolymers / short repeat tracts using `find-homopolymers`:
-
-```
-$ cat homopolymers.tsv
-# Computed by find-homopolymers 2022-05-22 23:04:49
-# Coordinates are 1-based, closed.
-sequence_id	start	end	repeat	length
-contig2	5	6	A	2
-contig2	10	12	A	3
-contig2	16	19	A	4
-contig2	23	26	AC	4
-contig2	28	31	GA	4
-contig2	31	34	AC	4
-contig2	36	41	GAC	6
-contig2	49	52	AC	4
-contig2	51	56	ACT	6
-```
-
-**Note.** This format uses a 1-based, closed coordinate system.
-
 To use `tabulate-mismatches` to track the position of mismatches within these tracts, use the `-annotate-repeat-tracts` option:
 
 ```
@@ -195,14 +175,30 @@ count	contig_id	position	type	contig_sequence	read_sequence	left_flank	right_fla
 ##Using external annotations
 
 Instead of `-annotate-repeat-tracts`, an externally computed set of annotations can be supplied
-using the `-annotate` option. Annotations can be passed in
-[BED4 format](https://en.wikipedia.org/wiki/BED_%28file_format%29) (i.e. four columns specifying contig,
-start, end and annotation detail, using a 0-based, right-open coordinate system.) 
+using the `-annotate` option. Annotations can be passed in [BED4
+format](https://en.wikipedia.org/wiki/BED_%28file_format%29) (i.e. four columns specifying contig,
+start, end and annotation detail, using a 0-based, right-open coordinate system.)
 
-Alternatively they can be listed in the `find-homopolymers` output format as described above - this
-uses a 1-based, closed coordinate system.
+Alternatively they can be listed in the `find-homopolymers` output format as follows:
 
-**Note.** This functionality has been superceded by `-annotate-repeat-tracts` but I've left it for
-now in case it proves useful.
+```
+$ cat homopolymers.tsv
+# Computed by find-homopolymers 2022-05-22 23:04:49
+# Coordinates are 1-based, closed.
+sequence_id	start	end	repeat	length
+contig2	5	6	A	2
+contig2	10	12	A	3
+contig2	16	19	A	4
+contig2	23	26	AC	4
+contig2	28	31	GA	4
+contig2	31	34	AC	4
+contig2	36	41	GAC	6
+contig2	49	52	AC	4
+contig2	51	56	ACT	6
+```
 
+**Note.** This format uses a 1-based, closed coordinate system.
+
+**Note.** The `-annotate` functionality has probably been superceded by `-annotate-repeat-tracts`
+but I've left it for now in case it proves useful.
 
