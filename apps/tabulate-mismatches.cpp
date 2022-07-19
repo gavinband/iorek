@@ -104,6 +104,11 @@ public:
 		options[ "-by-position" ]
 			.set_description( "Specify that errors should be tabulated by position, not aggregated." ) ;
 
+		options[ "-flank" ]
+			.set_description( "Specify how much flanking sequence to classify by." )
+			.set_takes_single_value()
+			.set_default_value( 3 ) ;
+
 		options.declare_group( "Miscellaneous options" ) ;
 		options[ "-threads" ]
 			.set_description( "Use this many extra threads for file reading" )
@@ -637,7 +642,6 @@ private:
 	void load_short_repeat_tracts( genfile::Fasta const& fasta ) {
 		std::vector< std::string > const& sequence_ids = fasta.sequence_ids() ;
 		std::size_t const minimum_length = options().get< std::size_t >( "-minimum-tract-length" ) ;
-		Annotation::iterator last_i = m_annotations.end() ;
 
 		bool use_range = options().check( "-range" ) ;
 		genfile::GenomePositionRange range
@@ -646,6 +650,11 @@ private:
 				: genfile::GenomePositionRange( 0, 0 )
 		;
 
+		// Repeat tracts get seen in position order.
+		// For efficiency we therefore insert them using the previous insertion point
+		// as a hint - this variable does that.
+		Annotation::iterator last_i = m_annotations.end() ;
+
 		for( auto sequence_id: sequence_ids ) {
 			auto progress_context = ui().get_progress_context( "Loading repeat tracts from \"" + sequence_id + "\"" ) ;
 			genfile::GenomePositionRange const sequence_range = fasta.get_range( sequence_id ) ;
@@ -653,7 +662,7 @@ private:
 				use_range
 				? fasta.get_sequence(
 					sequence_id,
-					// we look up to 10kb outside range for a repeat tract
+					// we look up to 10kb outside the range for a repeat tract
 					range.start().position() - std::min( range.start().position()-1, 10000u ), 
 					std::min( range.end().position() + 10000, sequence_range.end().position() )
 				)
@@ -759,6 +768,8 @@ private:
 			? genfile::GenomePositionRange::parse( options().get<std::string>( "-range" ))
 			: genfile::GenomePositionRange( 0,0 )
 		;
+		
+		std::size_t const flank = options().get< std::size_t >( "-flank" ) ;
 		
 		seqlib::BamRecord alignment ;
 		std::size_t count = 0 ;
@@ -891,7 +902,8 @@ private:
 						std::cerr << "mismatch: (" << contig_id << ":" << (position+1) << "): " << e << "\n"  ;
 #endif
 						++(*result)[e] ;
-					}
+					},
+					flank
 				) ; 
 			}
 			++count ;
