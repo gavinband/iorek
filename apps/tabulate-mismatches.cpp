@@ -26,6 +26,7 @@ namespace seqlib = SeqLib;
 // namespace bt = BamTools ;
 
 #include "appcontext/appcontext.hpp"
+#include "appcontext/get_current_time_as_string.hpp"
 #include "genfile/GenomePositionRange.hpp"
 #include "genfile/string_utils/string_utils.hpp"
 #include "genfile/string_utils/slice.hpp"
@@ -76,7 +77,7 @@ public:
 			.set_is_required() ;
 
 		options[ "-annotation" ]
-			.set_description( "Specify a BED file or text file of annotations (for example, of homopolymer tracts.)"
+			.set_description( "Specify a BED file or text file of annotations (for example, of homopolymer RepeatTracts.)"
 				" If a .txt file, it must have columns \"contig_id\", \"start\", \"end\", \"repeat\", \"length\""
 				" using a 1-based, closed interval coordinate system."
 				" If a BED file, it must have 4 columns with no headers, representing sequence ID, start, end, and annotation,"
@@ -85,15 +86,15 @@ public:
 		;
 
 		options[ "-annotate-repeat-tracts" ]
-			.set_description( "Load short repeat tracts from the reference file." )
+			.set_description( "Load short repeat RepeatTracts from the reference file." )
 		;
-		options[ "-minimum-tract-length" ]
-			.set_description( "minimum length of repeat tract to report." )
-			.set_default_value( 3 )
+		options[ "-minimum-RepeatTract-length" ]
+			.set_description( "minimum length of repeat RepeatTract to report." )
+			.set_default_value( 2 )
 		;
 
 		options.option_excludes_option( "-annotate-repeat-tracts", "-annotation" ) ;
-		options.option_implies_option( "-minimum-tract-length", "-annotate-repeat-tracts" ) ;
+		options.option_implies_option( "-minimum-RepeatTract-length", "-annotate-repeat-tracts" ) ;
 		
 		options.declare_group( "Model options" ) ;
 		options[ "-mq" ]
@@ -127,7 +128,7 @@ namespace {
 		eDeletion = 'D',
 		eInsertion = 'I'
 	} ;
-	
+
 	// We use boost::icl::interval_map to store annotation file entries. This
 	// efficiently handles a map from positions to annotations, internally
 	// represented as intervvals
@@ -138,15 +139,15 @@ namespace {
 	// might be more.)  A std::set works fine for this, as in the example:
 	// www.boost.org/doc/libs/1_68_0/libs/icl/doc/html/boost_icl/examples/partys_height_average.html
 	
-	struct AnnotationElt
+	struct RepeatTract
 	{
-		AnnotationElt(
+		RepeatTract(
 			std::string const& name,
 			genfile::Chromosome const& contig,
 			genfile::Position start, // 0-based
 			genfile::Position end    // 0-based, half-closed
 		):
-			m_name( name ),
+			m_repeat_unit( name ),
 			m_contig( contig ),
 			m_start( start ),
 			m_end( end )
@@ -154,31 +155,34 @@ namespace {
 			assert( m_start <= m_end ) ;
 		}
 
-		AnnotationElt( AnnotationElt const& other ):
-			m_name( other.m_name ),
+		RepeatTract( RepeatTract const& other ):
+			m_repeat_unit( other.m_repeat_unit ),
 			m_contig( other.m_contig ),
 			m_start( other.m_start ),
 			m_end( other.m_end )
 		{}
 		
-		AnnotationElt& operator=( AnnotationElt const& other ) {
-			m_name = other.m_name ;
+		RepeatTract& operator=( RepeatTract const& other ) {
+			m_repeat_unit = other.m_repeat_unit ;
 			m_contig = other.m_contig ;
 			m_start = other.m_start ;
 			m_end = other.m_end ;
 			return *this ;
 		}
 
-		bool operator==( AnnotationElt const& right ) const {
-			AnnotationElt const& left = *this ;
-			return (left.m_name == right.m_name)
+		bool operator==( RepeatTract const& right ) const {
+			RepeatTract const& left = *this ;
+			return (left.m_repeat_unit == right.m_repeat_unit)
 				&& (left.m_contig == right.m_contig)
 				&& (left.m_start == right.m_start)
 				&& (left.m_end == right.m_end) ;
 		}
 
-		bool operator<( AnnotationElt const& right ) const {
-			AnnotationElt const& left = *this ;
+		bool operator<( RepeatTract const& right ) const {
+			RepeatTract const& left = *this ;
+			// This ordering is to ensure that when we choose two
+			// elements for output below, we choose the longest ones.
+
 			// order by genomic length (largest first)...
 			if( left.length() > right.length() ) {
 				return true ;
@@ -186,15 +190,15 @@ namespace {
 				return false ;
 			}
 			// ...then by the length of the annotation string, smallest first...
-			if( left.m_name.size() < right.m_name.size() ) {
+			if( left.m_repeat_unit.size() < right.m_repeat_unit.size() ) {
 				return true ;
-			} else if( left.m_name.size() > right.m_name.size() ) {
+			} else if( left.m_repeat_unit.size() > right.m_repeat_unit.size() ) {
 				return false ;
 			}
 			// ...then by the annotation string itself.
-			if( left.m_name < right.m_name ) {
+			if( left.m_repeat_unit < right.m_repeat_unit ) {
 				return true ;
-			} else if( left.m_name > right.m_name ) {
+			} else if( left.m_repeat_unit > right.m_repeat_unit ) {
 				return false ;
 			}
 			// ...then by the position
@@ -213,12 +217,10 @@ namespace {
 			} else if( left.m_end > right.m_end ) {
 				return false ;
 			}
-			// This ordering is to ensure that when we choose two
-			// elements for output below, we choose the longest ones.
 			return false ;
 		}
 
-		std::string const& annotation() const { return m_name ; }
+		std::string const& repeat_unit() const { return m_repeat_unit ; }
 		// 0-based coords
 		genfile::Chromosome contig() const { return m_contig ; }
 		genfile::Position start() const { return m_start ; }
@@ -226,12 +228,77 @@ namespace {
 		uint32_t length() const { return m_end - m_start ; }
 		
 	private:
-		std::string m_name ;
+		std::string m_repeat_unit ;
 		genfile::Chromosome m_contig ;
 		genfile::Position m_start ;
 		genfile::Position m_end ;
 	} ;
 	
+	// 
+	struct RepeatTractClass
+	{
+		RepeatTractClass(
+			std::string const& name,
+			std::size_t length
+		):
+			m_repeat_unit( name ),
+			m_length( length )
+		{}
+
+		RepeatTractClass( RepeatTract const& other ):
+			m_repeat_unit( other.repeat_unit() ),
+			m_length( other.length() )
+		{}
+
+		RepeatTractClass( RepeatTractClass const& other ):
+			m_repeat_unit( other.m_repeat_unit ),
+			m_length( other.m_length )
+		{}
+		
+		RepeatTractClass& operator=( RepeatTractClass const& other ) {
+			m_repeat_unit = other.m_repeat_unit ;
+			m_length = other.m_length ;
+			return *this ;
+		}
+
+		bool operator==( RepeatTractClass const& right ) const {
+			RepeatTractClass const& left = *this ;
+			return (left.m_repeat_unit == right.m_repeat_unit)
+				&& (left.m_length == right.m_length) ;
+		}
+
+		bool operator<( RepeatTractClass const& right ) const {
+			RepeatTractClass const& left = *this ;
+			// order by RepeatTract length
+			if( left.m_length > right.m_length ) {
+				return true ;
+			} else if( left.m_length < right.m_length ) {
+				return false ;
+			}
+			// ...then by the length of the annotation string, smallest first...
+			if( left.m_repeat_unit.size() < right.m_repeat_unit.size() ) {
+				return true ;
+			} else if( left.m_repeat_unit.size() > right.m_repeat_unit.size() ) {
+				return false ;
+			}
+			// ...then by the annotation string itself.
+			if( left.m_repeat_unit < right.m_repeat_unit ) {
+				return true ;
+			} else if( left.m_repeat_unit > right.m_repeat_unit ) {
+				return false ;
+			}
+			return false ;
+		}
+
+		std::string const& repeat_unit() const { return m_repeat_unit ; }
+		// 0-based coords
+		uint32_t length() const { return m_length ; }
+		
+	private:
+		std::string m_repeat_unit ;
+		std::size_t m_length ;
+	} ;
+
 	struct MismatchClass
 	{
 		MismatchClass(
@@ -242,7 +309,7 @@ namespace {
 			std::string const& read_sequence,
 			std::string const& left_flank,
 			std::string const& right_flank,
-			std::set< AnnotationElt > const& annotations
+			std::set< RepeatTractClass > const& repeat_classes
 		):
 			m_contig_id( contig_id ),
 			m_position( position ),
@@ -251,7 +318,7 @@ namespace {
 			m_read_sequence( read_sequence ),
 			m_left_flank( left_flank ),
 			m_right_flank( right_flank ),
-			m_annotations( annotations )
+			m_repeat_classes( repeat_classes )
 		{}
 
 		MismatchClass(
@@ -264,7 +331,7 @@ namespace {
 			m_read_sequence( other.m_read_sequence ),
 			m_left_flank( other.m_left_flank ),
 			m_right_flank( other.m_right_flank ),
-			m_annotations( other.m_annotations )
+			m_repeat_classes( other.m_repeat_classes )
 		{}
 
 		MismatchClass& operator=(
@@ -277,7 +344,7 @@ namespace {
 			m_read_sequence = other.m_read_sequence ;
 			m_left_flank = other.m_left_flank ;
 			m_right_flank = other.m_right_flank ;
-			m_annotations = other.m_annotations ;
+			m_repeat_classes = other.m_repeat_classes ;
 			return *this ;
 		}
 
@@ -288,9 +355,10 @@ namespace {
 		std::string const& read_sequence() const { return m_read_sequence ; }
 		std::string const& left_flank() const { return m_left_flank ; }
 		std::string const& right_flank() const { return m_right_flank ; }
-		std::set< AnnotationElt > const& annotations() const { return m_annotations ; }
+		std::set< RepeatTractClass > const& repeat_tract_classes() const { return m_repeat_classes ; }
 		
 		friend bool operator<( MismatchClass const& left, MismatchClass const& right ) ;
+		friend bool operator==( MismatchClass const& left, MismatchClass const& right ) ;
 		friend std::ostream& operator<<( std::ostream& out, MismatchClass const& m ) ;
 	private:
 		std::string m_contig_id ;
@@ -300,7 +368,7 @@ namespace {
 		std::string m_read_sequence ;
 		std::string m_left_flank ;
 		std::string m_right_flank ;
-		std::set< AnnotationElt > m_annotations ;
+		std::set< RepeatTractClass > m_repeat_classes ;
 	} ;
 	
 	bool operator<( MismatchClass const& left, MismatchClass const& right ) {
@@ -339,21 +407,32 @@ namespace {
 		} else if( left.m_right_flank > right.m_right_flank ) {
 			return false ;
 		}
-		if( left.m_annotations < right.m_annotations ) {
+		if( left.m_repeat_classes < right.m_repeat_classes ) {
 			return true ;
-		} else if( left.m_annotations > right.m_annotations ) {
+		} else if( left.m_repeat_classes > right.m_repeat_classes ) {
 			return false ;
 		}
 		return false ;
 	}
 
-#if DEBUG
+	bool operator==( MismatchClass const& left, MismatchClass const& right ) {
+		return
+			( left.m_contig_id == right.m_contig_id )
+			&& ( left.m_position == right.m_position )
+			&& ( left.m_type == right.m_type )
+			&&( left.m_contig_sequence == right.m_contig_sequence )
+			&&( left.m_read_sequence == right.m_read_sequence )
+			&&( left.m_left_flank == right.m_left_flank )
+			&&( left.m_right_flank == right.m_right_flank )
+			&&( left.m_repeat_classes == right.m_repeat_classes )
+		;
+	}
+
 	std::ostream& operator<<( std::ostream& out, MismatchClass const& m ) {
 		out << m.m_contig_id << ":" << m.m_position << ": " << char( m.m_type ) << " "
 			<< m.m_left_flank << "[" << m.m_contig_sequence << ">" << m.m_read_sequence << "]" << m.m_right_flank ;
 		return out ;
 	}
-#endif
 	
 	void classify_alignment_mismatches(
 		seqlib::BamRecord const& alignment,
@@ -531,9 +610,9 @@ public:
 private:
 	typedef std::map< MismatchClass, int > Result ;
 
-	typedef std::set< AnnotationElt > Payload ;
+	typedef std::set< RepeatTract > Payload ;
 	typedef boost::icl::interval_map< genfile::GenomePosition, Payload > Annotation ;
-	Annotation m_annotations ;
+	Annotation m_repeat_tracts ;
 	std::vector< std::string > m_annotation_names ;
 
 	void unsafe_process() {
@@ -551,7 +630,7 @@ private:
 			std::cerr << "++ Annotations loaded.\n" ;
 #if 0
 			std::cerr << "++ Annotations are:\n" ;
-			for( const auto& kv: m_annotations ) {
+			for( const auto& kv: m_repeat_tracts ) {
 				std::cerr << "  \"" << k.first < "\":\n" ;
 				for( Annotation::const_iterator i = kv.second.begin(); i != kv.second.end(); ++i ) {
 					std::cerr << "    " << i->second << ".\n" ;
@@ -560,7 +639,7 @@ private:
 #endif
 			
 		} else if( options().check( "-annotate-repeat-tracts" )) {
-			load_short_repeat_tracts( *fasta ) ;
+			load_short_repeat_RepeatTracts( *fasta ) ;
 		}
 		
 		unsafe_process(
@@ -626,22 +705,22 @@ private:
 				--start ;
 			}
 			uint32_t end( to_repr< uint32_t >( elts[2] ) ) ;
-			std::set< AnnotationElt > values ;
-			values.insert( AnnotationElt( elts[3], chromosome, start, end )) ;
+			std::set< RepeatTract > values ;
+			values.insert( RepeatTract( elts[3], chromosome, start, end )) ;
 
 			Annotation::interval_type interval(
 				genfile::GenomePosition( chromosome, start ),
 				genfile::GenomePosition( chromosome, end )
 			) ;
-			m_annotations.add( std::make_pair( interval, values )) ;
+			m_repeat_tracts.add( std::make_pair( interval, values )) ;
 			std::getline( *in, line ) ;
 			progress_callback( ++lineCount ) ;
 		}
 	}
 
-	void load_short_repeat_tracts( genfile::Fasta const& fasta ) {
+	void load_short_repeat_RepeatTracts( genfile::Fasta const& fasta ) {
 		std::vector< std::string > const& sequence_ids = fasta.sequence_ids() ;
-		std::size_t const minimum_length = options().get< std::size_t >( "-minimum-tract-length" ) ;
+		std::size_t const minimum_length = options().get< std::size_t >( "-minimum-RepeatTract-length" ) ;
 
 		bool use_range = options().check( "-range" ) ;
 		genfile::GenomePositionRange range
@@ -650,19 +729,19 @@ private:
 				: genfile::GenomePositionRange( 0, 0 )
 		;
 
-		// Repeat tracts get seen in position order.
+		// Repeat RepeatTracts get seen in position order.
 		// For efficiency we therefore insert them using the previous insertion point
 		// as a hint - this variable does that.
-		Annotation::iterator last_i = m_annotations.end() ;
+		Annotation::iterator last_i = m_repeat_tracts.end() ;
 
 		for( auto sequence_id: sequence_ids ) {
-			auto progress_context = ui().get_progress_context( "Loading repeat tracts from \"" + sequence_id + "\"" ) ;
+			auto progress_context = ui().get_progress_context( "Loading repeat RepeatTracts from \"" + sequence_id + "\"" ) ;
 			genfile::GenomePositionRange const sequence_range = fasta.get_range( sequence_id ) ;
 			genfile::Fasta::PositionedSequenceRange const& contig = (
 				use_range
 				? fasta.get_sequence(
 					sequence_id,
-					// we look up to 10kb outside the range for a repeat tract
+					// we look up to 10kb outside the range for a repeat RepeatTract
 					range.start().position() - std::min( range.start().position()-1, 10000u ), 
 					std::min( range.end().position() + 10000, sequence_range.end().position() )
 				)
@@ -675,16 +754,16 @@ private:
 				minimum_length,
 				[&]( uint32_t start, uint32_t end, std::string const& repeat ) {
 #if DEBUG
-					std::cerr << "FOUND TRACT: " << sequence_id << ":" << start << "-" << end << ": " << repeat << ".\n" ;
+					std::cerr << "FOUND RepeatTract: " << sequence_id << ":" << start << "-" << end << ": " << repeat << ".\n" ;
 #endif
 					// uses 0-based, closed interval coords
-					std::set< AnnotationElt > values ;
-					values.insert( AnnotationElt( repeat, sequence_id, start, end )) ;
+					std::set< RepeatTract > values ;
+					values.insert( RepeatTract( repeat, sequence_id, start, end )) ;
 					Annotation::interval_type interval(
 						genfile::GenomePosition( sequence_id, start ), 
 						genfile::GenomePosition( sequence_id, end )
 					) ;
-					last_i = m_annotations.add( last_i, std::make_pair( interval, values )) ;
+					last_i = m_repeat_tracts.add( last_i, std::make_pair( interval, values )) ;
 				},
 				progress_context
 			) ;
@@ -699,6 +778,10 @@ private:
 
 		statfile::BuiltInTypeStatSink::UniquePtr sink = statfile::BuiltInTypeStatSink::open(
 			options().get< std::string >( "-o" )
+		) ;
+		sink->write_metadata(
+			"Computed by tabulate-mismatches " + appcontext::get_current_time_as_string() + "\n"
+			+ "Coordinates are 1-based, closed."
 		) ;
 		
 		for( std::size_t file_i = 0; file_i < filenames.size(); ++file_i ) {
@@ -821,9 +904,9 @@ private:
 						std::cerr << "++ contig_sequence: " << contig_sequence << "; read sequence: " << read_sequence << ".\n" ;
 #endif
 
-						std::set< AnnotationElt > annotations ;
+						std::set< RepeatTract > repeat_tracts ;
 						// look up annotation.
-						if( m_annotations.size() > 0 ) {
+						if( m_repeat_tracts.size() > 0 ) {
 							// Annotations are in [begin, end) format, 0-based.
 							// So are positions.
 							// An example:
@@ -842,52 +925,60 @@ private:
 
 							if( type == eInsertion ) {
 								// To account for insertions at the beginning / middle / end of
-								// repeat tracts, we search if the insertion position is covered
-								// by a tract, but also check for tracts ending at position-1.
+								// repeat RepeatTracts, we search if the insertion position is covered
+								// by a RepeatTract, but also check for RepeatTracts ending at position-1.
 								assert( contig_sequence.size() == 0 ) ; // sanity check.
-								Annotation::const_iterator where = m_annotations.find( genfile::GenomePosition( contig_id, position )) ;
-								if( where != m_annotations.end() ) {
-									annotations.insert( where->second.begin(), where->second.end() ) ;
+								Annotation::const_iterator where = m_repeat_tracts.find( genfile::GenomePosition( contig_id, position )) ;
+								if( where != m_repeat_tracts.end() ) {
+									repeat_tracts.insert( where->second.begin(), where->second.end() ) ;
 								}
-								where = m_annotations.find( genfile::GenomePosition( contig_id, position-1 )) ;
-								if( where != m_annotations.end() ) {
-									std::set< AnnotationElt >::const_iterator i = where->second.begin() ;
-									std::set< AnnotationElt >::const_iterator end = where->second.end() ;
+								where = m_repeat_tracts.find( genfile::GenomePosition( contig_id, position-1 )) ;
+								if( where != m_repeat_tracts.end() ) {
+									std::set< RepeatTract >::const_iterator i = where->second.begin() ;
+									std::set< RepeatTract >::const_iterator end = where->second.end() ;
 									for( ; i != end; ++i ) {
 										if( i->end() == position ) {
-											annotations.insert( *i ) ;
+											repeat_tracts.insert( *i ) ;
 										}
 									}
 								}
 							} else {
-								// Check for any tract intersecting any contig base of
+								// Check for any RepeatTract intersecting any contig base of
 								// the mismatch / deletion.
 								assert( contig_sequence.size() > 0 ) ; // sanity check.
 								for( genfile::Position base_i = 0 ; base_i < contig_sequence.size(); ++base_i ) {
-									Annotation::const_iterator where = m_annotations.find( genfile::GenomePosition( contig_id, position + base_i )) ;
-									if( where != m_annotations.end() ) {
-										annotations.insert( where->second.begin(), where->second.end() ) ;
+									Annotation::const_iterator where = m_repeat_tracts.find( genfile::GenomePosition( contig_id, position + base_i )) ;
+									if( where != m_repeat_tracts.end() ) {
+										repeat_tracts.insert( where->second.begin(), where->second.end() ) ;
 									}
 								}
 							}
-						// We only keep the longest two annotations currently.
-						
-							if( annotations.size() > 2 ) {
-								std::set< AnnotationElt >::const_iterator i = annotations.begin() ;
-								++i ;
-								++i ;
-								annotations.erase( i, annotations.end() ) ;
-							}
+
 #if DEBUG
-							if( annotations.size() > 0 ) {
-								std::cerr << "Annotations found at position " << position << "!  size is " << annotations.size() << ".\n" ;
+							if( repeat_tracts.size() > 0 ) {
+								std::cerr << "Annotations found at position " << position << "!  size is " << repeat_tracts.size() << ".\n" ;
 							}
 #endif
 						}
 						
 #if DEBUG
-						std::cerr << "annotations.size() == " << annotations.size() << ".\n" ;
+						std::cerr << "repeat_tracts.size() == " << repeat_tracts.size() << ".\n" ;
 #endif
+						// remove position information from annotations
+						// to avoid counting them seperately.
+						// we also only take the first two annotations
+						std::set< RepeatTractClass > repeatTractClasses ;
+						{
+							std::size_t count = 0 ;
+							for(
+								std::set< RepeatTract >::iterator i = repeat_tracts.begin() ;
+								i != repeat_tracts.end() && count < 2;
+								++i, ++count
+							) {
+								repeatTractClasses.insert( RepeatTractClass( *i ) ) ;
+							}
+						}
+						
 						MismatchClass e(
 							by_position ? contig_id  : "",
 							by_position ? position : 0ul,
@@ -896,7 +987,7 @@ private:
 							read_sequence,
 							left_flank,
 							right_flank,
-							annotations
+							repeatTractClasses
 						) ;
 #if DEBUG
 						std::cerr << "mismatch: (" << contig_id << ":" << (position+1) << "): " << e << "\n"  ;
@@ -939,12 +1030,12 @@ private:
 #if DEBUG
 				std::cerr << "++ outputting annotations with length: " << m.annotations().size() << ".\n" ;
 #endif
-				std::set< AnnotationElt >::const_iterator i = m.annotations().begin() ;
-				std::size_t annotation_count = 0 ;
-				for( ; annotation_count < 2 && i != m.annotations().end(); ++annotation_count, ++i ) {
-					sink << i->annotation() << i->length() ;
+				std::set< RepeatTractClass >::const_iterator i = m.repeat_tract_classes().begin() ;
+				std::size_t tract_count = 0 ;
+				for( ; tract_count < 2 && i != m.repeat_tract_classes().end(); ++tract_count, ++i ) {
+					sink << i->repeat_unit() << i->length() ;
 				}
-				for( ; annotation_count < 2; ++annotation_count ) {
+				for( ; tract_count < 2; ++tract_count ) {
 					sink << genfile::MissingValue() << genfile::MissingValue() ;
 				}
 			}
