@@ -443,10 +443,10 @@ namespace {
 				std::string const& contig_id,
 				int position,
 				MismatchType const& type,
-				genfile::Fasta::ConstSequenceIterator flank_begin,
+				genfile::Fasta::ConstSequenceIterator contig_flank_begin,
 				genfile::Fasta::ConstSequenceIterator contig_begin,
 				genfile::Fasta::ConstSequenceIterator contig_end,
-				genfile::Fasta::ConstSequenceIterator flank_end,
+				genfile::Fasta::ConstSequenceIterator contig_flank_end,
 				std::string::const_iterator read_begin,
 				std::string::const_iterator read_end
 			)
@@ -873,19 +873,19 @@ private:
 						std::string const& contig_id,
 						int position,
 						MismatchType const& type,
-						genfile::Fasta::ConstSequenceIterator flank_begin,
+						genfile::Fasta::ConstSequenceIterator contig_flank_begin,
 						genfile::Fasta::ConstSequenceIterator contig_begin,
 						genfile::Fasta::ConstSequenceIterator contig_end,
-						genfile::Fasta::ConstSequenceIterator flank_end,
+						genfile::Fasta::ConstSequenceIterator contig_flank_end,
 						std::string::const_iterator read_begin,
 						std::string::const_iterator read_end
 					) {
 #if DEBUG
 						std::cerr << "++ Mismatch: " << contig_id << ": " << position << ".\n" ;
 #endif
-						std::string left_flank( flank_begin, contig_begin ) ;
+						std::string left_flank( contig_flank_begin, contig_begin ) ;
 						std::string contig_sequence( contig_begin, contig_end ) ;
-						std::string right_flank( contig_end, flank_end ) ;
+						std::string right_flank( contig_end, contig_flank_end ) ;
 						std::string read_sequence( read_begin, read_end ) ;
 						std::transform( left_flank.begin(), left_flank.end(), left_flank.begin(), ::toupper ) ;
 						std::transform( contig_sequence.begin(), contig_sequence.end(), contig_sequence.begin(), ::toupper ) ;
