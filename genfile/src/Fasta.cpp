@@ -123,7 +123,8 @@ namespace genfile {
 							0
 						) ;
 					}
-					sequenceName.assign( p+1, line_or_data_end ) ;
+					char const* nameEnd = std::find( p+1, line_or_data_end, ' ' ) ;
+					sequenceName.assign( p+1, nameEnd ) ;
 					sequence.clear() ;
 					state = eSequence ;
 				} else {
