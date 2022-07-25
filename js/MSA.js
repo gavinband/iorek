@@ -100,7 +100,9 @@ let processAlignment = function( alignment ) {
 		}
 		if( !mismatch ) {
 			for( let i = 0; i < alignment.length; ++i ) {
-				alignment[i].mismatches[j] = "m" ;
+				if( alignment[i].mismatches[j] != "-" ) {
+					alignment[i].mismatches[j] = "m" ;
+				}
 			}
 		}
 	}
