@@ -42,10 +42,12 @@ public:
 		;
 		options[ "-max-repeat-unit-length" ]
 			.set_description( "max length of nucleotide repeat to look for. Must be <= 3 currently." )
+			.set_takes_single_value()
 			.set_default_value( 3 )
 		;
 		options[ "-minimum-tract-length" ]
 			.set_description( "minimum length of repeat tract to report." )
+			.set_takes_single_value()
 			.set_default_value( 3 )
 		;
 
