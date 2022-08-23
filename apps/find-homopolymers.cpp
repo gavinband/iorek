@@ -93,15 +93,15 @@ private:
 				fasta->add_sequences_from_file( filename, progress_context ) ;
 			}
 		}
-		uint32_t max_length = options().get< int >( "-max-repeat-unit-length" ) ;
-		assert( max_length == 3 ) ;
 		statfile::BuiltInTypeStatSink::UniquePtr sink = statfile::BuiltInTypeStatSink::open( options().get< std::string >( "-o" )) ;
-		process( *fasta, max_length, *sink ) ;
+		process( *fasta, *sink ) ;
 	}
 
-	void process( genfile::Fasta const& fasta, uint32_t const max_length, statfile::BuiltInTypeStatSink& sink ) const {
+	void process( genfile::Fasta const& fasta, statfile::BuiltInTypeStatSink& sink ) const {
 		std::vector< std::string > const& sequence_ids = fasta.sequence_ids() ;
-		std::size_t const minimum_length = options().get_value< std::size_t >( "-minimum-tract-length" ) ;
+		std::size_t const max_repeat_unit_length = options().get< int >( "-max-repeat-unit-length" ) ;
+		std::size_t const minimum_tract_length = options().get_value< std::size_t >( "-minimum-tract-length" ) ;
+		assert( max_repeat_unit_length <= 3 ) ;
 		sink.write_metadata(
 				"Computed by find-homopolymers " + appcontext::get_current_time_as_string() + "\n"
 				+ "Coordinates are 1-based, closed."
@@ -114,7 +114,8 @@ private:
 				contig.sequence().begin(),
 				contig.sequence().end(),
 				0,
-				3ul,
+				minimum_tract_length,
+				max_repeat_unit_length,
 				[&]( uint32_t start, uint32_t end, std::string const& repeat ) {
 					sink << sequence_id << (start+1) << end << repeat << (end-start) << statfile::end_row() ;
 				},

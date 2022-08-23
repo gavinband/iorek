@@ -25,21 +25,23 @@ namespace genfile {
 	// If repeat units overlap (e.g. CATCATAGTAG) then both overlapping ranges are reported.
 	// Non-nucleotide bases (ACGT) are ignored.
 	// Homopolymers are not reported as di- or tri-nucleotide repeats (e.g. AAA is not a repeat unit.)
+	// Only repeat unit lengths up to 3 are currently supported.
 	template< typename Iterator >
 	void find_homopolymers_and_short_repeats(
 		Iterator begin,
 		Iterator const end,
 		genfile::Position zero_based_start_position,
 		std::size_t const minimum_length,
+		std::size_t const max_repeat_unit_length,
 		std::function< void( uint32_t const start, uint32_t const end, std::string const& motif ) > callback,
 		std::function< void( std::size_t, std::size_t ) > progress_callback = std::function< void (std::size_t, std::size_t) >()
 	) {
-		std::size_t const max_length = 3 ;
+		assert( max_repeat_unit_length <= 3 ) ;
 		std::vector< std::vector< char > > repeats ;
 		std::vector< std::size_t > counters ;
 		std::vector< std::size_t > starts ;
 		std::string repeat_string ;
-		for( uint32_t i = 0; i < max_length; ++i ) {
+		for( uint32_t i = 0; i < max_repeat_unit_length; ++i ) {
 			repeats.push_back( std::vector< char >( i+1, ' ' )) ;
 			counters.push_back( 0 ) ;
 			starts.push_back( 0 ) ;
@@ -49,7 +51,7 @@ namespace genfile {
 		std::size_t x = 0 ;
 		for( ; begin != end; ++begin, ++x ) {
 			char base = ::toupper( *begin ) ;
-			for( uint32_t i = 0; i < max_length; ++i ) {
+			for( uint32_t i = 0; i < max_repeat_unit_length; ++i ) {
 				// if counter < repeat unit length, then this is the first view of the repeat.
 				// if counter >= repeat unit length, then we are repeating.
 				auto& repeat_unit = repeats[i] ;
@@ -85,7 +87,7 @@ namespace genfile {
 			progress_callback( x, sequence_length ) ;
 		}
 		// Handle the last repeat.
-		for( uint32_t i = 0; i < max_length; ++i ) {
+		for( uint32_t i = 0; i < max_repeat_unit_length; ++i ) {
 			auto& repeat_unit = repeats[i] ;
 			auto& counter = counters[i] ;
 			auto& start = starts[i] ;
