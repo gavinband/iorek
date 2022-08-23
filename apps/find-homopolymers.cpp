@@ -101,7 +101,13 @@ private:
 		std::vector< std::string > const& sequence_ids = fasta.sequence_ids() ;
 		std::size_t const max_repeat_unit_length = options().get< int >( "-max-repeat-unit-length" ) ;
 		std::size_t const minimum_tract_length = options().get_value< std::size_t >( "-minimum-tract-length" ) ;
-		assert( max_repeat_unit_length <= 3 ) ;
+		if( max_repeat_unit_length > 3 ) {
+			throw genfile::BadArgumentError(
+				"IorekApplication::process()",
+				"-max-repeat-unit-length=" + genfile::string_utils::to_string( max_repeat_unit_length ),
+				"Only repeat unit lengths in the range 1-3 are currently supported."
+			) ;
+		}
 		sink.write_metadata(
 				"Computed by find-homopolymers " + appcontext::get_current_time_as_string() + "\n"
 				+ "Coordinates are 1-based, closed."
