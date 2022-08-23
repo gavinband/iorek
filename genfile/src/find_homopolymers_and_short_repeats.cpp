@@ -33,13 +33,13 @@ namespace genfile {
 				// report in 0-based, half open coords
 				callback( zero_based_position - tract_length, zero_based_position, repeat_string ) ;
 			}
-		} ;
+		}
 	}
 
-	void find_homopolymers(
+	void find_homopolymers_and_short_repeats(
 		Fasta const& fasta,
 		std::size_t const minimum_tract_length,
-		std::size_t const maximum_repeat_unit_length,
+		std::size_t const max_repeat_unit_length,
 		std::function< void( std::string const&, uint32_t const start, uint32_t const end, std::string const& motif ) > callback,
 		std::function< void( std::size_t, std::size_t ) > progress_callback = std::function< void (std::size_t, std::size_t) >()
 	) {
@@ -52,7 +52,7 @@ namespace genfile {
 				contig.sequence().end(),
 				contig.positions().start().position() - 1, // this algorithm is 0-based
 				minimum_tract_length,
-				maximum_repeat_unit_length,
+				max_repeat_unit_length,
 				[&]( uint32_t start, uint32_t end, std::string const& repeat ) {
 					callback( sequence_id, start, end, repeat ) ;
 				}

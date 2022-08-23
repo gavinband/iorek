@@ -31,7 +31,7 @@ namespace genfile {
 		Iterator begin,
 		Iterator const end,
 		genfile::Position zero_based_start_position,
-		std::size_t const minimum_length,
+		std::size_t const minimum_tract_length,
 		std::size_t const max_repeat_unit_length,
 		std::function< void( uint32_t const start, uint32_t const end, std::string const& motif ) > callback,
 		std::function< void( std::size_t, std::size_t ) > progress_callback = std::function< void (std::size_t, std::size_t) >()
@@ -74,7 +74,7 @@ namespace genfile {
 				if( (tract_length >= repeat_unit.size()) && (base != repeat_unit[counter % repeat_unit.size()]) ) {
 					if(
 						(tract_length >= 2 * repeat_unit.size())
-						&& (tract_length >= minimum_length)
+						&& (tract_length >= minimum_tract_length)
 					) {
 						impl::report_repeat( repeat_unit, start_in_repeat_unit, tract_length, x + zero_based_start_position, callback ) ;
 					}
@@ -92,7 +92,10 @@ namespace genfile {
 			auto& counter = counters[i] ;
 			auto& start = starts[i] ;
 			std::size_t const tract_length = counter - start ;
-			if( tract_length >= 2 * repeat_unit.size() ) {
+			if(
+				(tract_length >= 2 * repeat_unit.size())
+				&& (tract_length >= minimum_tract_length)
+			) {
 				impl::report_repeat( repeat_unit, start, tract_length, x + zero_based_start_position, callback ) ;
 			}
 		}
@@ -107,7 +110,8 @@ namespace genfile {
 	// Homopolymers are not reported as di- or tri-nucleotide repeats (e.g. AAA is not a repeat unit.)
 	void find_homopolymers_and_short_repeats(
 		Fasta const& fasta,
-		std::size_t const minimum_length,
+		std::size_t const minimum_tract_length,
+		std::size_t const max_repeat_unit_length,
 		std::function< void( uint32_t const start, uint32_t const end, std::string const& motif ) > callback,
 		std::function< void( std::size_t, std::size_t ) > progress_callback = std::function< void (std::size_t, std::size_t) >()
 	) ;
