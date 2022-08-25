@@ -33,6 +33,8 @@ namespace seqlib = SeqLib;
 #include "genfile/Error.hpp"
 #include "genfile/Fasta.hpp"
 #include "genfile/find_homopolymers_and_short_repeats.hpp"
+#include "genfile/repeats/repeat_tracts.hpp"
+#include "genfile/repeats/HomopolymerTractWalker.hpp"
 #include "statfile/BuiltInTypeStatSink.hpp"
 
 // #define DEBUG 1
@@ -76,25 +78,15 @@ public:
 			.set_takes_single_value()
 			.set_is_required() ;
 
-		options[ "-annotation" ]
-			.set_description( "Specify a BED file or text file of annotations (for example, of homopolymer RepeatTracts.)"
-				" If a .txt file, it must have columns \"contig_id\", \"start\", \"end\", \"repeat\", \"length\""
-				" using a 1-based, closed interval coordinate system."
-				" If a BED file, it must have 4 columns with no headers, representing sequence ID, start, end, and annotation,"
-				" using a 0-based, right-open coordinate system." )
-			.set_takes_single_value()
+		options[ "-annotate-homopolymers" ]
+			.set_description( "Load short repeat repeat tracts from the reference file." )
 		;
-
-		options[ "-annotate-repeat-tracts" ]
-			.set_description( "Load short repeat RepeatTracts from the reference file." )
-		;
-		options[ "-minimum-RepeatTract-length" ]
-			.set_description( "minimum length of repeat RepeatTract to report." )
+		options[ "-min-homopolymer-length" ]
+			.set_description( "minimum length of repeat repeat tract to report." )
 			.set_default_value( 2 )
 		;
 
-		options.option_excludes_option( "-annotate-repeat-tracts", "-annotation" ) ;
-		options.option_implies_option( "-minimum-RepeatTract-length", "-annotate-repeat-tracts" ) ;
+		options.option_implies_option( "-min-homopolymer-length", "-annotate-homopolymers" ) ;
 		
 		options.declare_group( "Model options" ) ;
 		options[ "-mq" ]
@@ -121,7 +113,6 @@ public:
 } ;
 
 namespace {
-	
 	enum MismatchType {
 		eMatch = '=',
 		eMismatch = 'X',
@@ -238,10 +229,10 @@ namespace {
 	struct RepeatTractClass
 	{
 		RepeatTractClass(
-			std::string const& name,
+			std::string const& repeat_unit,
 			std::size_t length
 		):
-			m_repeat_unit( name ),
+			m_repeat_unit( repeat_unit ),
 			m_length( length )
 		{}
 
@@ -433,22 +424,22 @@ namespace {
 			<< m.m_left_flank << "[" << m.m_contig_sequence << ">" << m.m_read_sequence << "]" << m.m_right_flank ;
 		return out ;
 	}
-	
+
 	void classify_alignment_mismatches(
 		seqlib::BamRecord const& alignment,
 		seqlib::BamHeader const& header,
 		genfile::Fasta const& fasta,
 		std::function<
 			void(
-				std::string const& contig_id,
-				int position,
 				MismatchType const& type,
-				genfile::Fasta::ConstSequenceIterator contig_flank_begin,
-				genfile::Fasta::ConstSequenceIterator contig_begin,
-				genfile::Fasta::ConstSequenceIterator contig_end,
-				genfile::Fasta::ConstSequenceIterator contig_flank_end,
-				std::string::const_iterator read_begin,
-				std::string::const_iterator read_end
+				std::string const& contig_id,
+				genfile::Fasta::ConstSequenceRange const& contig,
+				std::size_t begin_in_contig,
+				std::size_t end_in_contig,
+				std::string const& read,
+				std::size_t begin_in_read,
+				std::size_t end_in_read,
+				genfile::repeats::HomopolymerTractWalker< genfile::Fasta::ConstSequenceIterator > walker
 			)
 		> callback,
 		uint32_t const flank = 3
@@ -480,11 +471,17 @@ namespace {
 		std::string const contig_id = header.IDtoName( alignment.ChrID() ) ;
 		genfile::Fasta::PositionedSequenceRange const contig = fasta.get_sequence( contig_id ) ;
 
+		//bool const count_matches = options().check( "-count-matches" ) ;
+
 		uint32_t read_position = 0;
 		uint32_t aligned_position = alignment.Position() ; // 0-based
-		
+		genfile::repeats::HomopolymerTractWalker< genfile::Fasta::ConstSequenceIterator > walker(
+			contig.sequence().begin(),
+			contig.sequence().end(),
+			contig.sequence().begin() + aligned_position
+		) ;
 #if DEBUG
-		std::cerr << "++ Inspecting read: " << alignment.Qname() << ", CIGAR = \"" << cigar << "\".\n" ;
+		std::cerr << "\n++ Inspecting read: " << alignment.Qname() << ", CIGAR = \"" << cigar << "\".\n" ;
 #endif
 
 		seqlib::Cigar::const_iterator i = cigar.begin(), end_i = cigar.end() ;
@@ -509,53 +506,60 @@ namespace {
 			// 'skipped regions are handled to keep track of position but do not count
 			// as mismatches.
 
+			// sanity check
+#if DEBUG
+			std::cerr << std::string( 1, type ) << ":" << std::distance( contig.sequence().begin(), walker.position() ) << " - " << aligned_position << ".\n" ;
+#endif
+			assert( walker.position() == contig.sequence().begin() + aligned_position ) ;
+
 			switch( type ) {
 				case 'M':
 				case 'X':
 				case '=':
 					// matching or mismatching bases. Iterate bases and test for mismatch.
-					for( int k = 0; k < i->Length(); ++k, ++aligned_position, ++read_position ) {
+					for( int k = 0; k < i->Length(); ++k, ++aligned_position, ++read_position, ++walker ) {
 						if( std::toupper(*(contig.sequence().begin() + aligned_position)) != std::toupper( read_sequence[read_position] )) {
 							callback(
-								contig_id,
-								aligned_position,
 								eMismatch,
-								(contig.sequence().begin() + (aligned_position - std::min(aligned_position,flank))),
-								(contig.sequence().begin() + aligned_position),
-								(contig.sequence().begin() + aligned_position + 1),
-								(contig.sequence().begin() + std::min( aligned_position+flank+1, uint32_t(contig.size()))),
-								read_sequence.begin() + read_position,
-								read_sequence.begin() + read_position + 1
+								contig_id,
+								contig.sequence(),
+								aligned_position,
+								aligned_position + 1,
+								read_sequence,
+								read_position,
+								read_position+1,
+								walker
 							) ;
 						}
 					}
 					break ;
 				case 'D':
 					callback(
-						contig_id,
-						aligned_position,
 						eDeletion,
-						(contig.sequence().begin() + (aligned_position - std::min(aligned_position,flank))),
-						(contig.sequence().begin() + aligned_position),
-						(contig.sequence().begin() + aligned_position + i->Length() ),
-						(contig.sequence().begin() + std::min( aligned_position+i->Length()+flank, uint32_t(contig.size()) )),
-						read_sequence.begin() + read_position,
-						read_sequence.begin() + read_position
+						contig_id,
+						contig.sequence(),
+						aligned_position,
+						aligned_position + i->Length(),
+						read_sequence,
+						read_position,
+						read_position,
+						walker
 					) ;
 					aligned_position += i->Length() ;
+					walker += i->Length() ;
 					// purely deleted bases so no change to read position
 					break ;
 				case 'I':
 					callback(
-						contig_id,
-						aligned_position,
 						eInsertion,
-						(contig.sequence().begin() + aligned_position - std::min( flank, aligned_position + 1 )),
-						(contig.sequence().begin() + aligned_position),
-						(contig.sequence().begin() + aligned_position),
-						(contig.sequence().begin() + std::min( aligned_position+flank, uint32_t(contig.size()) )),
-						read_sequence.begin() + read_position,
-						read_sequence.begin() + read_position + i->Length()
+						contig_id,
+						contig.sequence(),
+						aligned_position,
+						aligned_position,
+						read_sequence,
+						read_position,
+						read_position + i->Length(),
+						walker
 					) ;
 					read_position += i->Length() ;
 					// purely inserted bases so no change to aligned position
@@ -564,12 +568,14 @@ namespace {
 					// no coverage but need to skip over part of reference.
 					read_position += i->Length() ;
 					aligned_position += i->Length() ;
+					walker += i->Length() ;
 					break ;
 				case 'S':
 					// soft-clipped bases; skip this part of the read.
 					read_position += i->Length() ;
 					break ;
 				case 'H':
+					// hard-clipped bases not in the read sequence: nothing to do.
 				default:
 					// nothing to do for other cases
 					break ;
@@ -623,151 +629,10 @@ private:
 			fasta->add_sequences_from_file( fasta_filename, progress_context ) ;
 		}
 		
-		if( options().check( "-annotation" )) {
-			std::string const& filename = options().get< std::string >( "-annotation" ) ;
-			auto progress_context = ui().get_progress_context( "Loading annotations from \"" + filename + "\"" ) ;
-			load_annotations( filename, progress_context ) ;
-			std::cerr << "++ Annotations loaded.\n" ;
-#if 0
-			std::cerr << "++ Annotations are:\n" ;
-			for( const auto& kv: m_repeat_tracts ) {
-				std::cerr << "  \"" << k.first < "\":\n" ;
-				for( Annotation::const_iterator i = kv.second.begin(); i != kv.second.end(); ++i ) {
-					std::cerr << "    " << i->second << ".\n" ;
-				}
-			}
-#endif
-			
-		} else if( options().check( "-annotate-repeat-tracts" )) {
-			load_short_repeat_RepeatTracts( *fasta ) ;
-		}
-		
 		unsafe_process(
 			options().get_values< std::string >( "-reads" ),
 			*fasta
 		) ;
-	}
-
-	void load_annotations(
-		std::string const& filename,
-		std::function< void( std::size_t ) > progress_callback
-	) {
-		using genfile::string_utils::slice ;
-		using genfile::string_utils::to_repr ;
-
-		std::auto_ptr< std::istream > in = genfile::open_text_file_for_input( filename ) ;
-		std::string line ;
-		std::getline( *in, line ) ;
-		// We handle both bed format and find-homopolymers output format.
-		// First skip a BED track definition line if present
-		if( (line.size() >= 7 && line.substr( 0, 7 ) == "browser") || (line.size() >= 5 && line.substr(0,5) == "track" )) {
-			// skip this header line
-			std::getline( *in, line ) ;
-		}
-		// skip comments
-		while( line.size() > 0 && line[0] == '#' ) {
-			std::getline( *in, line ) ;
-		}
-		std::string separator( 1, '\t' ) ;
-		bool oneBased = false ;
-		if(
-			(line.size() >= 28)
-			&& (line.substr( 0, 11 ) == "sequence_id")
-			&& (line.substr( 12, 5 ) == "start")
-			&& (line.substr( 18, 3 ) == "end")
-			&& (line.substr( 22, 6 ) == "repeat")
-		) {
-			separator[0] = line[11] ;
-			oneBased = true ;
-			std::getline( *in, line ) ;
-		}
-
-		std::cerr << "Parsing " << filename << ".\n" ;
-		std::vector< slice > elts ;
-		std::size_t lineCount = 1 ;
-		while(*in) {
-			elts.clear() ;
-			slice( line ).split( separator, &elts ) ;
-			if( elts.size() < 4 ) {
-				throw genfile::MalformedInputError(
-					filename,
-					"Expected at least 4 columns in annotation / BED4 file",
-					lineCount
-				) ;
-			}
-			genfile::Chromosome chromosome( elts[0] ) ;
-			uint32_t start( to_repr< uint32_t >( elts[1] ) ) ;
-
-			// Bed file is 0-based, right-open.
-			// We store annotations 0-based as well
-			// Other files are treated as 1-based and must be converted here.
-			if( oneBased ) {
-				--start ;
-			}
-			uint32_t end( to_repr< uint32_t >( elts[2] ) ) ;
-			std::set< RepeatTract > values ;
-			values.insert( RepeatTract( elts[3], chromosome, start, end )) ;
-
-			Annotation::interval_type interval(
-				genfile::GenomePosition( chromosome, start ),
-				genfile::GenomePosition( chromosome, end )
-			) ;
-			m_repeat_tracts.add( std::make_pair( interval, values )) ;
-			std::getline( *in, line ) ;
-			progress_callback( ++lineCount ) ;
-		}
-	}
-
-	void load_short_repeat_RepeatTracts( genfile::Fasta const& fasta ) {
-		std::vector< std::string > const& sequence_ids = fasta.sequence_ids() ;
-		std::size_t const minimum_length = options().get< std::size_t >( "-minimum-RepeatTract-length" ) ;
-
-		bool use_range = options().check( "-range" ) ;
-		genfile::GenomePositionRange range
-			= use_range
-				? genfile::GenomePositionRange::parse( options().get< std::string >( "-range" ))
-				: genfile::GenomePositionRange( 0, 0 )
-		;
-
-		// Repeat RepeatTracts get seen in position order.
-		// For efficiency we therefore insert them using the previous insertion point
-		// as a hint - this variable does that.
-		Annotation::iterator last_i = m_repeat_tracts.end() ;
-
-		for( auto sequence_id: sequence_ids ) {
-			auto progress_context = ui().get_progress_context( "Loading repeat RepeatTracts from \"" + sequence_id + "\"" ) ;
-			genfile::GenomePositionRange const sequence_range = fasta.get_range( sequence_id ) ;
-			genfile::Fasta::PositionedSequenceRange const& contig = (
-				use_range
-				? fasta.get_sequence(
-					sequence_id,
-					// we look up to 10kb outside the range for a repeat RepeatTract
-					range.start().position() - std::min( range.start().position()-1, 10000u ), 
-					std::min( range.end().position() + 10000, sequence_range.end().position() )
-				)
-				: fasta.get_sequence( sequence_id )
-			) ;
-			genfile::find_homopolymers_and_short_repeats(
-				contig.sequence().begin(),
-				contig.sequence().end(),
-				contig.positions().start().position()-1, // pass it as 0-based
-				minimum_length,
-				[&]( uint32_t start, uint32_t end, std::string const& repeat ) {
-#if DEBUG
-					std::cerr << "FOUND RepeatTract: " << sequence_id << ":" << start << "-" << end << ": " << repeat << ".\n" ;
-#endif
-					// uses 0-based, closed interval coords
-					std::set< RepeatTract > values ;
-					values.insert( RepeatTract( repeat, sequence_id, start, end )) ;
-					Annotation::interval_type interval(
-						genfile::GenomePosition( sequence_id, start ), 
-						genfile::GenomePosition( sequence_id, end )
-					) ;
-					last_i = m_repeat_tracts.add( last_i, std::make_pair( interval, values )) ;
-				},
-				progress_context
-			) ;
-		}
 	}
 
 	void unsafe_process(
@@ -834,7 +699,7 @@ private:
 		auto progress_context = ui().get_progress_context( "Processing \"" + filename + "\"" ) ;
 		process_reads( reader, header, fasta, result, [&] ( std::size_t count ) { progress_context( count ) ; } ) ;
 	}
-
+	
 	void process_reads(
 		seqlib::BamReader reader,
 		seqlib::BamHeader header,
@@ -846,6 +711,7 @@ private:
 		bool const by_position = options().check( "-by-position" ) ;
 		
 		bool use_range = options().check( "-range" ) ;
+		bool annotate_repeats = options().check( "-annotate-homopolymers" ) ;
 		genfile::GenomePositionRange const range
 			= use_range
 			? genfile::GenomePositionRange::parse( options().get<std::string>( "-range" ))
@@ -870,129 +736,26 @@ private:
 					header,
 					fasta,
 					[&](
-						std::string const& contig_id,
-						int position,
 						MismatchType const& type,
-						genfile::Fasta::ConstSequenceIterator contig_flank_begin,
-						genfile::Fasta::ConstSequenceIterator contig_begin,
-						genfile::Fasta::ConstSequenceIterator contig_end,
-						genfile::Fasta::ConstSequenceIterator contig_flank_end,
-						std::string::const_iterator read_begin,
-						std::string::const_iterator read_end
+						std::string const& contig_id,
+						genfile::Fasta::ConstSequenceRange const& contig,
+						std::size_t begin_in_contig,
+						std::size_t end_in_contig,
+						std::string const& read_sequence,
+						std::size_t begin_in_read,
+						std::size_t end_in_read,
+						genfile::repeats::HomopolymerTractWalker< genfile::Fasta::ConstSequenceIterator > walker
 					) {
-#if DEBUG
-						std::cerr << "++ Mismatch: " << contig_id << ": " << position << ".\n" ;
-#endif
-						std::string left_flank( contig_flank_begin, contig_begin ) ;
-						std::string contig_sequence( contig_begin, contig_end ) ;
-						std::string right_flank( contig_end, contig_flank_end ) ;
-						std::string read_sequence( read_begin, read_end ) ;
-						std::transform( left_flank.begin(), left_flank.end(), left_flank.begin(), ::toupper ) ;
-						std::transform( contig_sequence.begin(), contig_sequence.end(), contig_sequence.begin(), ::toupper ) ;
-						std::transform( right_flank.begin(), right_flank.end(), right_flank.begin(), ::toupper ) ;
-						//std::transform( read_sequence.begin(), read_sequence.end(), std::toupper ) ;
 						if( use_range ) {
 							if(
-								(position < (range.start().position()-1))
-								|| ((position + read_sequence.size()) > range.end().position() )
+								(end_in_contig < (range.start().position()-1)) // here using 0 based coords, range is in 1-based
+								|| (begin_in_contig > range.end().position() )
 							) {
 								return ;
 							}
 						}
 
-#if DEBUG
-						std::cerr << "++ contig_sequence: " << contig_sequence << "; read sequence: " << read_sequence << ".\n" ;
-#endif
-
-						std::set< RepeatTract > repeat_tracts ;
-						// look up annotation.
-						if( m_repeat_tracts.size() > 0 ) {
-							// Annotations are in [begin, end) format, 0-based.
-							// So are positions.
-							// An example:
-							//
-							// C A A A G
-							// 0 1 2 3 4
-							//
-							// with the AAA at [1,4)]
-							// Here is what we count as in the homopolymer:
-							// - A mismatch at any of the positions 1-3
-							// - A deletion that intersects positions 1-3
-							// - An insertion between any of the positions 1-4.
-
-							// Note there are 4 possible insertion positions but only three
-							// substitution / deletion positions.
-
-							if( type == eInsertion ) {
-								// To account for insertions at the beginning / middle / end of
-								// repeat RepeatTracts, we search if the insertion position is covered
-								// by a RepeatTract, but also check for RepeatTracts ending at position-1.
-								assert( contig_sequence.size() == 0 ) ; // sanity check.
-								Annotation::const_iterator where = m_repeat_tracts.find( genfile::GenomePosition( contig_id, position )) ;
-								if( where != m_repeat_tracts.end() ) {
-									repeat_tracts.insert( where->second.begin(), where->second.end() ) ;
-								}
-								where = m_repeat_tracts.find( genfile::GenomePosition( contig_id, position-1 )) ;
-								if( where != m_repeat_tracts.end() ) {
-									std::set< RepeatTract >::const_iterator i = where->second.begin() ;
-									std::set< RepeatTract >::const_iterator end = where->second.end() ;
-									for( ; i != end; ++i ) {
-										if( i->end() == position ) {
-											repeat_tracts.insert( *i ) ;
-										}
-									}
-								}
-							} else {
-								// Check for any RepeatTract intersecting any contig base of
-								// the mismatch / deletion.
-								assert( contig_sequence.size() > 0 ) ; // sanity check.
-								for( genfile::Position base_i = 0 ; base_i < contig_sequence.size(); ++base_i ) {
-									Annotation::const_iterator where = m_repeat_tracts.find( genfile::GenomePosition( contig_id, position + base_i )) ;
-									if( where != m_repeat_tracts.end() ) {
-										repeat_tracts.insert( where->second.begin(), where->second.end() ) ;
-									}
-								}
-							}
-
-#if DEBUG
-							if( repeat_tracts.size() > 0 ) {
-								std::cerr << "Annotations found at position " << position << "!  size is " << repeat_tracts.size() << ".\n" ;
-							}
-#endif
-						}
-						
-#if DEBUG
-						std::cerr << "repeat_tracts.size() == " << repeat_tracts.size() << ".\n" ;
-#endif
-						// remove position information from annotations
-						// to avoid counting them seperately.
-						// we also only take the first two annotations
-						std::set< RepeatTractClass > repeatTractClasses ;
-						{
-							std::size_t count = 0 ;
-							for(
-								std::set< RepeatTract >::iterator i = repeat_tracts.begin() ;
-								i != repeat_tracts.end() && count < 2;
-								++i, ++count
-							) {
-								repeatTractClasses.insert( RepeatTractClass( *i ) ) ;
-							}
-						}
-						
-						MismatchClass e(
-							by_position ? contig_id  : "",
-							by_position ? position : 0ul,
-							type,
-							contig_sequence,
-							read_sequence,
-							left_flank,
-							right_flank,
-							repeatTractClasses
-						) ;
-#if DEBUG
-						std::cerr << "mismatch: (" << contig_id << ":" << (position+1) << "): " << e << "\n"  ;
-#endif
-						++(*result)[e] ;
+						process_mismatch( type, contig_id, contig, begin_in_contig, end_in_contig, read_sequence, begin_in_read, end_in_read, walker, flank, annotate_repeats, by_position, result ) ;
 					},
 					flank
 				) ; 
@@ -1004,9 +767,106 @@ private:
 		}
 	}
 
+	void process_mismatch(
+		MismatchType const& type,
+		std::string const& contig_id,
+		genfile::Fasta::ConstSequenceRange const& contig,
+		std::size_t begin_in_contig,
+		std::size_t end_in_contig,
+		std::string const& read_sequence,
+		std::size_t begin_in_read,
+		std::size_t end_in_read,
+		genfile::repeats::HomopolymerTractWalker< genfile::Fasta::ConstSequenceIterator > walker,
+		std::size_t const flank,
+		bool const annotate_repeats,
+		bool by_position,
+		Result* result
+	) const {
+#if DEBUG
+		std::cerr << "++ Mismatch: " << contig_id << ": " << begin_in_contig << "-" << end_in_contig << ".\n" ;
+#endif
+		assert( walker.position() == contig.begin() + begin_in_contig ) ;
+		
+		// find flanking sequence beginning and end
+		genfile::Fasta::ConstSequenceIterator const begin_in_contig_i = contig.begin() + begin_in_contig ;
+		genfile::Fasta::ConstSequenceIterator const end_in_contig_i = contig.begin() + end_in_contig ;
+		genfile::Fasta::ConstSequenceIterator contig_flank_begin_i = begin_in_contig_i ;
+		genfile::Fasta::ConstSequenceIterator contig_flank_end_i = end_in_contig_i ;
+
+		for( std::size_t i = 0; contig_flank_begin_i != contig.begin() && i < flank; --contig_flank_begin_i, ++i ) ;
+		for( std::size_t i = 0; contig_flank_end_i != contig.end() && i < flank; ++contig_flank_end_i, ++i ) ;
+
+		std::string::const_iterator const begin_in_read_i = read_sequence.begin() + begin_in_read ;
+		std::string::const_iterator const end_in_read_i = read_sequence.begin() + end_in_read ;
+		
+		std::string left_flank( contig_flank_begin_i, begin_in_contig_i ) ;
+		std::string sequence_in_contig( begin_in_contig_i, end_in_contig_i ) ;
+		std::string right_flank( end_in_contig_i, contig_flank_end_i ) ;
+		std::string sequence_in_read( begin_in_read_i, end_in_read_i ) ;
+		std::transform( left_flank.begin(), left_flank.end(), left_flank.begin(), ::toupper ) ;
+		std::transform( sequence_in_contig.begin(), sequence_in_contig.end(), sequence_in_contig.begin(), ::toupper ) ;
+		std::transform( right_flank.begin(), right_flank.end(), right_flank.begin(), ::toupper ) ;
+
+#if DEBUG
+		std::cerr
+			<< "++ sequence in contig: " << sequence_in_contig << "; sequence in read: " << sequence_in_read << "\n"
+			<< "++ begin_in_contig: " << begin_in_contig << ", end_in_contig: " << end_in_contig << ".\n"
+			<< "++ begin_in_read: " << begin_in_read << ", end_in_read: " << end_in_read << "\n"
+			<< "++ type: " << std::string( 1, type ) << ".\n" ;
+#endif
+
+		std::set< RepeatTractClass > repeatTractClasses ;
+		if( annotate_repeats ) {
+			if( type == eInsertion ) {
+				// Extent in contig is zero length.
+				// Catch homopolymers before or after the insertion
+				if( walker.left_tract().size() > 1 ) {
+					repeatTractClasses.insert(
+						RepeatTractClass(
+							std::string( 1, *walker.left_tract().begin() ),
+							walker.left_tract().size()
+						)
+					) ;
+				}
+				if( walker.right_tract().size() > 1 ) {
+					repeatTractClasses.insert(
+						RepeatTractClass(
+							std::string( 1, *walker.right_tract().begin() ),
+							walker.right_tract().size()
+						)
+					) ;
+				}
+			} else {
+				// catch homopolymers containing the deleted or mismatched bases.
+				for( std::size_t i = begin_in_contig; i < end_in_contig; ++i, ++walker ) {
+					if( walker.right_tract().size() > 1 ) {
+						repeatTractClasses.insert(
+							RepeatTractClass(
+								std::string( 1, *walker.right_tract().begin() ),
+								walker.right_tract().size()
+							)
+						) ;
+					}
+				}
+			}
+		}
+
+		MismatchClass e(
+			by_position ? contig_id  : "",
+			by_position ? begin_in_contig : 0ul,
+			type,
+			sequence_in_contig,
+			sequence_in_read,
+			left_flank,
+			right_flank,
+			repeatTractClasses
+		) ;
+		++(*result)[e] ;		
+	}
+
 	void output_results( Result const& result, statfile::BuiltInTypeStatSink& sink ) {
 		bool const by_position = options().check( "-by-position" ) ;
-		bool const with_annotations = options().check( "-annotation" ) || options().check( "-annotate-repeat-tracts" ) ;
+		bool const with_annotations = options().check( "-annotate-homopolymers" ) ;
 		sink | "count" ;
 		if( by_position ) {
 			sink | "contig_id" | "position" ;
@@ -1027,9 +887,6 @@ private:
 			sink << std::string( 1, m.type() ) << m.contig_sequence() << m.read_sequence() << m.left_flank() << m.right_flank() ;
 
 			if( with_annotations ) {
-#if DEBUG
-				std::cerr << "++ outputting annotations with length: " << m.annotations().size() << ".\n" ;
-#endif
 				std::set< RepeatTractClass >::const_iterator i = m.repeat_tract_classes().begin() ;
 				std::size_t tract_count = 0 ;
 				for( ; tract_count < 2 && i != m.repeat_tract_classes().end(); ++tract_count, ++i ) {

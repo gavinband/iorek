@@ -21,3 +21,10 @@ def build( bld ):
 		use = 'svelte_config boost zstd sqlite3 zlib eigen',
 		export_includes = './include'
 	)
+
+	bld.program(
+		source = "test/test-repeats.cpp",
+		target = 'test-repeats',
+		use = 'genfile',
+		includes = "./include"
+	)
