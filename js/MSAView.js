@@ -75,14 +75,20 @@ let MSAView = function(
 			.domain( [ 0, result.tracks.total_height() ])
 			.range( [ 0, result.tracks.total_height() ] ) ;
 		// adjust ranges by half a basewidth, so that bases line up on coordinates.
-		result.alignmentToX = new d3.scaleLinear()
+		result.msaToX = new d3.scaleLinear()
 			.domain( addRange( msa.scales.global.range(), [-0.5, 0.5] ))
 			.range( [ geom.margin.left, geom.layout.width.sequences - geom.margin.right ] ) ;
 		//console.log( "RCR", reference ) ;
 		let orientation = reference.orientation ;
-		result.referenceCoordinateToX = new d3.scaleLinear()
-			.domain( addRange( [ reference.coordinateRange.start, reference.coordinateRange.end + orientation ], reference.baseMargin ))
-			.range( result.alignmentToX.range() ) ;
+		result.concatenatedToX = new d3.scaleLinear()
+			.domain( [ 0, reference.sequence.length ] )
+			.range( result.msaToX.range() ) ;
+		result.physicalToConcatenated = new d3.scaleLinear()
+			.domain( [ reference.coordinateRange.start, reference.coordinateRange.end + 1 ] )
+			.range( result.concatenatedToX.domain() ) ;
+		result.physicalToX = d3.scaleLinear()
+			.domain( result.physicalToConcatenated.domain() )
+			.range( result.concatenatedToX.range() ) ;
 		result.genes = new d3.scaleLinear()
 			.domain( [Math.max( genes.numberOfLevels, 1 ), 0] )
 			.range( [geom.margin.top, geom.layout.heights.genes - geom.margin.bottom - 10 ] ) ;
@@ -91,18 +97,34 @@ let MSAView = function(
 
 	this.aes = {
 		bases: {
-			'-': { 'colour': 'lightgrey', "offset": -5, "height": 2 },
-			'm': { 'colour': '#333618', "offset": -8, "height": 8 },
-			'a': { 'colour': '#02AAE9', "offset": -8, "height": 8 },
-			't': { 'colour': '#1A356C', "offset": -8, "height": 8 },
-			'c': { 'colour': '#941504', "offset": -8, "height": 8 },
-			'g': { 'colour': '#F44B1A', "offset": -8, "height": 8 },
-			'n': { 'colour': '#555555', "offset": -6, "height": 6 },
-			'A': { 'colour': '#02AAE9', "offset": -8, "height": 8 },
-			'T': { 'colour': '#1A356C', "offset": -8, "height": 8 },
-			'C': { 'colour': '#941504', "offset": -8, "height": 8 },
-			'G': { 'colour': '#F44B1A', "offset": -8, "height": 8 },
-			'N': { 'colour': '#555555', "offset": -6, "height": 6 }
+			colour: {
+				'-': 'lightgrey',
+				'm': '#333618',
+				'a': '#02AAE9',
+				't': '#1A356C',
+				'c': '#941504',
+				'g': '#F44B1A',
+				'n': '#555555',
+				'A': '#02AAE9',
+				'T': '#1A356C',
+				'C': '#941504',
+				'G': '#F44B1A',
+				'N': '#555555'
+			},
+			geom: {
+				'-': { "offset": -5, "height": 2 },
+				'm': { "offset": -8, "height": 8 },
+				'a': { "offset": -8, "height": 8 },
+				't': { "offset": -8, "height": 8 },
+				'c': { "offset": -8, "height": 8 },
+				'g': { "offset": -8, "height": 8 },
+				'n': { "offset": -6, "height": 6 },
+				'A': { "offset": -8, "height": 8 },
+				'T': { "offset": -8, "height": 8 },
+				'C': { "offset": -8, "height": 8 },
+				'G': { "offset": -8, "height": 8 },
+				'N': { "offset": -6, "height": 6 },
+			}
 		},
 		colour: {
 			"text": "#eeeeee",
@@ -113,17 +135,19 @@ let MSAView = function(
 	
 	this.drawn_viewport = [ 0, 0 ] ;
 	
+	console.log( "++ MSAView(): scales.reference = ", this.scales.concatenatedToX.domain(), this.scales.concatenatedToX.range() ) ;
+	
 	return this ;
 }
 
 
 MSAView.prototype.viewport = function() {
-	return this.scales.alignmentToX.domain() ;
+	return this.scales.msaToX.domain() ;
 }
 
 MSAView.prototype.setViewport = function( viewport ) {
 	//assert( end >= start && start >= 0 ) ;
-	this.scales.alignmentToX.domain( viewport ) ;
+	this.scales.msaToX.domain( viewport ) ;
 	
 	let ranges = this.msa.scales.ranges[ this.reference.name ] ;
 	let choice = { left: -1, right: -1 } ;
@@ -139,25 +163,40 @@ MSAView.prototype.setViewport = function( viewport ) {
 	let lr = ranges[choice.left] ;
 	let rr = ranges[choice.right] ;
 	let orientation = this.reference.orientation ;
+
 	let refViewport = [
-		lr.invert( Math.max( viewport[0], lr.range()[0] )),
-		rr.invert( Math.min( viewport[1], rr.range()[1] ))
+		lr.invert( Math.max( viewport[0], lr.range()[0] )), // clip to left edge
+		rr.invert( Math.min( viewport[1], rr.range()[1] ))  // clip to right edge
 	] ;
 
-	this.scales.referenceCoordinateToX.domain( addRange( refViewport, this.reference.baseMargin )) ;
+	let physicalRange = addRange( refViewport, this.reference.baseMargin ) ;
+	this.set_physical_domain( physicalRange ) ;
 } ;
+
+MSAView.prototype.set_physical_domain = function( domain ) {
+	let concatenated_domain = [
+		Math.max( Math.floor( this.scales.physicalToConcatenated( domain[0] )), 0 ),
+		Math.min( Math.ceil( this.scales.physicalToConcatenated( domain[1] )), this.reference.sequence.length )
+	] ;
+	this.scales.concatenatedToX.domain( concatenated_domain ) ;
+	this.scales.physicalToX
+		.domain( [
+			this.scales.physicalToConcatenated.invert( concatenated_domain[0] ),
+			this.scales.physicalToConcatenated.invert( concatenated_domain[1] )
+		] ) ;
+}
 
 MSAView.prototype.updateLayout = function() {
 	let geom = this.geom ;
 	geom.layout.width.all = window.innerWidth - 40 ;
 	geom.layout.width.sequences = window.innerWidth - geom.layout.width.names - 40 ;
 	geom.layout.width.reference = window.innerWidth - geom.layout.width.names - 40 ;
-	this.scales.alignmentToX.range( [ geom.margin.left, geom.layout.width.sequences - geom.margin.right ] ) ;
-	this.scales.referenceCoordinateToX.range( this.scales.alignmentToX.range() ) ;
+	this.scales.msaToX.range( [ geom.margin.left, geom.layout.width.sequences - geom.margin.right ] ) ;
+	this.scales.concatenatedToX.range( this.scales.msaToX.range() ) ;
 }
 
 MSAView.prototype.draw = function( force ) {
-	let viewport = this.scales.alignmentToX.domain() ;
+	let viewport = this.scales.msaToX.domain() ;
 	if( !force && (this.drawn_viewport[0] == viewport[0] && this.drawn_viewport[1] == viewport[1] )) {
 		return ;
 	}
@@ -207,7 +246,7 @@ MSAView.prototype.draw = function( force ) {
 				.attr( 'text-anchor', 'end' )
 				.attr( 'dominant-baseline', 'middle' )
 				.attr( 'font-size', d => (d.track_name == 'sequence') ? '12px' : '8px' )
-				.attr( 'dy', d => (d.track_name == 'sequence') ? (-aes.bases['a'].height/2) : (-geom.layout.heights.annotation/2) )
+				.attr( 'dy', d => (d.track_name == 'sequence') ? (-aes.bases.geom['a'].height/2) : (-geom.layout.heights.annotation/2) )
 				.attr( 'font-family', 'Courier' )
 				.attr( 'font-style', 'italic' )
 				.attr( 'fill', aes.colour.text )
@@ -263,7 +302,6 @@ MSAView.prototype.draw = function( force ) {
 			.attr( 'baseline-shift', 'super' )
 			.text( "beta" ) ;
 
-		let base_aes = this.aes.bases ;
 		panels.controls.selectAll( 'g.base' )
 			.data( [ 'a', 'c', 'g', 't' ] )
 			.enter()
@@ -276,7 +314,7 @@ MSAView.prototype.draw = function( force ) {
 			.attr( 'y', -5 )
 			.attr( 'width', 6 )
 			.attr( 'height', 10 )
-			.attr( 'fill', d => base_aes[d].colour ) ;
+			.attr( 'fill', d => this.aes.bases.colour[d] ) ;
 		panels.controls.selectAll( 'g.base' )
 			.append( 'text' )
 			.attr( 'x', 10 )
@@ -318,7 +356,7 @@ MSAView.prototype.draw = function( force ) {
 		//console.log( "GENES", this.genes ) ;
 		genes.draw(
 			panels.genes, {
-				position: vs.referenceCoordinateToX,
+				position: vs.concatenatedToX,
 				level: vs.genes
 			}
 		) ;
@@ -329,24 +367,41 @@ MSAView.prototype.draw = function( force ) {
 			.enter()
 			.append( 'g' )
 			.attr( 'class', 'axis' )
-		let axisBottom = d3.axisBottom( vs.referenceCoordinateToX ) ;
+		let axisBottom = d3.axisBottom( vs.physicalToX ) ;
 		panels.genes.selectAll( 'g.axis' )
 			.attr( 'transform', 'translate( 0,' + ( vs.genes.range()[1] + 10 ) + ')' )
 			.call( axisBottom ) ;
 	}
 
-	let drawSequence = function( sequence, y, baseWidth, xScale, lower, upper, ctx ) {
-		let by = Math.max( 1, Math.floor( 1.0/baseWidth )) ;
-		let visualBaseWidth = Math.max( baseWidth, 1 ) ;
-		for( let j = lower; j < upper; j += by ) {
-			let base = sequence[j] ;
-			let base_aes = aes.bases[base] ;
-			ctx.fillStyle = base_aes.colour ;
+	let drawSequence = function( sequence, levels, y, baseWidth, xScale, range, ctx ) {
+		let by = Math.pow( 2, Math.floor( Math.max( 0, Math.log2( 2.0 / baseWidth ) ))) ;
+		by = Math.min( by, 1024 ) ;
+		//by = Math.max( 1, Math.floor( 1.0/baseWidth )) ;
+		// leave a small gap between bases, but
+		// never draw less than one pixel wide
+		let visualBaseWidth = Math.max( baseWidth * ( by - 0.01 ), 1 ) ;
+		let j = range[0] ;
+		let level_j = Math.floor( j/by ) ;
+		let base = 'A' ;
+		console.log( "by", by, level_j ) ;
+		for( ; j < range[1]; j += by, level_j += 1 ) {
+			if( by > 1 && levels !== null ) {
+				base = levels[by][level_j] ;
+			} else {
+				base = sequence[j] ;
+			}
+			let geom ;
+			if( aes.bases.geom.hasOwnProperty( base )) {
+				geom = aes.bases.geom[base] ;
+			} else {
+				geom = aes.bases.geom['-'] ;
+			}
+			ctx.fillStyle = aes.bases.colour[base] || aes.bases.colour['-'];
 			ctx.fillRect(
 				xScale( j ),
-				y + base_aes.offset,
+				y + geom.offset,
 				visualBaseWidth,
-				base_aes.height
+				geom.height
 			) ;
 		}
 	} ;
@@ -354,9 +409,10 @@ MSAView.prototype.draw = function( force ) {
 	{
 		let sequences = panels.sequences.node() ;
 		let ctx = sequences.getContext( '2d' ) ;
-		let baseWidth = (vs.alignmentToX(1) - vs.alignmentToX(0)) * 0.99 ;
+		let baseWidth = (vs.msaToX(1) - vs.msaToX(0)) ;
+		console.log( baseWidth, this.target ) ;
 		let msa = this.msa ;
-		// only draw bases in the viewpoer
+		// only draw bases in the viewport
 		let visible_range = [
 			Math.max( Math.floor( viewport[0] ), 0 ),
 			Math.min( Math.ceil( viewport[1] + 1 ), msa.alignment[0].sequence.length )
@@ -365,33 +421,32 @@ MSAView.prototype.draw = function( force ) {
 			let sequence = msa.alignment[i].sequence ;
 			drawSequence(
 				msa.alignment[i][ this.target ],
+				msa.alignment[i][ this.target ].levels,
 				vs.y(vs.tracks.map(msa.alignment[i].name, "sequence").baseline),
 				baseWidth,
-				j => vs.alignmentToX( msa.scales.global(j)),
-				visible_range[0],
-				visible_range[1],
+				j => vs.msaToX( msa.scales.global(j)),
+				visible_range,
 				ctx
 			) ;
 		}
 		
 		let orientation = this.reference.orientation ;
 		let baseOffset = ((orientation==-1)?-1:0) ;
-		//console.log( "DRAWING REFERENCE, starting at ", vs.referenceCoordinateToX(this.reference.coordinateRange.start )) ;
-		let referenceBaseWidth = Math.abs( vs.referenceCoordinateToX(this.reference.coordinateRange.start+orientation) - vs.referenceCoordinateToX(this.reference.coordinateRange.start) ) ;
-		let refSequenceScale = d3.scaleLinear()
-			.domain( [ 0, this.reference.sequence.length ] )
-			.range( [ vs.referenceCoordinateToX( this.reference.coordinateRange.start ), vs.referenceCoordinateToX( this.reference.coordinateRange.end ) ] )
-		;
+		//console.log( "DRAWING REFERENCE, starting at ", vs.concatenatedToX(this.reference.coordinateRange.start )) ;
+		let referenceBaseWidth = Math.abs(
+			vs.concatenatedToX(this.reference.coordinateRange.start+orientation)
+			- vs.concatenatedToX(this.reference.coordinateRange.start)
+		) ;
 		drawSequence(
 			this.reference.sequence,
+			null,
 			vs.y(vs.tracks.map( "reference", "sequence" ).baseline),
-			referenceBaseWidth * 0.99,
-			refSequenceScale,
-			//j => ( vs.referenceCoordinateToX(this.reference.coordinateRange.start + orientation*j - baseOffset )),
+			referenceBaseWidth,
+			this.scales.concatenatedToX,
+			//j => ( vs.concatenatedToX(this.reference.coordinateRange.start + orientation*j - baseOffset )),
 			//0,
 			//this.reference.sequence.length,
-			Math.floor(this.scales.referenceCoordinateToX.domain()[0]),
-			Math.ceil( this.scales.referenceCoordinateToX.domain()[1] ),
+			this.scales.concatenatedToX.domain(),
 			ctx
 		) ;
 		
@@ -405,17 +460,17 @@ MSAView.prototype.draw = function( force ) {
 			// plot indels between joined and msa reference
 			// and plot axis tick points
 			
-			let ticks = vs.referenceCoordinateToX.ticks() ;
+			let ticks = vs.physicalToX.ticks() ;
 			
 			let last_x00 = -100000000 ;
 			for( let i = 0; i < this.reference.ranges.length; ++i ) {
 				let range = this.reference.ranges[i] ;
 				//console.log( "R", range ) ;
-				let x00 = vs.alignmentToX( gs( range.inAlignment.start )) ;
+				let x00 = vs.msaToX( gs( range.inAlignment.start )) ;
 				if( (x00 - last_x00) > 5 ) {
-					let x01 = vs.referenceCoordinateToX( range.inSequence.start - baseOffset ) ;
-					let x11 = vs.referenceCoordinateToX( range.inSequence.end  - baseOffset ) ;
-					let x10 = vs.alignmentToX( gs( range.inAlignment.end )) ;
+					let x01 = vs.physicalToX( range.inSequence.start - baseOffset ) ;
+					let x11 = vs.physicalToX( range.inSequence.end  - baseOffset ) ;
+					let x10 = vs.msaToX( gs( range.inAlignment.end )) ;
 
 					ctx.beginPath() ;
 					// ref sequence is 2 * heights.sequence down.
@@ -429,8 +484,8 @@ MSAView.prototype.draw = function( force ) {
 					
 					let rangeTicks = ticks.filter( t => (t >= range.inSequence.start && t <= range.inSequence.end) ) ;
 					for( let j = 0; j < rangeTicks.length; ++j ) {
-						let x0 = vs.alignmentToX( range.inAlignment.start + (rangeTicks[j] - range.inSequence.start) + 0.5 ) ;
-						let x1 = vs.referenceCoordinateToX( rangeTicks[j] ) ;
+						let x0 = vs.msaToX( range.inAlignment.start + (rangeTicks[j] - range.inSequence.start) + 0.5 ) ;
+						let x1 = vs.physicalToX( rangeTicks[j] ) ;
 						ctx.beginPath() ;
 						// ref sequence is 2 * heights.sequence down.
 						ctx.moveTo( x0, ys.a ) ;
@@ -471,9 +526,9 @@ MSAView.prototype.draw = function( force ) {
 					for( let j = 0; j < range_track.length; ++j ) {
 						let a = range_track[j] ;
 						let rd = {
-							x1: vs.alignmentToX( sequenceToAlignment( Math.max( a.start, domain[0] ))),
+							x1: vs.msaToX( sequenceToAlignment( Math.max( a.start, domain[0] ))),
 							y1: vs.y( vs.tracks.map( sequence_id, track_name ).baseline + vs.tracks.scale_value( sequence_id, track_name, a.value ) ),
-							x2: vs.alignmentToX( sequenceToAlignment( Math.min( a.end, domain[1] )) + orientation ),
+							x2: vs.msaToX( sequenceToAlignment( Math.min( a.end, domain[1] )) + orientation ),
 							y2: vs.y( vs.tracks.map( sequence_id, track_name ).baseline)
 						} ;
 						rd.xl = Math.min( rd.x1, rd.x2 ) ;

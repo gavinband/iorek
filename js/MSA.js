@@ -80,7 +80,9 @@ let computeUngappedSequence = function( name, gappedSequence, coordinateRange ) 
 	} ;
 } ;
 
-let processAlignment = function( alignment ) {
+let preprocessAlignment = function( alignment ) {
+	// process the MSA to add additional detail tracks
+	// this includes mismatches track and variable level summaries.
 	for( let i = 0; i < alignment.length; ++i ) {
 		alignment[i].mismatches = [...alignment[i].sequence] ;
 	}
@@ -106,12 +108,87 @@ let processAlignment = function( alignment ) {
 			}
 		}
 	}
+
+	for( let i = 0; i < alignment.length; ++i ) {
+		alignment[i].sequence.levels = computeLevels(
+			alignment[i].sequence,
+			[ "-", "a", "c", "g", "t" ],
+			function( counts ) {
+				// Compute the most frequent base/char in each window,
+				// resolving ties based on the supplied order.
+				// This is ad hoc but makes visualisation simple.
+				let max = 0 ;
+				let max_base = '-' ;
+				[ "-", "a", "c", "g", "t" ].forEach( function(x) {
+					if( counts[x] >= max ) {
+						max = counts[x] ;
+						max_base = x ;
+					}
+				})
+				return max_base ;
+			}
+		) ;
+		alignment[i].mismatches.levels = computeLevels(
+			alignment[i].mismatches,
+			[ "-", "m", "a", "c", "g", "t" ],
+			function( counts ) {
+				let max = 0 ;
+				let max_base = '-' ;
+				[ 'a', 'c', 'g', 't' ].forEach( function(x) {
+					if( counts[x] >= max ) {
+						max = counts[x] ;
+						max_base = x ;
+					}
+				}) ;
+				if( max == 0 ) {
+					[ '-', 'm' ].forEach( function(x) {
+						if( counts[x] >= max ) {
+							max = counts[x] ;
+							max_base = x ;
+						}
+					}) ;
+				}
+				return max_base ;
+			}
+		) ;
+	}
+	
 	return alignment ;
+}
+
+function computeLevels(
+	sequence,
+	what = [ "A", "C", "G", "T", "-" ],
+	summarise,
+	levels = [ 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024 ]
+) {
+	let result = [] ;
+	result[1] = [[ ...sequence ]] ;
+	let i = 0;
+	for( let level_i = 0; level_i < levels.length; ++level_i ) {
+		let level = levels[level_i] ;
+		result[level] = [] ;
+		let counts = {} ;
+		what.forEach( x => counts[x] = 0 ) ;
+		for( i = 0; i < sequence.length; ++i ) {
+			if( i % level == 0 ) {
+				if( i > 0 ) {
+					result[level].push( summarise(counts) ) ;
+				}
+				what.forEach( x => counts[x] = 0 ) ;
+			}
+			++counts[ sequence[i].toLowerCase() ] ;
+		}
+		if( i % level != 0 ) {
+			result[level].push( summarise(counts) ) ;
+		}
+	}
+	return result ;
 }
 
 // scales that map sequence/contig coords to MSA coords
 let MSAScales = function( alignment, coordinateRanges ) {
-	this.alignment = processAlignment( alignment ) ;
+	this.alignment = preprocessAlignment( alignment ) ;
 	this.alignmentLength = alignment[0].sequence.length ;
 	this.ungappedSequences = {} ;
 	this.ranges = {} ;
@@ -148,6 +225,8 @@ let MSAScales = function( alignment, coordinateRanges ) {
 		.domain( [0, this.alignmentLength] )
 		.range( [0, this.alignmentLength] )
 	;
+	console.log( "MSAScales()", alignment ) ;
+	
 	return this ;
 } ;
 

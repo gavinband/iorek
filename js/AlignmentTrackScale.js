@@ -1,8 +1,8 @@
 'use strict' ;
 
-// Object that acts like a bit like a D3 scale but gives us back bands for
-// sequence and annotation tracks, depending on what annotations are provided.
-// Any padding is to be added inside these track heights.
+// Object that acts like a bit like D3'scaleBand but gives us back bands for a
+// sequence and multiple annotation tracks, depending on what annotations are
+// provided. Any padding is to be added inside these track heights.
 let AlignmentTrackScale = function(
 	msa,
 	annotations,
