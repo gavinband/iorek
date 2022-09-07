@@ -57,10 +57,14 @@ let MSAView = function(
 	this.annotations = annotations ;
 	this.target = "sequence" ;
 	
-	geom.layout.heights.genes = Math.max(
-		geom.layout.heights.genes,
-		20 * genes.numberOfLevels
-	) ;
+	if( genes.count > 0 ) {
+		geom.layout.heights.genes = Math.max(
+			geom.layout.heights.genes,
+			20 * genes.numberOfLevels
+		) ;
+	} else {
+		geom.layout.heights.genes = 20 ;
+	}
 
 	this.geom = geom ;
 
@@ -356,7 +360,7 @@ MSAView.prototype.draw = function( force ) {
 		//console.log( "GENES", this.genes ) ;
 		genes.draw(
 			panels.genes, {
-				position: vs.concatenatedToX,
+				position: vs.physicalToX,
 				level: vs.genes
 			}
 		) ;
@@ -398,7 +402,6 @@ MSAView.prototype.draw = function( force ) {
 		let j = range[0] ;
 		let level_j = Math.floor( j/by ) ;
 		let base = 'A' ;
-		console.log( "by", by, level_j ) ;
 		for( ; j < range[1]; j += by, level_j += 1 ) {
 			if( by > 1 && levels !== null ) {
 				base = levels[by][level_j] ;
@@ -422,10 +425,10 @@ MSAView.prototype.draw = function( force ) {
 	} ;
 
 	{
+		// MSA
 		let sequences = panels.sequences.node() ;
 		let ctx = sequences.getContext( '2d' ) ;
 		let baseWidth = (vs.msaToX(1) - vs.msaToX(0)) ;
-		console.log( baseWidth, this.target ) ;
 		let msa = this.msa ;
 		// only draw bases in the viewport
 		let visible_range = [
@@ -445,6 +448,7 @@ MSAView.prototype.draw = function( force ) {
 			) ;
 		}
 		
+		// Concatenated sequence
 		let orientation = this.reference.orientation ;
 		let baseOffset = ((orientation==-1)?-1:0) ;
 		//console.log( "DRAWING REFERENCE, starting at ", vs.concatenatedToX(this.reference.coordinateRange.start )) ;
@@ -458,13 +462,11 @@ MSAView.prototype.draw = function( force ) {
 			vs.y(vs.tracks.map( "reference", "sequence" ).baseline),
 			referenceBaseWidth,
 			this.scales.concatenatedToX,
-			//j => ( vs.concatenatedToX(this.reference.coordinateRange.start + orientation*j - baseOffset )),
-			//0,
-			//this.reference.sequence.length,
 			this.scales.concatenatedToX.domain(),
 			ctx
 		) ;
 		
+		// Lines joining concatenated sequence and MSA
 		{
 			let gs = msa.scales.global ;
 			let yoffset = 2 ;

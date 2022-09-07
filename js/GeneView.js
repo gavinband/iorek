@@ -106,6 +106,8 @@ function GeneView(
 		this.genes,
 		{ start: (direction == "vertical" ? 5000 : 1000), end: (direction == "vertical" ? 10 : 1000) }
 	) ;
+	this.count = this.genes.length ;
+	return this ;
 	//console.log( "GeneView()", this.data, region, this.genes ) ;
 }
 // get hierarchical structure representing regional genes
