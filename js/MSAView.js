@@ -195,8 +195,10 @@ MSAView.prototype.updateLayout = function() {
 	geom.layout.width.all = window.innerWidth - 40 ;
 	geom.layout.width.sequences = window.innerWidth - geom.layout.width.names - 40 ;
 	geom.layout.width.reference = window.innerWidth - geom.layout.width.names - 40 ;
-	this.scales.msaToX.range( [ geom.margin.left, geom.layout.width.sequences - geom.margin.right ] ) ;
-	this.scales.concatenatedToX.range( this.scales.msaToX.range() ) ;
+	let visible_range = [ geom.margin.left, geom.layout.width.sequences - geom.margin.right ] ;
+	this.scales.msaToX.range( visible_range ) ;
+	this.scales.concatenatedToX.range( visible_range ) ;
+	this.scales.physicalToX.range( visible_range ) ;
 }
 
 MSAView.prototype.draw = function( force ) {
