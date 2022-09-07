@@ -374,7 +374,22 @@ MSAView.prototype.draw = function( force ) {
 	}
 
 	let drawSequence = function( sequence, levels, y, baseWidth, xScale, range, ctx ) {
-		let by = Math.pow( 2, Math.floor( Math.max( 0, Math.log2( 2.0 / baseWidth ) ))) ;
+		// calculate stride across sequence as follows.
+		// Fir, we aim to have every drawn rectangle of some minimum size below which
+		// we aggregate.  
+		let visibleMarkWidth = 3.0 ;
+		// Our aggregation happens at power-of-2 sizes (c.f. MSA.js / computeLevels)
+		// Therefore we compute the power-of-two stride that is less than or equal to the
+		// number of bases that fit into the visible width.
+		let by = Math.pow(
+			2,
+			Math.floor(
+				Math.max(
+					0,
+					Math.log2( visibleMarkWidth / baseWidth )
+				)
+			)
+		) ;
 		by = Math.min( by, 1024 ) ;
 		//by = Math.max( 1, Math.floor( 1.0/baseWidth )) ;
 		// leave a small gap between bases, but
