@@ -57,6 +57,16 @@ namespace {
 	typedef phmap::flat_hash_map< uint64_t, uint16_t > ParallelHashMap ;
 	typedef jellyfish::cooperative::hash_counter<jellyfish::mer_dna> JellyfishHashMap ; 
 
+	/*
+	typedef boost::lockfree::queue<
+		std::pair< jellyfish::mer_dna, uint64_t >,
+		boost::lockfree::capacity< 2048 >
+	> Queue ;
+	*/
+	typedef moodycamel::ConcurrentQueue<
+		std::pair< jellyfish::mer_dna, uint64_t >
+	> Queue ;
+
 	template< typename HashMap >
 	struct HashMapTraits {
 		typedef HashMap hashmap_t ;
@@ -85,16 +95,6 @@ namespace {
 			return hashmap.ary()->size_bytes() ;
 		}
 	} ;
-
-	/*
-	typedef boost::lockfree::queue<
-		std::pair< jellyfish::mer_dna, uint64_t >,
-		boost::lockfree::capacity< 2048 >
-	> Queue ;
-*/
-	typedef moodycamel::ConcurrentQueue<
-		std::pair< jellyfish::mer_dna, uint64_t >
-	> Queue ;
 	
 	template< typename HashMap, typename HetMap >
 	void classify_threaded(
@@ -183,14 +183,6 @@ public:
 			.set_default_value( "-" ) ;
 		
 		options.declare_group( "Algorithm options" ) ;
-		options[ "-hashmap-implementation" ]
-			.set_description( "Type of hashmap to use internally.  Possible values are: "
-				"\"jellyfish\" or \"parallel-hashmap\".  These have difference space/speed "
-				"tradeoffs and it is worth experimenting."
-			)
-			.set_takes_single_value()
-			.set_default_value( "jellyfish" )
-		;
 		options[ "-max-kmers" ]
 			.set_description( "Only read a maximum of this many kmers.  This is useful for testing." )
 			.set_takes_single_value()
@@ -265,8 +257,6 @@ private:
 		binary_reader reader(ifs, &header);
 		std::size_t const k = header.key_len() / 2 ;
 		jellyfish::mer_dna::k( k ) ;
-		std::string const implementation = options().get< std::string >( "-hashmap-implementation" ) ;
-
 
 		{
 			std::size_t const numberOfThreads = options().get< std::size_t >( "-threads" ) ;
