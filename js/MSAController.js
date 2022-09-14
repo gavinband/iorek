@@ -4,6 +4,7 @@ let MSAController = function( panels, view ) {
 	this.panels = panels ;
 	this.view = view ;
 	this.drag = { start: 0 } ;
+	this.params = new URLSearchParams(window.location.search) ;
 	let self = this ;
 	let doDrag = function( x ) {
 		let here = self.view.scales.msaToX.invert( x ) ;
@@ -27,6 +28,7 @@ let MSAController = function( panels, view ) {
 			self.view.target = "sequence" ;
 		}
 		self.view.draw( true ) ;
+		self.updateParams() ;
 	}) ;
 	
 	// set up dragging
@@ -47,12 +49,14 @@ let MSAController = function( panels, view ) {
 		if( self.dragging ) {
 			doDrag( e.offsetX ) ;
 			self.dragging = false ;
+			self.updateParams() ;
 		}
 	}) ;
 	panels.sequences.on( "mouseout", function(e) {
 		if( self.dragging ) {
 			doDrag( e.offsetX ) ;
 			self.dragging = false ;
+			self.updateParams() ;
 		}
 	}) ;
 	
@@ -87,6 +91,7 @@ let MSAController = function( panels, view ) {
 		viewport[0] = Math.max( viewport[0], -0.5 ) ;
 		viewport[1] = Math.min( viewport[1], self.view.msa.alignmentLength + 0.5 ) ;
 		self.view.setViewport( viewport ) ;
+		self.updateParams() ;
 		e.stopPropagation() ;
 		return false ;
 	}) ;
@@ -95,5 +100,41 @@ let MSAController = function( panels, view ) {
 		self.view.draw( true ) ;
 	} ) ;
 
+	if( this.params.has( "viewport" )) {
+		let viewport = this.parseViewport( this.params.get( "viewport" ) ) ;
+		console.log( "VIEWPORT", viewport ) ;
+		self.view.setViewport( viewport ) ;
+	}
+	if( this.params.has( "target" )) {
+		let target = this.params.get( "target" ) ;
+		if( target == "sequence" || target == "mismatches" ) {
+			self.view.target = target ;
+		}
+	}
+	self.view.draw( true ) ;
+
 	return this ;
 } ;
+
+MSAController.prototype.updateParams = function() {
+	this.params.set( "target", this.view.target ) ;
+	this.params.set( "viewport", this.encodeViewport( this.view.viewport() )) ;
+	history.replaceState( null, null, "?" + this.params.toString() ) ;
+}
+
+MSAController.prototype.parseViewport = function( spec ) {
+	console.log( "VIEWPORT SPEC", spec ) ;
+	let bits = spec.split( ":" ) ;
+	if( bits.length != 2 ) {
+		return null ;
+	}
+	return [
+		parseFloat( bits[0] ),
+		parseFloat( bits[1] )
+	] ;
+}
+
+MSAController.prototype.encodeViewport = function( viewport ) {
+	console.log( "VIEWPORT", viewport ) ;
+	return Math.floor(viewport[0]) + ":" + Math.ceil( viewport[1] ) ;
+}
