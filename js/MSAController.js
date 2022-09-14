@@ -89,7 +89,7 @@ let MSAController = function( panels, view ) {
 			viewport = zoomRegion( viewport, focus, 1/scale ) ;
 		}
 		viewport[0] = Math.max( viewport[0], -0.5 ) ;
-		viewport[1] = Math.min( viewport[1], self.view.msa.alignmentLength + 0.5 ) ;
+		viewport[1] = Math.min( viewport[1], self.view.msa.alignmentLength - 0.5 ) ;
 		self.view.setViewport( viewport ) ;
 		self.updateParams() ;
 		e.stopPropagation() ;
@@ -119,7 +119,7 @@ let MSAController = function( panels, view ) {
 MSAController.prototype.updateParams = function() {
 	this.params.set( "target", this.view.target ) ;
 	this.params.set( "viewport", this.encodeViewport( this.view.viewport() )) ;
-	history.replaceState( null, null, "?" + this.params.toString() ) ;
+	//history.replaceState( null, null, "?" + this.params.toString() ) ;
 }
 
 MSAController.prototype.parseViewport = function( spec ) {

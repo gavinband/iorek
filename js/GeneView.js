@@ -138,7 +138,9 @@ GeneView.prototype.draw = function(
 	let t = 4 ;
 	let textTransform = ( direction == "vertical" ) ? "rotate(-90)" : "" ;
 	let axes = {} ;
-	
+	let baseWidth = Math.abs( scales.position(1) - scales.position(0)) ;
+	let orientation = Math.sign( scales.position(1) - scales.position(0)) ;
+
 	if( direction == "horizontal" ) {
 		axes = {
 			"x": "x",
@@ -165,7 +167,6 @@ GeneView.prototype.draw = function(
 		//console.log( "GeneView.draw()", "Unrecognised direction \"" + direction + "\", quitting." )
 		return ;
 	}
-	let orientation = Math.sign( scales.position(1) - scales.position(0) ) ;
 	//console.log( "GeneView.draw()", this.genes, orientation ) ;
 	let min = Math.min ;
 	let max = Math.max ;
@@ -208,8 +209,8 @@ GeneView.prototype.draw = function(
 	let transcripts = elt.selectAll( 'g.gene' ) ;
 	transcripts
 		.selectAll( 'line.mid' )
-		.attr( axes.x1, elt => scales.position( Math.max( elt.start, self.region.start )))
-		.attr( axes.x2, elt => scales.position( Math.min( elt.end, self.region.end )))
+		.attr( axes.x1, elt => scales.position( Math.max( elt.start, self.region.start )) )
+		.attr( axes.x2, elt => scales.position( Math.min( elt.end, self.region.end )) )
 		.attr( axes.y1, elt => scales.level( elt.level ))
 		.attr( axes.y2, elt => scales.level( elt.level ))
 		.attr( "stroke", "black" )
@@ -224,10 +225,10 @@ GeneView.prototype.draw = function(
 	transcripts.selectAll( 'rect.exon' )
 		// SVG widths / heights must be positive.
 		// The following formulation makes sure we plot rectangles
-		// in the right direction even when the scale is upside-down.
-		.attr( axes.x, elt => min( scales.position( elt.start ), scales.position( elt.end ) ))
+		// in the right direction even when the scale is reversed.
+		.attr( axes.x, elt => min( scales.position( elt.start ), scales.position( elt.end )) )
 		.attr( axes.y, elt => min( scales.level( elt.level + e ), scales.level( elt.level - e ) ))
-		.attr( axes.width, elt => abs( scales.position( elt.end ) - scales.position( elt.start )))
+		.attr( axes.width, elt => abs( scales.position( elt.end ) - scales.position( elt.start )) )
 		.attr( axes.height, elt => abs( scales.level( -2 * e ) - scales.level(0) ))
 		//.attr( 'stroke', 'black' )
 		.attr( 'fill', 'grey' )
@@ -236,6 +237,10 @@ GeneView.prototype.draw = function(
 	function isVisible( x ) {
 		return x >= region.start && x <= region.end ;
 	}
+	
+	let offset = orientation*(baseWidth/2) ;
+	
+	// 0.5 added to start/end to make gene encompass the whole base
 	// start bar
 	transcripts
 		.selectAll( 'line.bar_s' )
@@ -322,7 +327,7 @@ GeneView.prototype.draw = function(
 			.selectAll( 'text.symbol' )
 			.attr( 'transform', function( elt ) {
 				if( direction == "horizontal" ) {
-					return "translate(" + (scales.position( elt.end ) + orientation * t) + ", " + scales.level( elt.level ) + ")" ;
+					return "translate(" + (scales.position( elt.end ) + offset + orientation * t) + ", " + scales.level( elt.level ) + ")" ;
 				} else if( direction == "vertical" ) {
 					return "translate(" + scales.level( elt.level ) + ", " + (scales.position( elt.start ) + t) + ") rotate(90)" ;
 				}
