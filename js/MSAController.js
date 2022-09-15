@@ -119,7 +119,7 @@ let MSAController = function( panels, view ) {
 MSAController.prototype.updateParams = function() {
 	this.params.set( "target", this.view.target ) ;
 	this.params.set( "viewport", this.encodeViewport( this.view.viewport() )) ;
-	//history.replaceState( null, null, "?" + this.params.toString() ) ;
+	history.replaceState( null, null, "?" + this.params.toString() ) ;
 }
 
 MSAController.prototype.parseViewport = function( spec ) {
