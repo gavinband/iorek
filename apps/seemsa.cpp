@@ -285,8 +285,53 @@ private:
 		double m_value ;
 	} ;
 
-	typedef std::map< std::string, std::vector< RegionValue > > Annotation ;
-	typedef std::map< std::string, Annotation > Annotations ;
+	
+	struct Annotations {
+		// Annotation: map of annotation name to start / end / value.
+		typedef std::map< std::string, std::vector< RegionValue > > Annotation ;
+		// map of sequence ID to Annotation.
+		typedef std::map< std::string, Annotation > Map ;
+			
+		std::vector< std::string > const& names() const { return m_names ; }
+
+		void add_annotation( std::string const& name ) {
+			m_names.push_back( name ) ;
+		}
+
+		void add_annotation_value( std::string const& sequence_id, RegionValue const& value ) {
+			m_data[sequence_id][m_names.back()].push_back( value ) ;
+		}
+		
+		std::size_t number_of_annotations() const { return m_names.size() ; }
+
+		bool has(
+			std::string const& sequence_id,
+			std::string const& annotation_name
+		) const {
+			Map::const_iterator w1 = m_data.find( sequence_id ) ;
+			if( w1 == m_data.end()) {
+				return false ;
+			}
+			Annotation const& a = w1->second ;
+			Annotation::const_iterator w2 = a.find( annotation_name ) ;
+			return( w2 != a.end() ) ;
+		}
+
+		std::vector< RegionValue > const& find(
+			std::string const& sequence_id,
+			std::string const& annotation_name
+		) const {
+			Map::const_iterator w1 = m_data.find( sequence_id ) ;
+			Annotation const& a = w1->second ;
+			Annotation::const_iterator w2 = a.find( annotation_name ) ;
+			assert( w2 != a.end() ) ;
+			return w2->second ;
+		}
+
+	private:
+		std::vector< std::string > m_names ;
+		Map m_data ;
+	} ;
 	
 private:
 	
@@ -479,8 +524,8 @@ private:
 		std::vector< std::string > const& specs,
 		std::vector< ContigSubsequenceSpec > const& sequence_ids
 	) {
-		using genfile::string_utils::slice ;
 		Annotations result ;
+		using genfile::string_utils::slice ;
 		for( std::string const& spec: specs ) {
 			std::vector< slice > elts = slice( spec ).split( "=" );
 			if( elts.size() != 2 ) {
@@ -490,6 +535,7 @@ private:
 					"Expected name=value pair."
 				) ;
 			}
+			result.add_annotation( elts[0] ) ;
 			load_bed4_annotation(
 				elts[1],
 				[&] ( RegionValue const& value ) {
@@ -507,7 +553,7 @@ private:
 							&& (value.range().end().position() >= a )
 							&& (value.range().start().position() <= b )
 						) {
-							result[value.range().chromosome()][elts[0]].push_back( value ) ;
+							result.add_annotation_value( value.range().chromosome(), value ) ;
 						}
 					}
 				}
@@ -612,10 +658,10 @@ private:
 				<< "  \"highlights\": {}"
 				<< ",\n" ;
 		}
-		if( annotations.size() > 0 ) {
+		if( annotations.number_of_annotations() > 0 ) {
 			out
  				<< "  \"annotations\": "
-				<< annotationsToJSON( annotations )
+				<< annotationsToJSON( sequence_ids, annotations )
 				<< "\n" ;
 		} else {
 			out
@@ -700,28 +746,32 @@ private:
 		return s.str() ;
 	}
 
-	std::string annotationsToJSON( Annotations const& annotations ) const {
+	std::string annotationsToJSON(
+		std::vector< ContigSubsequenceSpec > const& sequence_ids,
+		Annotations const& annotations
+	) const {
 		std::ostringstream s ;
 		s << "{\n" ;
-		Annotations::const_iterator i = annotations.begin(), end_i = annotations.end() ;
-		for( std::size_t icount = 0; i != end_i; ++i, ++icount ) {
-			std::string const& sequence_name = i->first ;
-			Annotation::const_iterator j = i->second.begin(), end_j = i->second.end() ;
-			s	<< ((icount>0) ? ",\n" : "")
+		
+		for( std::size_t i = 0; i < sequence_ids.size(); ++i ) {
+			std::string const& sequence_name = sequence_ids[i].id() ;
+			s	<< ((i>0) ? ",\n" : "")
 				<< "  \"" << sequence_name << "\": {\n" ;
-			for( std::size_t jcount = 0; j != end_j; ++j, ++jcount ) {
-				std::string const& annotation_name = j->first ;
-				s	<< ((jcount>0) ? ",\n" : "")
+			for( std::size_t j = 0; j < annotations.names().size(); ++j ) {
+				std::string const& annotation_name = annotations.names()[j] ;
+				s	<< ((j>0) ? ",\n" : "")
 					<< "    \"" << annotation_name << "\": [\n" ;
-				std::vector< RegionValue > const& values = j->second ;
-				for( std::size_t i = 0; i < values.size(); ++i ) {
-					RegionValue const& v = values[i] ;
-					s << ((i>0) ? ",\n" : "" )
-						<< "      { \"chromosome\": \"" << v.range().chromosome() << "\", "
-						<< "\"start\": " << v.range().start().position() + 1 << ", "
-						<< "\"end\": " << v.range().end().position() << ", "
-						<< "\"value\": " << v.value()
-						<< "}" ;
+				if( annotations.has( sequence_name, annotation_name )) {
+					std::vector< RegionValue > const& values = annotations.find( sequence_name, annotation_name ) ;
+					for( std::size_t ri = 0; ri < values.size(); ++ri ) {
+						RegionValue const& v = values[ri] ;
+						s << ((ri>0) ? ",\n" : "" )
+							<< "      { \"chromosome\": \"" << v.range().chromosome() << "\", "
+							<< "\"start\": " << v.range().start().position() + 1 << ", "
+							<< "\"end\": " << v.range().end().position() << ", "
+							<< "\"value\": " << v.value()
+							<< "}" ;
+					}
 				}
 				s << "\n    ]" ;
 			}
@@ -744,4 +794,4 @@ int main( int argc, char** argv )
 	}
 	return 0 ;
 }
-	
+
