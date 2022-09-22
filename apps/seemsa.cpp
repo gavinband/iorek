@@ -293,7 +293,13 @@ private:
 		typedef std::map< std::string, Annotation > Map ;
 			
 		std::vector< std::string > const& names() const { return m_names ; }
-
+		std::vector< std::string > const sequence_ids() const {
+			std::vector< std::string > result ;
+			for( Map::const_iterator i = m_data.begin(); i != m_data.end(); ++i ) {
+				result.push_back( i->first ) ;
+			}
+			return result ;
+		} ;
 		void add_annotation( std::string const& name ) {
 			m_names.push_back( name ) ;
 		}
@@ -661,7 +667,7 @@ private:
 		if( annotations.number_of_annotations() > 0 ) {
 			out
  				<< "  \"annotations\": "
-				<< annotationsToJSON( sequence_ids, annotations )
+				<< annotationsToJSON( annotations )
 				<< "\n" ;
 		} else {
 			out
@@ -747,14 +753,14 @@ private:
 	}
 
 	std::string annotationsToJSON(
-		std::vector< ContigSubsequenceSpec > const& sequence_ids,
 		Annotations const& annotations
 	) const {
 		std::ostringstream s ;
 		s << "{\n" ;
-		
+
+		std::vector< std::string > const sequence_ids = annotations.sequence_ids() ;
 		for( std::size_t i = 0; i < sequence_ids.size(); ++i ) {
-			std::string const& sequence_name = sequence_ids[i].id() ;
+			std::string const& sequence_name = sequence_ids[i] ;
 			s	<< ((i>0) ? ",\n" : "")
 				<< "  \"" << sequence_name << "\": {\n" ;
 			for( std::size_t j = 0; j < annotations.names().size(); ++j ) {
