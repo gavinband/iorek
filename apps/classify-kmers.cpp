@@ -13,7 +13,7 @@
 #include <boost/ptr_container/ptr_vector.hpp>
 #include <boost/filesystem.hpp>
 #include <boost/noncopyable.hpp>
-#include <boost/lockfree/queue.hpp>
+//#include <boost/lockfree/queue.hpp>
 #include <chrono>
 #include <thread>
 
@@ -29,6 +29,7 @@ namespace seqlib = SeqLib;
 
 #include "appcontext/appcontext.hpp"
 #include "genfile/GenomePositionRange.hpp"
+#include "genfile/FileUtils.hpp"
 #include "genfile/string_utils/string_utils.hpp"
 #include "genfile/string_utils/slice.hpp"
 #include "genfile/Error.hpp"
@@ -45,7 +46,7 @@ namespace seqlib = SeqLib;
 #include <sys/sysinfo.h>
 */
 
-#define DEBUG 1
+#define DEBUG 0
 
 namespace globals {
 	std::string const program_name = "classify-kmers" ;
@@ -54,8 +55,26 @@ namespace globals {
 }
 
 namespace {
-	typedef phmap::flat_hash_map< uint64_t, uint16_t > ParallelHashMap ;
+	typedef phmap::parallel_flat_hash_map< uint64_t, uint16_t > ParallelHashMap ;
+	struct identity_hash {
+		std::size_t operator()( uint64_t const value ) { return value ; }
+	} ;
+	typedef phmap::flat_hash_set<uint64_t> FlatHashSet ;
+
+	typedef phmap::parallel_flat_hash_set<
+		uint64_t,
+		phmap::priv::hash_default_hash<uint64_t>,
+		phmap::priv::hash_default_eq<uint64_t>,
+		phmap::priv::Allocator<const uint64_t>,
+		5, // 2^(this number) of submaps
+		std::mutex
+	> ParallelFlatHashSet ;
+
 	typedef jellyfish::cooperative::hash_counter<jellyfish::mer_dna> JellyfishHashMap ; 
+
+	// HashSet in actual use.
+	//typedef FlatHashSet HashSet ;
+	typedef ParallelFlatHashSet HashSet ;
 
 	/*
 	typedef boost::lockfree::queue<
@@ -63,9 +82,7 @@ namespace {
 		boost::lockfree::capacity< 2048 >
 	> Queue ;
 	*/
-	typedef moodycamel::ConcurrentQueue<
-		std::pair< jellyfish::mer_dna, uint64_t >
-	> Queue ;
+	typedef moodycamel::ConcurrentQueue< uint64_t > Queue ;
 
 	template< typename HashMap >
 	struct HashMapTraits {
@@ -77,8 +94,39 @@ namespace {
 	template<>
 	struct HashMapTraits< ParallelHashMap > {
 		typedef ParallelHashMap hashmap_t ;
+		static void add(
+			hashmap_t* result,
+			jellyfish::mer_dna const& key,
+			uint64_t value
+		) {
+			result->insert(
+				std::make_pair(
+					key.get_bits( 0, 2*jellyfish::mer_dna::k() ),
+					value
+				)
+			) ;
+		}
+		static std::size_t size_in_bytes( hashmap_t const& hashmap ) {
+			return 0 ;
+		}
+	} ;
+
+	template<>
+	struct HashMapTraits< ParallelFlatHashSet > {
+		typedef ParallelFlatHashSet hashmap_t ;
 		static void add( hashmap_t* result, jellyfish::mer_dna const& key, uint64_t value ) {
-			(*result)[ key.get_bits( 0, 2*jellyfish::mer_dna::k() ) ] += value ;
+			result->insert( key.get_bits( 0, 2*jellyfish::mer_dna::k()) ) ;
+		}
+		static std::size_t size_in_bytes( hashmap_t const& hashmap ) {
+			return 0 ;
+		}
+	} ;
+
+	template<>
+	struct HashMapTraits< FlatHashSet > {
+		typedef FlatHashSet hashmap_t ;
+		static void add( hashmap_t* result, jellyfish::mer_dna const& key, uint64_t value ) {
+			result->insert( key.get_bits( 0, 2*jellyfish::mer_dna::k()) ) ;
 		}
 		static std::size_t size_in_bytes( hashmap_t const& hashmap ) {
 			return 0 ;
@@ -96,60 +144,48 @@ namespace {
 		}
 	} ;
 	
-	template< typename HashMap, typename HetMap >
+	template< typename HashMap >
 	void classify_threaded(
 		std::size_t const k,
 		Queue* queue,
 		HashMap* result,
-		HetMap* hets,
-		std::vector< uint64_t > const limits,
 		std::size_t const thread_index,
-		uint64_t const thread_mask,
 		std::atomic< int >* quit
 	) {
+#if DEBUG
+		std::cerr << "(thread " << thread_index << "): Starting...\n" ;
+#endif	
 		std::size_t count = 0 ;
-		std::size_t het_count = 0 ;
-		uint64_t const lowerLimit = limits[0] ;
-		uint64_t const hetLimit = limits[1] ;
-		uint64_t const upperLimit = limits[2] ;
-		assert( hetLimit >= lowerLimit ) ;
-		assert( upperLimit >= hetLimit ) ;
-		bool popped = false;
-		std::pair< jellyfish::mer_dna, uint64_t > elt ;
+		uint64_t elt ;
 		while( !(*quit) ) {
+#if DEBUG > 1
+			std::cerr << "!! (" << thread_index << ", " << std::this_thread::get_id() << "): " << queue << ".\n" ;
+#endif
 			bool popped = queue->try_dequeue( elt ) ;
+#if DEBUG > 1
+			std::cerr
+				<< "(thread " << thread_index << ") "
+				<< "!! " << ( popped ? "popped" : "nothing to pop" )
+				<< ", queue approx size = " << queue->size_approx()
+				<< ".\n" ;
+#endif
 			if( popped ) {
-				std::cerr << "(thread " << thread_index << ") ++ Got " << elt.first << "!\n" ;
-			} else {
-				std::cerr << "(thread " << thread_index << ") ++ no pop.\n" ;
-			}
-			if( popped ) {
-				uint64_t hash = elt.first.get_bits( 0, 2*k ) ;
-				if( (hash & thread_mask) == thread_index ) {
-					uint64_t const& multiplicity = elt.second ;
-					if( elt.second >= lowerLimit ) {
-						if( elt.second <= upperLimit ) {
-							++count ;
-							HashMapTraits< HashMap >::add( result, elt.first, multiplicity ) ;
-						}
-						if( elt.second <= hetLimit ) {
-							++het_count ;
-							HashMapTraits< HetMap >::add( hets, elt.first, multiplicity ) ;
-						}
-					}
-				}
+				result->insert( elt ) ;
+				++count ;
 				if( (count & 0xFFFFFFF) == 0 ) {
 					std::cerr << "(thread " << thread_index << ") ++ Added " << count << " kmers.\n" ;
 				}
 			} else {
 				// nothing to pop, sleep to allow queue to fill.
-				std::this_thread::sleep_for( std::chrono::milliseconds(1) ) ;
+				std::this_thread::sleep_for( std::chrono::microseconds(10) ) ;
 			}
 		}
-		std::cerr << "(thread " << thread_index << "): ++ Added "
-			<< count << " kmers in total, including "
-			<< het_count << " probable hets.\n" ;
-		std::cerr << "(thread " << thread_index << "): ++ Thread ending...\n" ;
+#if DEBUG
+		std::cerr
+			<< "(thread " << thread_index << "): ++ Added "
+			<< count << " kmers in total.\n" ;
+		std::cerr << "(thread " << thread_index << "): ++ Ending...\n" ;
+#endif
 	}
 }
 
@@ -169,12 +205,22 @@ public:
 			.set_is_required()
 		;
 
-		options[ "-breaks" ]
-			.set_description( "Lower and upper limits of heterozygous and homozygous kmers"
-				" E.g 10 100 1000 treats kmers wth multiplicity < 10 as error, 10-100 as heterozygous, "
-				"100-1000 as homozygous and everything above as high multiplicity." )
-			.set_takes_values( 3 )
+		options[ "-min-kmer-count" ]
+			.set_description( "Kmer multiplicity above which kmers will be treated as solid" )
+			.set_takes_single_value()
+			.set_default_value(5)
+		;
+
+		options[ "-reads" ]
+			.set_description( "Path of fastq file of reads to load." )
+			.set_takes_single_value()
 			.set_is_required()
+		;
+
+		options[ "-min-base-quality" ]
+			.set_description( "Minimum base quality; kmers containing bases below this quality will not be counted." )
+			.set_takes_single_value()
+			.set_default_value(0)
 		;
 
 		options[ "-o" ]
@@ -193,9 +239,13 @@ public:
 			.set_takes_single_value()
 			.set_default_value( 1 )
 		;
+
+		options.declare_group( "Other options" ) ;
+		options[ "-verbose" ]
+			.set_description( "Print out details of what is being done." ) ;
 	}
 } ;
-
+ 
 struct ClassifyKmerApplication: public appcontext::ApplicationContext
 {
 public:
@@ -221,138 +271,381 @@ public:
 	}
 
 private:
+
 	void unsafe_process() {
-		std::string jf_filename = options().get< std::string >( "-jf" ) ;
+		HashSet kmers ;
+		std::size_t const number_of_threads = options().get< std::size_t >( "-threads" ) ;
+		uint64_t const multiplicity_threshold = options().get_value< uint64_t >( "-min-kmer-count" ) ;
+		std::size_t const max_kmers = options().get< std::size_t >( "-max-kmers" ) ;
+		int const base_quality_threshold = options().get< std::size_t >( "-min-base-quality" ) ;
+		bool const verbose = options().check( "-verbose" ) ;
+
+		std::size_t k = load_kmers(
+			options().get< std::string >( "-jf" ),
+			&kmers,
+			number_of_threads,
+			multiplicity_threshold,
+			max_kmers,
+			verbose
+		) ;
+
+		ui().logger() << "++ Ok, solid kmers loaded:\n"
+			<< "             k: "  << k << "\n"
+			<< "   total kmers: "  << kmers.size() << "\n"
+		;
+
+		ui().logger() << "++ Total memory usage is:\n" ;
+		ui().logger() << "              (process) : " << std::round(spp::GetProcessMemoryUsed()/1000000.0) << "Mb\n" ;
+
+		{
+			statfile::BuiltInTypeStatSink::UniquePtr
+				sink = statfile::BuiltInTypeStatSink::open( options().get< std::string >( "-o" ) ) ;
+
+			std::auto_ptr< std::istream >
+				fastq = genfile::open_text_file_for_input( options().get< std::string >( "-reads" ) ) ;
+			std::size_t number_of_reads = process_reads(
+				*fastq,
+				kmers,
+				k,
+				base_quality_threshold,
+				*sink
+			) ;
+			ui().logger() << "++ Processed " << number_of_reads << " reads.\n" ;
+		}
+
+	}
+
+	std::size_t load_kmers(
+		std::string const& jf_filename,
+		HashSet* result,
+		std::size_t number_of_threads,
+		uint64_t multiplicity_threshold = 0,
+		std::size_t max_kmers = std::numeric_limits< std::size_t >::max(),
+		bool verbose = false
+	) {
 		std::ifstream ifs( jf_filename ) ;
 		jellyfish::file_header header( ifs ) ;
-		ui().logger()
-			<< "++ Loaded header:\n"
-			<< "    size: " << header.size() << "\n"
-			<< "    nb_hashes: " << header.nb_hashes() << "\n"
-			<< "    key_len: " << header.key_len() << ".\n" ;
-
-		// This is 
-		
-		std::vector< uint64_t > limits = options().get_values< uint64_t >( "-breaks" ) ;
-		assert( limits.size() == 3 ) ;
-		if( limits[1] <= limits[0] || limits[2] <= limits[1] ) {
-			throw genfile::BadArgumentError(
-				"ClassifyKmerApplication::unsafe_process()",
-				"-limits",
-				"Expected a sorted list of integers."
-			) ;
+		std::size_t const k = header.key_len() / 2 ;
+		if(verbose) {
+			ui().logger()
+				<< "++ Loaded header from \"" << jf_filename << "\":\n"
+				<< "    size: " << header.size() << "\n"
+				<< "    nb_hashes: " << header.nb_hashes() << "\n"
+				<< "    key_len: " << header.key_len() << "\n"
+				<< "          k: " << k << ".\n" ;
 		}
-		limits.push_back( std::numeric_limits< uint64_t >::max() ) ;
-		std::size_t const max_kmers = options().get< std::size_t >( "-max-kmers" ) ;
 
 		if( header.format() != binary_dumper::format ) {
 			throw genfile::BadArgumentError( "ClassifyKmerApplication::unsafe_process()", "-jf", "Expected a binary-format jellyfish count file." ) ;
 		}
-		
-		std::pair< std::size_t, std::size_t > count = count_kmers( jf_filename, limits ) ;
-		ui().logger() << "++ Statistics for \"" << jf_filename << "\":\n"
-			<< "     total kmers: " << count.first << "\n"
-			<< "  in-range kmers: " << count.second << "\n" ;
-		
-		binary_reader reader(ifs, &header);
-		std::size_t const k = header.key_len() / 2 ;
-		jellyfish::mer_dna::k( k ) ;
 
 		{
-			std::size_t const numberOfThreads = options().get< std::size_t >( "-threads" ) ;
-			JellyfishHashMap all( count.second, jellyfish::mer_dna::k()*2, 16, numberOfThreads ) ;
-			ParallelHashMap hets ;
 			{
-				uint64_t const threadMask = (numberOfThreads - 1) ;
-
-				if( (numberOfThreads & threadMask) != 0 ) {
+				if( number_of_threads < 1 ) {
 					throw genfile::BadArgumentError(
-						"ClassifyKmerApplication::unsafe_process()",
-						"-threads",
+						"ClassifyKmerApplication::load_kmers()",
+						"number_of_threads",
+						"You must supply a value >= 1"
+					) ;
+				}
+
+				if( (number_of_threads & (number_of_threads - 1) ) != 0 ) {
+					throw genfile::BadArgumentError(
+						"ClassifyKmerApplication::load_kmers()",
+						"number_of_threads",
 						"Number of threads must be zero or a power of two."
 					) ;
 				}
 
-				Queue queue( 2048 ) ;
-				std::atomic< int > quit(0) ;
-				std::vector< std::thread > threads ;
-				for( std::size_t i = 0; i < numberOfThreads; ++i ) {
-					threads.push_back(
-						std::thread(
-							classify_threaded< JellyfishHashMap, ParallelHashMap >,
-							k, &queue, &all, &hets, limits, i, threadMask, &quit
-						)
+				if( number_of_threads > 32 ) {
+					throw genfile::BadArgumentError(
+						"ClassifyKmerApplication::load_kmers()",
+						"number_of_threads",
+						"A maximum of 32 threads are supported."
 					) ;
 				}
+			}
+			
+			jellyfish::mer_dna::k( k ) ;
+			binary_reader reader(ifs, &header);
+
+			{
+				std::vector< Queue > queues ;
+				std::vector< std::thread > threads ;
+				std::atomic< int > quit(0) ;
+				ui().logger() << "++ Loading kmers from \"" << jf_filename << "\"\n"
+					<< "   ...using " << number_of_threads << " worker threads...\n" ;
+			
+				for( std::size_t i = 0; i < number_of_threads; ++i ) {
+					queues.push_back( Queue( 32768 ) ) ;
+					if( verbose ) {
+						ui().logger() << "!! Created queue " << i << " at (" << &(queues.back()) << ").\n" ;
+					}
+				}
+				for( std::size_t i = 0; i < number_of_threads; ++i ) {
+					threads.push_back(
+						std::thread(
+							classify_threaded< HashSet >,
+							k,
+							&(queues[i]),
+							result,
+							i,
+							&quit
+						)
+					) ;
+					if( verbose ) {
+						ui().logger() << "!! Created thread " << i << " at (" << &(threads.back()) << ").\n" ;
+					}
+				}
 				
-				read_into_queue( header, reader, queue, max_kmers ) ;
+				// read kmers into queues.
+				// There is one queue per thread and gets kmers destined for ith
+				// hash submap.
+				read_into_queues(
+					k,
+					multiplicity_threshold,
+					reader,
+					queues,
+					*result,
+					max_kmers
+				) ;
 				
-				while( queue.size_approx() > 0 ) {
-					std::cerr << "Queue size = " << queue.size_approx() << ".\n" ;
-					std::this_thread::sleep_for( std::chrono::milliseconds(10)) ;
+				// Wait for it to finish.
+				for( std::size_t i = 0; i < number_of_threads; ++i ) {
+					while( queues[i].size_approx() > 0 ) {
+#if DEBUG
+						std::cerr << "++ Queue[" << i << "] size = " << queues[i].size_approx() << ", waiting..." ;
+#endif
+						std::this_thread::sleep_for( std::chrono::milliseconds(1)) ;
+					}
 				}
 
+				ui().logger() << "++ Tidying up...\n" ;
 				quit = 1 ;
-
-				for( auto& thread: threads ) {
-					thread.join() ;
+				std::this_thread::sleep_for( std::chrono::milliseconds(1)) ;
+				for( std::size_t i = 0; i < number_of_threads; ++i ) {
+					threads[i].join() ;
 				}
 			}
-
-			ui().logger() << "++ Total memory usage is:\n" ;
-			ui().logger() << "              (process) : " << (spp::GetProcessMemoryUsed()/1000000) << "Mb\n" ;
 		}
-	}
-	
-	std::pair< std::size_t, std::size_t > count_kmers(
-		std::string const& filename,
-		std::vector< uint64_t > const limits
-	) {
-		std::ifstream ifs( filename ) ;
-		jellyfish::file_header header( ifs ) ;
-		unsigned int const k = header.key_len() / 2 ;
-		std::cerr << "k = " << k << ".\n" ;
-		jellyfish::mer_dna::k( k );
-		binary_reader it(ifs, &header);
-		
-		
-		std::size_t total = 0 ;
-		std::size_t included = 0 ;
-		auto progress = ui().get_progress_context( "Counting kmers" ) ;
-		uint64_t const lowerLimit = limits[0] ;
-		uint64_t const upperLimit = limits[2] ;
-
-		while( it.next() ) {
-			uint64_t const value = it.val() ;
-			if( value >= lowerLimit && value <= upperLimit ) {
-				++included ;
-			}
-			++total ;
-			if( total % 100000 == 0 ) {
-				progress( total, boost::optional< std::size_t >() ) ;
-			}
-		}
-		return std::make_pair( total, included ) ;
+		return k ;
 	}
 	
 	template< typename Iterator >
-	void read_into_queue(
-		jellyfish::file_header const& header,
+	void read_into_queues(
+		unsigned int const k,
+		uint64_t const multiplicity_threshold,
 		Iterator it,
-		Queue& queue,
+		std::vector< Queue >& queues,
+		HashSet const& set,
 		std::size_t const max_kmers = std::numeric_limits< std::size_t >::max()
 	) {
-		unsigned int const k = header.key_len() / 2 ;
 		jellyfish::mer_dna::k( k ) ;
 		std::size_t count = 0 ;
-		auto progress = ui().get_progress_context( "Loading kmers" ) ;
-		while( it.next() && count < max_kmers ) {
-			std::pair< jellyfish::mer_dna, uint64_t > elt( it.key(), it.val() ) ;
-			while( !queue.try_enqueue( elt )) {
-				std::this_thread::sleep_for( std::chrono::milliseconds(1) ) ;
+		{
+			auto progress = ui().get_progress_context( "Loading kmers" ) ;
+			while( it.next() && count < max_kmers ) {
+				if( it.val() >= multiplicity_threshold ) {
+					uint64_t const kmer = it.key().get_bits( 0, 2*k ) ;
+					std::size_t const hashvalue = set.hash( kmer ) ;
+					std::size_t idx = set.subidx( hashvalue ) ;
+#if DEBUG > 1
+					std::cerr << "++ kmer: " << genfile::kmer::decode_hash( kmer, k )
+						<< ", "
+						<< std::hex << kmer << std::dec
+						<< ": " << "hashvalue: "
+						<< hashvalue << ", idx: " << idx << ".\n" ;
+#endif
+					std::size_t const queue_index = idx % queues.size() ;
+					// Queue& queue = queues[ queue_index ] ;
+					Queue& queue = queues[ queue_index ] ;
+					while( !queue.try_enqueue( kmer )) {
+#if DEBUG > 1
+						std::cerr << "-- queue full after " << count << " kmers, sleeping...\n" ;
+#endif
+						std::this_thread::sleep_for( std::chrono::microseconds(10) ) ;
+					}
+#if DEBUG > 1
+					std::cerr << "++ Wrote " << kmer << " to queue " << queue_index << ".\n" ;
+#endif
+					progress( ++count ) ;
+				}
 			}
 		}
-		std::cerr << "++ read_into_queue(): Read " << count << " kmers in totalquitting.\n" ;
+		ui().logger() << "++ read_into_queue(): Read " << count << " kmers in total.\n" ;
+	}
+	
+	struct ReadResult {
+	public:
+		ReadResult():
+			length(0),
+			k(0),
+			number_of_kmers_at_threshold(0),
+			number_of_solid_kmers_at_threshold(0),
+			first_solid_kmer_start(0),
+			last_solid_kmer_end(0)
+		{}
+
+		ReadResult( ReadResult const& other ):
+			length( other.length ),
+			k( other.k ),
+			number_of_kmers_at_threshold( other.number_of_kmers_at_threshold ),
+			number_of_solid_kmers_at_threshold( other.number_of_solid_kmers_at_threshold ),
+			first_solid_kmer_start( other.first_solid_kmer_start ),
+			last_solid_kmer_end( other.last_solid_kmer_end )
+		{}
+
+		ReadResult& operator=( ReadResult const& other ) {
+			length = other.length ;
+			k = other.k ;
+			number_of_kmers_at_threshold = other.number_of_kmers_at_threshold ;
+			number_of_solid_kmers_at_threshold = other.number_of_solid_kmers_at_threshold ;
+			first_solid_kmer_start = other.first_solid_kmer_start ;
+			last_solid_kmer_end = other.last_solid_kmer_end ;
+			return *this ;
+		}
+
+	public:
+		uint64_t length ;
+		uint64_t k ;
+		uint64_t number_of_kmers_at_threshold ;
+		uint64_t number_of_solid_kmers_at_threshold ;
+		uint64_t first_solid_kmer_start ;
+		uint64_t last_solid_kmer_end ;
+	} ;
+	
+	std::size_t process_reads(
+		std::istream& input,
+		HashSet const& kmers,
+		std::size_t k,
+		uint64_t base_quality_threshold,
+		statfile::BuiltInTypeStatSink& output
+	) {
+		auto progress = ui().get_progress_context( "Examining reads" ) ;
+
+		output
+			| "read_id"
+			| "read_length"
+			| "kmer_k"
+			| "number_of_kmers_at_threshold"
+			| "number_of_solid_kmers_at_threshold"
+			| "first_solid_kmer_start"
+			| "last_solid_kmer_end"
+		;
+		std::size_t l = 0 ;
+		std::size_t count = 0 ;
+		std::string line, id, sequence, qualities ;
+		while( std::getline( input, line )) {
+			switch(l) {
+				case 0:
+					id = line.substr(1,line.size() ) ;
+					break ;
+				case 1:
+					sequence = line ;
+					break ;
+				case 2:
+					break ;
+				case 3:
+					qualities = line ;
+					break ;
+			} ;
+
+			if( (++l) == 4 ) {
+				ReadResult const r = process_read(
+					id,
+					sequence,
+					qualities,
+					kmers,
+					k,
+					base_quality_threshold
+				) ;
+				output
+					<< id
+					<< r.length
+					<< uint64_t(k)
+					<< r.number_of_kmers_at_threshold
+					<< r.number_of_solid_kmers_at_threshold
+					<< r.first_solid_kmer_start
+					<< r.last_solid_kmer_end
+					<< statfile::end_row() ;
+				l = 0 ;
+				++count ;
+				progress( count ) ;
+			}
+		}
+		return count ;
+	}
+
+	ReadResult process_read(
+		std::string const& id,
+		std::string const& sequence,
+		std::string const& qualities,
+		HashSet const& kmers,
+		std::size_t k,
+		int const base_quality_threshold
+	) {
+		assert( qualities.size() == sequence.size() ) ;
+		assert( k <= 31 ) ;
+		ReadResult result ;
+		result.length = sequence.size() ;
+		typedef genfile::kmer::KmerHashIterator< std::string::const_iterator > KmerIterator ;
+		KmerIterator kmer_iterator( sequence.begin(), sequence.end(), k ) ;
+		int min_quality = 0 ;
+		std::size_t min_quality_at = 0 ;
+		bool have_first = false ;
+		for(
+			std::size_t i = 0;
+			true ;//i < (sequence.size() - k+1);
+			++kmer_iterator, ++i
+		) {
+			if( min_quality_at == 0 ) {
+				compute_min_quality(
+					genfile::string_utils::slice( qualities, i, i+k ),
+					min_quality,
+					min_quality_at
+				) ;
+			} else {
+				--min_quality_at ;
+			}
+			if( min_quality >= base_quality_threshold ) {
+				++(result.number_of_kmers_at_threshold) ;
+				uint64_t const hash = kmer_iterator.hash() ;
+				uint64_t const reverse_complement_hash = genfile::kmer::reverse_complement( kmer_iterator.hash(), k ) ;
+				if( kmers.contains( hash ) || kmers.contains( reverse_complement_hash ) ) {
+					if( !have_first ) {
+						result.first_solid_kmer_start = i ;
+						have_first = true ;
+					}
+					++(result.number_of_solid_kmers_at_threshold) ;
+					result.last_solid_kmer_end = i+k ;
+				} else {
+#if DEBUG
+					std::cerr << "!! kmer not in hash:" << kmer_iterator.to_string() << ":\n"
+						<< "    (fwd): " << genfile::kmer::decode_hash( hash, k ) << ": " << hash << "\n"
+						<< "    (rev): " << genfile::kmer::decode_hash( reverse_complement_hash, k ) << ".\n" ;
+#endif
+				}
+			}
+			if( kmer_iterator.finished() ) {
+				break ;
+			}
+		}
+		return result ;
+	}
+	
+	void compute_min_quality(
+		genfile::string_utils::slice const& qualities,
+		int& min_quality,
+		std::size_t& min_quality_at
+	) {
+		min_quality = std::numeric_limits< int >::max() ;
+		for( std::size_t i = 0; i < qualities.size(); ++i ) {
+			int quality = (qualities[i] - 33) ;
+			if( quality < min_quality ) {
+				min_quality_at = i ;
+				min_quality = quality ;
+			}
+		}
 	}
 } ;
 
@@ -369,4 +662,4 @@ int main( int argc, char** argv )
 	}
 	return 0 ;
 }
-	
+
