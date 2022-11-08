@@ -28,3 +28,10 @@ def build( bld ):
 		use = 'genfile',
 		includes = "./include"
 	)
+
+	bld.program(
+		source = "test/test-kmers.cpp",
+		target = 'test-kmers',
+		use = 'genfile',
+		includes = "./include"
+	)
