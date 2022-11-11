@@ -125,6 +125,257 @@ namespace {
 		std::cerr << "(thread " << thread_index << "): ++ Ending...\n" ;
 #endif
 	}
+	
+	struct Read {
+		Read() {}
+
+		Read( Read const& other ):
+			id( other.id ),
+			sequence( other.sequence ),
+			qualities( other.qualities )
+		{}
+
+		Read& operator=( Read const& other ) {
+			id = other.id ;
+			sequence = other.sequence ;
+			qualities = other.qualities ;
+			return *this ;
+		}
+
+		std::string id ;
+		std::string sequence ;
+		std::string qualities ;
+	} ;
+
+	struct ReadResult {
+	public:
+		ReadResult():
+			id(""),
+			length(0),
+			k(0),
+			number_of_kmers_at_threshold(0),
+			number_of_solid_kmers_at_threshold(0),
+			first_solid_kmer_start(0),
+			last_solid_kmer_end(0),
+			mean_base_quality(0.0),
+			number_of_bases_at_q20(0)
+		{}
+
+		ReadResult( ReadResult const& other ):
+			id( other.id ),
+			length( other.length ),
+			k( other.k ),
+			number_of_kmers_at_threshold( other.number_of_kmers_at_threshold ),
+			number_of_solid_kmers_at_threshold( other.number_of_solid_kmers_at_threshold ),
+			first_solid_kmer_start( other.first_solid_kmer_start ),
+			last_solid_kmer_end( other.last_solid_kmer_end ),
+			mean_base_quality( other.mean_base_quality ),
+			number_of_bases_at_q20( other.number_of_bases_at_q20 )
+		{}
+
+		ReadResult& operator=( ReadResult const& other ) {
+			id = other.id ;
+			length = other.length ;
+			k = other.k ;
+			number_of_kmers_at_threshold = other.number_of_kmers_at_threshold ;
+			number_of_solid_kmers_at_threshold = other.number_of_solid_kmers_at_threshold ;
+			first_solid_kmer_start = other.first_solid_kmer_start ;
+			last_solid_kmer_end = other.last_solid_kmer_end ;
+			mean_base_quality = other.mean_base_quality ;
+			number_of_bases_at_q20 = other.number_of_bases_at_q20 ;
+			return *this ;
+		}
+
+	public:
+		std::string id ;
+		uint64_t length ;
+		uint64_t k ;
+		uint64_t number_of_kmers_at_threshold ;
+		uint64_t number_of_solid_kmers_at_threshold ;
+		uint64_t first_solid_kmer_start ;
+		uint64_t last_solid_kmer_end ;
+		double mean_base_quality ;
+		uint64_t number_of_bases_at_q20 ;
+	} ;
+	
+	typedef moodycamel::ConcurrentQueue< Read > ReadQueue ;
+	typedef moodycamel::ConcurrentQueue< ReadResult > ReadResultQueue ;
+	
+	inline int get_quality_from_char( char const c ) {
+		return int(c - 33) ;
+	}
+	
+	void compute_min_quality(
+		genfile::string_utils::slice const& qualities,
+		int& min_quality,
+		std::size_t& min_quality_at
+	) {
+		min_quality = std::numeric_limits< int >::max() ;
+		for( std::size_t i = 0; i < qualities.size(); ++i ) {
+			int quality = get_quality_from_char(qualities[i]) ;
+			if( quality < min_quality ) {
+				min_quality_at = i ;
+				min_quality = quality ;
+			}
+		}
+	}
+	
+	ReadResult analyse_read(
+		Read const& read,
+		HashSet const& kmers,
+		std::size_t k,
+		int const base_quality_threshold
+	) {
+		assert( read.qualities.size() == read.sequence.size() ) ;
+		assert( k <= 31 ) ;
+		typedef genfile::kmer::KmerHashIterator< std::string::const_iterator > KmerIterator ;
+
+		ReadResult result ;
+		result.id = read.id ;
+		result.length = read.sequence.size() ;
+		KmerIterator kmer_iterator( read.sequence.begin(), read.sequence.end(), k ) ;
+
+		int kmer_min_base_quality = 0 ;
+		std::size_t kmer_min_base_quality_at = 0 ;
+		double sum_of_base_qualities = 0.0 ;
+		uint64_t number_of_bases_at_q20 = 0 ;
+		bool have_first = false ;
+		
+		std::size_t i = 0;
+
+		for(
+			;
+			(i+k) < read.sequence.size();
+			++kmer_iterator, ++i
+		) {
+			int base_quality = get_quality_from_char(read.qualities[i]) ;
+			sum_of_base_qualities += double(base_quality) ;
+			number_of_bases_at_q20 += ( base_quality >= 20 ) ? 1 : 0 ;
+
+			if( kmer_min_base_quality_at == 0 ) {
+				compute_min_quality(
+					genfile::string_utils::slice( read.qualities, i, i+k ),
+					kmer_min_base_quality,
+					kmer_min_base_quality_at
+				) ;
+			} else {
+				--kmer_min_base_quality_at ;
+			}
+			if( kmer_min_base_quality >= base_quality_threshold ) {
+				++(result.number_of_kmers_at_threshold) ;
+				uint64_t const hash = kmer_iterator.hash() ;
+				uint64_t const reverse_complement_hash = genfile::kmer::reverse_complement( kmer_iterator.hash(), k ) ;
+				if( kmers.contains( hash ) || kmers.contains( reverse_complement_hash ) ) {
+					if( !have_first ) {
+						result.first_solid_kmer_start = i ;
+						have_first = true ;
+					}
+					++(result.number_of_solid_kmers_at_threshold) ;
+					result.last_solid_kmer_end = i+k ;
+				} else {
+#if DEBUG
+					std::cerr << "!! kmer not in hash:" << kmer_iterator.to_string() << ":\n"
+						<< "    (fwd): " << genfile::kmer::decode_hash( hash, k ) << ": " << hash << "\n"
+						<< "    (rev): " << genfile::kmer::decode_hash( reverse_complement_hash, k ) << ".\n" ;
+#endif
+				}
+			}
+			if( kmer_iterator.finished() ) {
+				break ;
+			}
+		}
+		
+		// capture remaining bases for base quality metric
+		for(
+			;
+			i < read.sequence.size();
+			++i
+		) {
+			int base_quality = get_quality_from_char(read.qualities[i]) ;
+			sum_of_base_qualities += double(base_quality) ;
+			number_of_bases_at_q20 += ( base_quality >= 20 ) ? 1 : 0 ;
+		}
+		
+		result.mean_base_quality = sum_of_base_qualities / result.length ;
+		result.number_of_bases_at_q20 = number_of_bases_at_q20 ;
+		return result ;
+	}
+	
+	void analyse_reads_threaded(
+		ReadQueue* read_queue,
+		ReadResultQueue* result_queue,
+		HashSet const& kmers,
+		std::size_t k,
+		uint64_t base_quality_threshold,
+		std::size_t const thread_index,
+		std::atomic< int >* quit
+	) {
+#if DEBUG
+		std::cerr << "(thread " << thread_index << "): Starting...\n" ;
+#endif	
+		Read read ;
+		while( !(*quit) ) {
+#if DEBUG > 1
+			std::cerr << "!! (" << thread_index << ", " << std::this_thread::get_id() << "): " << queue << ".\n" ;
+#endif
+			bool popped = read_queue->try_dequeue( read ) ;
+			if( popped ) {
+#if DEBUG
+				std::cerr << "++ Analysing read " << read.id << ".\n" ;
+#endif
+				ReadResult const result = analyse_read( read, kmers, k, base_quality_threshold ) ;
+				while( !result_queue->try_enqueue( result )) {
+					std::this_thread::sleep_for( std::chrono::microseconds(10) ) ;
+				}
+			} else {
+				// nothing to pop, sleep to allow queue to fill.
+				std::this_thread::sleep_for( std::chrono::microseconds(10) ) ;
+			}
+		}
+	}
+	
+
+	void write_read_results(
+		ReadResultQueue* result_queue,
+		statfile::BuiltInTypeStatSink* output,
+		std::atomic< int >* quit
+	) {
+		(*output)
+			| "read_id"
+			| "read_length"
+			| "mean_base_quality"
+			| "number_of_bases_at_q20"
+			| "kmer_k"
+			| "number_of_kmers_at_threshold"
+			| "number_of_solid_kmers_at_threshold"
+			| "first_solid_kmer_start"
+			| "last_solid_kmer_end"
+		;
+		
+		ReadResult result ;
+		while( !(*quit) ) {
+			bool popped = result_queue->try_dequeue( result ) ;
+			if( popped ) {
+#if DEBUG
+				std::cerr << "++ Outputting read " << result.id << ".\n" ;
+#endif
+				(*output)
+					<< result.id
+					<< result.length
+					<< result.mean_base_quality
+					<< result.number_of_bases_at_q20
+					<< result.k
+					<< result.number_of_kmers_at_threshold
+					<< result.number_of_solid_kmers_at_threshold
+					<< result.first_solid_kmer_start
+					<< result.last_solid_kmer_end
+					<< statfile::end_row() ;
+			} else {
+				// nothing to pop, sleep to allow queue to fill.
+				std::this_thread::sleep_for( std::chrono::microseconds(10) ) ;
+			}
+		}
+	}
 }
 
 struct AssessPositionOptionProcessor: public appcontext::CmdLineOptionProcessor
@@ -426,53 +677,7 @@ private:
 		ui().logger() << "++ read_into_queue(): Read " << count << " kmers in total.\n" ;
 	}
 	
-	struct ReadResult {
-	public:
-		ReadResult():
-			length(0),
-			k(0),
-			number_of_kmers_at_threshold(0),
-			number_of_solid_kmers_at_threshold(0),
-			first_solid_kmer_start(0),
-			last_solid_kmer_end(0),
-			mean_base_quality(0.0),
-			number_of_bases_at_q20(0)
-		{}
 
-		ReadResult( ReadResult const& other ):
-			length( other.length ),
-			k( other.k ),
-			number_of_kmers_at_threshold( other.number_of_kmers_at_threshold ),
-			number_of_solid_kmers_at_threshold( other.number_of_solid_kmers_at_threshold ),
-			first_solid_kmer_start( other.first_solid_kmer_start ),
-			last_solid_kmer_end( other.last_solid_kmer_end ),
-			mean_base_quality( other.mean_base_quality ),
-			number_of_bases_at_q20( other.number_of_bases_at_q20 )
-		{}
-
-		ReadResult& operator=( ReadResult const& other ) {
-			length = other.length ;
-			k = other.k ;
-			number_of_kmers_at_threshold = other.number_of_kmers_at_threshold ;
-			number_of_solid_kmers_at_threshold = other.number_of_solid_kmers_at_threshold ;
-			first_solid_kmer_start = other.first_solid_kmer_start ;
-			last_solid_kmer_end = other.last_solid_kmer_end ;
-			mean_base_quality = other.mean_base_quality ;
-			number_of_bases_at_q20 = other.number_of_bases_at_q20 ;
-			return *this ;
-		}
-
-	public:
-		uint64_t length ;
-		uint64_t k ;
-		uint64_t number_of_kmers_at_threshold ;
-		uint64_t number_of_solid_kmers_at_threshold ;
-		uint64_t first_solid_kmer_start ;
-		uint64_t last_solid_kmer_end ;
-		double mean_base_quality ;
-		uint64_t number_of_bases_at_q20 ;
-	} ;
-	
 	std::size_t process_reads(
 		std::istream& input,
 		HashSet const& kmers,
@@ -480,163 +685,87 @@ private:
 		uint64_t base_quality_threshold,
 		statfile::BuiltInTypeStatSink& output
 	) {
+		std::size_t const number_of_threads = options().get< std::size_t >( "-threads" ) ;
+		bool const verbose = options().check( "-verbose" ) ;
+
 		auto progress = ui().get_progress_context( "Examining reads" ) ;
 
-		output
-			| "read_id"
-			| "read_length"
-			| "mean_base_quality"
-			| "number_of_bases_at_q20"
-			| "kmer_k"
-			| "number_of_kmers_at_threshold"
-			| "number_of_solid_kmers_at_threshold"
-			| "first_solid_kmer_start"
-			| "last_solid_kmer_end"
-		;
-		std::size_t l = 0 ;
 		std::size_t count = 0 ;
-		std::string line, id, sequence, qualities ;
-		while( std::getline( input, line )) {
-			switch(l) {
-				case 0:
-					id = line.substr(1,line.size() ) ;
-					break ;
-				case 1:
-					sequence = line ;
-					break ;
-				case 2:
-					break ;
-				case 3:
-					qualities = line ;
-					break ;
-			} ;
 
-			if( (++l) == 4 ) {
-				ReadResult const r = process_read(
-					id,
-					sequence,
-					qualities,
-					kmers,
-					k,
-					base_quality_threshold
+		std::vector< std::thread > threads ;
+		{
+			ReadQueue read_queue( 2048 ) ;
+			ReadResultQueue read_result_queue( 32768 ) ;
+			std::atomic< int > quit(0) ;
+
+			for( std::size_t i = 0; i < number_of_threads; ++i ) {
+				threads.push_back(
+					std::thread(
+						analyse_reads_threaded,
+						&read_queue,
+						&read_result_queue,
+						kmers,
+						k,
+						base_quality_threshold,
+						i,
+						&quit
+					)
 				) ;
-
-				output
-					<< id
-					<< r.length
-					<< r.mean_base_quality
-					<< r.number_of_bases_at_q20
-					<< uint64_t(k)
-					<< r.number_of_kmers_at_threshold
-					<< r.number_of_solid_kmers_at_threshold
-					<< r.first_solid_kmer_start
-					<< r.last_solid_kmer_end
-					<< statfile::end_row() ;
-				l = 0 ;
-				++count ;
-				progress( count ) ;
 			}
-		}
-		return count ;
-	}
 
-	ReadResult process_read(
-		std::string const& id,
-		std::string const& sequence,
-		std::string const& qualities,
-		HashSet const& kmers,
-		std::size_t k,
-		int const base_quality_threshold
-	) {
-		assert( qualities.size() == sequence.size() ) ;
-		assert( k <= 31 ) ;
-		ReadResult result ;
-		result.length = sequence.size() ;
-		typedef genfile::kmer::KmerHashIterator< std::string::const_iterator > KmerIterator ;
-		KmerIterator kmer_iterator( sequence.begin(), sequence.end(), k ) ;
-		int kmer_min_base_quality = 0 ;
-		std::size_t kmer_min_base_quality_at = 0 ;
-		double sum_of_base_qualities = 0.0 ;
-		uint64_t number_of_bases_at_q20 = 0 ;
-		bool have_first = false ;
-		
-		std::size_t i = 0;
+			threads.push_back(
+				std::thread(
+					write_read_results,
+					&read_result_queue,
+					&output,
+					&quit
+				)
+			) ;
 
-		for(
-			;
-			(i+k) < sequence.size();
-			++kmer_iterator, ++i
-		) {
-			int base_quality = get_quality_from_char(qualities[i]) ;
-			sum_of_base_qualities += double(base_quality) ;
-			number_of_bases_at_q20 += ( base_quality >= 20 ) ? 1 : 0 ;
+			Read read ;
+			std::string line ;
+			std::size_t l = 0 ;
+			while( std::getline( input, line )) {
+				switch(l) {
+					case 0:
+						read.id = line.substr(1,line.size() ) ;
+						break ;
+					case 1:
+						read.sequence = line ;
+						break ;
+					case 2:
+						break ;
+					case 3:
+						read.qualities = line ;
+						break ;
+				} ;
 
-			if( kmer_min_base_quality_at == 0 ) {
-				compute_min_quality(
-					genfile::string_utils::slice( qualities, i, i+k ),
-					kmer_min_base_quality,
-					kmer_min_base_quality_at
-				) ;
-			} else {
-				--kmer_min_base_quality_at ;
-			}
-			if( kmer_min_base_quality >= base_quality_threshold ) {
-				++(result.number_of_kmers_at_threshold) ;
-				uint64_t const hash = kmer_iterator.hash() ;
-				uint64_t const reverse_complement_hash = genfile::kmer::reverse_complement( kmer_iterator.hash(), k ) ;
-				if( kmers.contains( hash ) || kmers.contains( reverse_complement_hash ) ) {
-					if( !have_first ) {
-						result.first_solid_kmer_start = i ;
-						have_first = true ;
-					}
-					++(result.number_of_solid_kmers_at_threshold) ;
-					result.last_solid_kmer_end = i+k ;
-				} else {
+				if( (++l) == 4 ) {
+					read_queue.enqueue( read ) ;
 #if DEBUG
-					std::cerr << "!! kmer not in hash:" << kmer_iterator.to_string() << ":\n"
-						<< "    (fwd): " << genfile::kmer::decode_hash( hash, k ) << ": " << hash << "\n"
-						<< "    (rev): " << genfile::kmer::decode_hash( reverse_complement_hash, k ) << ".\n" ;
+					std::cerr << "queued: " << read.id << ".\n" ;
 #endif
+					++count ;
+					progress( count ) ;
+					l = 0 ;
 				}
 			}
-			if( kmer_iterator.finished() ) {
-				break ;
+
+			ui().logger() << "++ Done, read " << count << " reads in total.\n" ;
+
+			ui().logger() << "++ Waiting to finish...\n" ;
+			while( (read_queue.size_approx() > 0) || (read_result_queue.size_approx() > 0) ) {
+				std::this_thread::sleep_for( std::chrono::milliseconds(10)) ;
+			}
+			std::this_thread::sleep_for( std::chrono::milliseconds(100)) ;
+			quit = 1 ;
+			std::this_thread::sleep_for( std::chrono::milliseconds(100)) ;
+			for( std::size_t i = 0; i < threads.size(); ++i ) {
+				threads[i].join() ;
 			}
 		}
-		
-		// capture remaining bases for base quality metric
-		for(
-			;
-			i < sequence.size();
-			++i
-		) {
-			int base_quality = get_quality_from_char(qualities[i]) ;
-			sum_of_base_qualities += double(base_quality) ;
-			number_of_bases_at_q20 += ( base_quality >= 20 ) ? 1 : 0 ;
-		}
-		
-		result.mean_base_quality = sum_of_base_qualities / result.length ;
-		result.number_of_bases_at_q20 = number_of_bases_at_q20 ;
-		return result ;
-	}
-	
-	inline int get_quality_from_char( char const c ) const {
-		return int(c - 33) ;
-	}
-	
-	void compute_min_quality(
-		genfile::string_utils::slice const& qualities,
-		int& min_quality,
-		std::size_t& min_quality_at
-	) const {
-		min_quality = std::numeric_limits< int >::max() ;
-		for( std::size_t i = 0; i < qualities.size(); ++i ) {
-			int quality = get_quality_from_char(qualities[i]) ;
-			if( quality < min_quality ) {
-				min_quality_at = i ;
-				min_quality = quality ;
-			}
-		}
+
+		return count ;
 	}
 } ;
 
