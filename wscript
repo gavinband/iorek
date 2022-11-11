@@ -17,11 +17,15 @@ def configure( cfg ):
 		'CFLAGS': cfg.env[ 'CFLAGS' ],
 		'LINKFLAGS': cfg.env[ 'LINKFLAGS' ]
 	}
-	flags['CXXFLAGS'].extend(
-		[ '-std=c++11', '-Wall', '-pedantic', '-Wno-unused-local-typedefs', '-Wno-c++11-long-long', '-Wno-deprecated-declarations', '-Wno-long-long', '-fPIC' ]
+	flags['CXXFLAGS'].extend( [
+		'-std=c++11', '-Wall',
+		'-pedantic',
+		'-Wno-unused-local-typedefs', '-Wno-c++11-long-long', '-Wno-deprecated-declarations', '-Wno-long-long', '-fPIC' ]
 	)
-	flags['CFLAGS'].extend(
-			[ '-Wall', '-pedantic', '-Wno-unused-local-typedefs', '-Wno-c++11-long-long', 'Wno-deprecated-declarations', '-Wno-long-long', '-fPIC' ]
+	flags['CFLAGS'].extend( [
+		'-Wall',
+		'-pedantic',
+		'-Wno-unused-local-typedefs', '-Wno-c++11-long-long', 'Wno-deprecated-declarations', '-Wno-long-long', '-fPIC' ]
 	)
 	mode = 'debug'
 	if mode == 'release':
