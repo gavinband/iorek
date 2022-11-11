@@ -23,7 +23,7 @@ namespace genfile {
 			
 			for( std::size_t i = 0; i < k; ++i ) {
 				uint8_t bits = (hash >> (2*(k-i-1))) & 0x3 ;
-				switch( (hash >> (2*(k-i-1))) & 0x3 ) {
+				switch( bits ) {
 					case 0:
 						result[i] = 'A' ;
 						break ;

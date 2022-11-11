@@ -434,7 +434,9 @@ private:
 			number_of_kmers_at_threshold(0),
 			number_of_solid_kmers_at_threshold(0),
 			first_solid_kmer_start(0),
-			last_solid_kmer_end(0)
+			last_solid_kmer_end(0),
+			mean_base_quality(0.0),
+			number_of_bases_at_q20(0)
 		{}
 
 		ReadResult( ReadResult const& other ):
@@ -443,7 +445,9 @@ private:
 			number_of_kmers_at_threshold( other.number_of_kmers_at_threshold ),
 			number_of_solid_kmers_at_threshold( other.number_of_solid_kmers_at_threshold ),
 			first_solid_kmer_start( other.first_solid_kmer_start ),
-			last_solid_kmer_end( other.last_solid_kmer_end )
+			last_solid_kmer_end( other.last_solid_kmer_end ),
+			mean_base_quality( other.mean_base_quality ),
+			number_of_bases_at_q20( other.number_of_bases_at_q20 )
 		{}
 
 		ReadResult& operator=( ReadResult const& other ) {
@@ -453,6 +457,8 @@ private:
 			number_of_solid_kmers_at_threshold = other.number_of_solid_kmers_at_threshold ;
 			first_solid_kmer_start = other.first_solid_kmer_start ;
 			last_solid_kmer_end = other.last_solid_kmer_end ;
+			mean_base_quality = other.mean_base_quality ;
+			number_of_bases_at_q20 = other.number_of_bases_at_q20 ;
 			return *this ;
 		}
 
@@ -463,6 +469,8 @@ private:
 		uint64_t number_of_solid_kmers_at_threshold ;
 		uint64_t first_solid_kmer_start ;
 		uint64_t last_solid_kmer_end ;
+		double mean_base_quality ;
+		uint64_t number_of_bases_at_q20 ;
 	} ;
 	
 	std::size_t process_reads(
@@ -477,6 +485,8 @@ private:
 		output
 			| "read_id"
 			| "read_length"
+			| "mean_base_quality"
+			| "number_of_bases_at_q20"
 			| "kmer_k"
 			| "number_of_kmers_at_threshold"
 			| "number_of_solid_kmers_at_threshold"
@@ -514,6 +524,8 @@ private:
 				output
 					<< id
 					<< r.length
+					<< r.mean_base_quality
+					<< r.number_of_bases_at_q20
 					<< uint64_t(k)
 					<< r.number_of_kmers_at_threshold
 					<< r.number_of_solid_kmers_at_threshold
@@ -542,25 +554,33 @@ private:
 		result.length = sequence.size() ;
 		typedef genfile::kmer::KmerHashIterator< std::string::const_iterator > KmerIterator ;
 		KmerIterator kmer_iterator( sequence.begin(), sequence.end(), k ) ;
-		int min_quality = 0 ;
-		std::size_t min_quality_at = 0 ;
+		int kmer_min_base_quality = 0 ;
+		std::size_t kmer_min_base_quality_at = 0 ;
+		double sum_of_base_qualities = 0.0 ;
+		uint64_t number_of_bases_at_q20 = 0 ;
 		bool have_first = false ;
 		
+		std::size_t i = 0;
+
 		for(
-			std::size_t i = 0;
+			;
 			(i+k) < sequence.size();
 			++kmer_iterator, ++i
 		) {
-			if( min_quality_at == 0 ) {
+			int base_quality = get_quality_from_char(qualities[i]) ;
+			sum_of_base_qualities += double(base_quality) ;
+			number_of_bases_at_q20 += ( base_quality >= 20 ) ? 1 : 0 ;
+
+			if( kmer_min_base_quality_at == 0 ) {
 				compute_min_quality(
 					genfile::string_utils::slice( qualities, i, i+k ),
-					min_quality,
-					min_quality_at
+					kmer_min_base_quality,
+					kmer_min_base_quality_at
 				) ;
 			} else {
-				--min_quality_at ;
+				--kmer_min_base_quality_at ;
 			}
-			if( min_quality >= base_quality_threshold ) {
+			if( kmer_min_base_quality >= base_quality_threshold ) {
 				++(result.number_of_kmers_at_threshold) ;
 				uint64_t const hash = kmer_iterator.hash() ;
 				uint64_t const reverse_complement_hash = genfile::kmer::reverse_complement( kmer_iterator.hash(), k ) ;
@@ -583,17 +603,35 @@ private:
 				break ;
 			}
 		}
+		
+		// capture remaining bases for base quality metric
+		for(
+			;
+			i < sequence.size();
+			++i
+		) {
+			int base_quality = get_quality_from_char(qualities[i]) ;
+			sum_of_base_qualities += double(base_quality) ;
+			number_of_bases_at_q20 += ( base_quality >= 20 ) ? 1 : 0 ;
+		}
+		
+		result.mean_base_quality = sum_of_base_qualities / result.length ;
+		result.number_of_bases_at_q20 = number_of_bases_at_q20 ;
 		return result ;
+	}
+	
+	inline int get_quality_from_char( char const c ) const {
+		return int(c - 33) ;
 	}
 	
 	void compute_min_quality(
 		genfile::string_utils::slice const& qualities,
 		int& min_quality,
 		std::size_t& min_quality_at
-	) {
+	) const {
 		min_quality = std::numeric_limits< int >::max() ;
 		for( std::size_t i = 0; i < qualities.size(); ++i ) {
-			int quality = (qualities[i] - 33) ;
+			int quality = get_quality_from_char(qualities[i]) ;
 			if( quality < min_quality ) {
 				min_quality_at = i ;
 				min_quality = quality ;
