@@ -741,7 +741,7 @@ private:
 				} ;
 
 				if( (++l) == 4 ) {
-					while( !read_queue->try_enqueue( read )) {
+					while( !read_queue.try_enqueue( read )) {
 						std::this_thread::sleep_for( std::chrono::microseconds(10) ) ;
 					}
 #if DEBUG
