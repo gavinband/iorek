@@ -226,6 +226,9 @@ namespace {
 		std::size_t k,
 		int const base_quality_threshold
 	) {
+#if DEBUG
+		std::cerr << "analyse_read(): " << read.id << ".\n" ;
+#endif
 		assert( read.qualities.size() == read.sequence.size() ) ;
 		assert( k <= 31 ) ;
 		typedef genfile::kmer::KmerHashIterator< std::string::const_iterator > KmerIterator ;
@@ -233,6 +236,7 @@ namespace {
 		ReadResult result ;
 		result.id = read.id ;
 		result.length = read.sequence.size() ;
+		result.k = k ;
 		KmerIterator kmer_iterator( read.sequence.begin(), read.sequence.end(), k ) ;
 
 		int kmer_min_base_quality = 0 ;
@@ -284,7 +288,10 @@ namespace {
 				break ;
 			}
 		}
-		
+
+#if DEBUF	
+		std::cerr << "analyse_read(): " << read.id << ": capturing quality metrics...\n" ;
+#endif
 		// capture remaining bases for base quality metric
 		for(
 			;
@@ -298,13 +305,16 @@ namespace {
 		
 		result.mean_base_quality = sum_of_base_qualities / result.length ;
 		result.number_of_bases_at_q20 = number_of_bases_at_q20 ;
+#if DEBUG
+		std::cerr << "analyse_read(): " << read.id << ": finished.\n" ;
+#endif
 		return result ;
 	}
 	
 	void analyse_reads_threaded(
 		ReadQueue* read_queue,
 		ReadResultQueue* result_queue,
-		HashSet const& kmers,
+		HashSet const* kmers,
 		std::size_t k,
 		uint64_t base_quality_threshold,
 		std::size_t const thread_index,
@@ -323,10 +333,13 @@ namespace {
 #if DEBUG
 				std::cerr << "++ Analysing read " << read.id << ".\n" ;
 #endif
-				ReadResult const result = analyse_read( read, kmers, k, base_quality_threshold ) ;
+				ReadResult const result = analyse_read( read, *kmers, k, base_quality_threshold ) ;
 				while( !result_queue->try_enqueue( result )) {
 					std::this_thread::sleep_for( std::chrono::microseconds(10) ) ;
 				}
+#if DEBUG
+				std::cerr << "++ Analysed read " << read.id << ".\n" ;
+#endif
 			} else {
 				// nothing to pop, sleep to allow queue to fill.
 				std::this_thread::sleep_for( std::chrono::microseconds(10) ) ;
@@ -692,6 +705,7 @@ private:
 
 		std::size_t count = 0 ;
 
+		std::cerr << "process_read(): constructing " << number_of_threads << " worker threads...\n" ;
 		std::vector< std::thread > threads ;
 		{
 			ReadQueue read_queue( 2048 ) ;
@@ -704,7 +718,7 @@ private:
 						analyse_reads_threaded,
 						&read_queue,
 						&read_result_queue,
-						kmers,
+						&kmers,
 						k,
 						base_quality_threshold,
 						i,
@@ -712,6 +726,7 @@ private:
 					)
 				) ;
 			}
+			std::cerr << "process_read(): constructing output thread...\n" ;
 
 			threads.push_back(
 				std::thread(
@@ -722,6 +737,7 @@ private:
 				)
 			) ;
 
+			std::cerr << "process_read(): processing reads...\n" ;
 			Read read ;
 			std::string line ;
 			std::size_t l = 0 ;
