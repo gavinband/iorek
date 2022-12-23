@@ -158,7 +158,8 @@ namespace {
 			first_solid_kmer_start(0),
 			last_solid_kmer_end(0),
 			mean_base_quality(0.0),
-			number_of_bases_at_q20(0)
+			number_of_bases_at_q20(0),
+			error_positions()
 		{}
 
 		ReadResult( ReadResult const& other ):
@@ -170,7 +171,8 @@ namespace {
 			first_solid_kmer_start( other.first_solid_kmer_start ),
 			last_solid_kmer_end( other.last_solid_kmer_end ),
 			mean_base_quality( other.mean_base_quality ),
-			number_of_bases_at_q20( other.number_of_bases_at_q20 )
+			number_of_bases_at_q20( other.number_of_bases_at_q20 ),
+			error_positions( other.error_positions )
 		{}
 
 		ReadResult& operator=( ReadResult const& other ) {
@@ -183,6 +185,7 @@ namespace {
 			last_solid_kmer_end = other.last_solid_kmer_end ;
 			mean_base_quality = other.mean_base_quality ;
 			number_of_bases_at_q20 = other.number_of_bases_at_q20 ;
+			error_positions = other.error_positions ;
 			return *this ;
 		}
 
@@ -196,6 +199,7 @@ namespace {
 		uint64_t last_solid_kmer_end ;
 		double mean_base_quality ;
 		uint64_t number_of_bases_at_q20 ;
+		std::vector< std::size_t > error_positions ;
 	} ;
 	
 	typedef moodycamel::ConcurrentQueue< Read > ReadQueue ;
@@ -277,6 +281,7 @@ namespace {
 					++(result.number_of_solid_kmers_at_threshold) ;
 					result.last_solid_kmer_end = i+k ;
 				} else {
+					result.error_positions.push_back(i) ;
 #if DEBUG
 					std::cerr << "!! kmer not in hash:" << kmer_iterator.to_string() << ":\n"
 						<< "    (fwd): " << genfile::kmer::decode_hash( hash, k ) << ": " << hash << "\n"
@@ -351,6 +356,7 @@ namespace {
 	void write_read_results(
 		ReadResultQueue* result_queue,
 		statfile::BuiltInTypeStatSink* output,
+		statfile::BuiltInTypeStatSink* read_position_results,
 		std::atomic< int >* quit
 	) {
 		(*output)
@@ -365,6 +371,12 @@ namespace {
 			| "last_solid_kmer_end"
 		;
 		
+		std::size_t const pos_N = 1000 ;
+		std::vector< uint64_t > start_of_read_errors( pos_N, 0 ) ;
+		std::vector< uint64_t > end_of_read_errors( pos_N, 0 ) ;
+		std::vector< uint64_t > start_of_read_count( pos_N, 0 ) ;
+		std::vector< uint64_t > end_of_read_count( pos_N, 0 ) ;
+		std::size_t count = 0 ;
 		ReadResult result ;
 		while( !(*quit) ) {
 			bool popped = result_queue->try_dequeue( result ) ;
@@ -383,10 +395,65 @@ namespace {
 					<< result.first_solid_kmer_start
 					<< result.last_solid_kmer_end
 					<< statfile::end_row() ;
+				
+				++count ;
+
+				// Account for where the errors lie in the read
+				if( result.length >= pos_N ) {
+					for( std::size_t i = 0; i < pos_N; ++i ) {
+						++start_of_read_count[i] ;
+						++end_of_read_count[i] ;
+					}
+					for( std::size_t i = 0; i < result.error_positions.size(); ++i ) {
+						std::size_t const pos = result.error_positions[i] ;
+						// Example:
+						//   = =               kmer pos = 1
+						// - - - - - - - - - - sequence length = 10
+						// 0 1 2 3 4 5 6 7 8 9  
+						//[         ]  pos_N = 4 capturing 4+k-1 bases
+						if( pos < pos_N ) {
+							++start_of_read_errors[pos] ;
+						}
+						// Example:
+						//                 = = kmer pos = 8
+						// - - - - - - - - - - sequence length = 10
+						// 0 1 2 3 4 5 6 7 8 9  
+						//          [         ]  pos_N = 4 capturing 4+k-1 bases
+						// we need kmers with pos + pos_N + k > sequence length
+						// and pos maps to pos + (pos_N + k - 1) - sequence length
+						// e.g. in this case 8+4+2-1-10 = 3.
+						if( (pos + pos_N + result.k ) > result.length ) {
+							++end_of_read_errors[pos + (pos_N + result.k - 1) - result.length] ;
+						}
+					}
+				}
 			} else {
 				// nothing to pop, sleep to allow queue to fill.
 				std::this_thread::sleep_for( std::chrono::microseconds(10) ) ;
 			}
+		}
+		
+		(*read_position_results)
+			| "start_or_end"
+			| "position"
+			| "number_of_errors"
+			| "number_of_reads"
+		;
+		for( std::size_t i = 0; i < start_of_read_errors.size(); ++i ) {
+			(*read_position_results)
+				<< "start"
+				<< uint64_t(i+1)
+				<< start_of_read_errors[i]
+				<< start_of_read_count[i]
+				<< statfile::end_row() ;
+		}
+		for( std::size_t i = 0; i < end_of_read_errors.size(); ++i ) {
+			(*read_position_results)
+				<< "end"
+				<< uint64_t(i)
+				<< end_of_read_errors[i]
+				<< end_of_read_count[i]
+				<< statfile::end_row() ;
 		}
 	}
 }
@@ -427,6 +494,11 @@ public:
 
 		options[ "-o" ]
 			.set_description( "Path of output file." )
+			.set_takes_single_value()
+			.set_default_value( "-" ) ;
+
+		options[ "-op" ]
+			.set_description( "Path of position-in-read output file." )
 			.set_takes_single_value()
 			.set_default_value( "-" ) ;
 		
@@ -515,6 +587,9 @@ private:
 			statfile::BuiltInTypeStatSink::UniquePtr
 				sink = statfile::BuiltInTypeStatSink::open( options().get< std::string >( "-o" ) ) ;
 
+			statfile::BuiltInTypeStatSink::UniquePtr
+				position_sink = statfile::BuiltInTypeStatSink::open( options().get< std::string >( "-op" ) ) ;
+
 			std::auto_ptr< std::istream >
 				fastq = genfile::open_text_file_for_input( options().get< std::string >( "-reads" ) ) ;
 		
@@ -523,7 +598,8 @@ private:
 				kmers,
 				k,
 				base_quality_threshold,
-				*sink
+				*sink,
+				*position_sink
 			) ;
 			double end_time = timer.elapsed() ;
 			ui().logger() << "++ Ok, processed " << number_of_reads << " reads in " << (end_time - start_time) << " seconds.\n" ;
@@ -696,7 +772,8 @@ private:
 		HashSet const& kmers,
 		std::size_t k,
 		uint64_t base_quality_threshold,
-		statfile::BuiltInTypeStatSink& output
+		statfile::BuiltInTypeStatSink& output,
+		statfile::BuiltInTypeStatSink& position_output
 	) {
 		std::size_t const number_of_threads = options().get< std::size_t >( "-threads" ) ;
 		bool const verbose = options().check( "-verbose" ) ;
@@ -733,6 +810,7 @@ private:
 					write_read_results,
 					&read_result_queue,
 					&output,
+					&position_output,
 					&quit
 				)
 			) ;
@@ -758,8 +836,12 @@ private:
 
 				if( (++l) == 4 ) {
 					while( !read_queue.try_enqueue( read )) {
+#if DEBUG > 1
+						std::cerr << "-- queue full after " << count << " reads, sleeping...\n" ;
+#endif
 						std::this_thread::sleep_for( std::chrono::microseconds(10) ) ;
 					}
+					
 #if DEBUG
 					std::cerr << "queued: " << read.id << ".\n" ;
 #endif
