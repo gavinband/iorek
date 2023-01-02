@@ -253,7 +253,7 @@ namespace {
 
 		for(
 			;
-			(i+k) < read.sequence.size();
+			(i+k) <= read.sequence.size();
 			++kmer_iterator, ++i
 		) {
 			int base_quality = get_quality_from_char(read.qualities[i]) ;
@@ -275,11 +275,11 @@ namespace {
 				uint64_t const reverse_complement_hash = genfile::kmer::reverse_complement( kmer_iterator.hash(), k ) ;
 				if( kmers.contains( hash ) || kmers.contains( reverse_complement_hash ) ) {
 					if( !have_first ) {
-						result.first_solid_kmer_start = i ;
+						result.first_solid_kmer_start = i ;  // 0-based, half-closed
 						have_first = true ;
 					}
 					++(result.number_of_solid_kmers_at_threshold) ;
-					result.last_solid_kmer_end = i+k ;
+					result.last_solid_kmer_end = i+k ; // 0-based, half-closed
 				} else {
 					result.error_positions.push_back(i) ;
 #if DEBUG
@@ -357,6 +357,7 @@ namespace {
 		ReadResultQueue* result_queue,
 		statfile::BuiltInTypeStatSink* output,
 		statfile::BuiltInTypeStatSink* read_position_results,
+		std::size_t const length_to_track_at_read_ends,
 		std::atomic< int >* quit
 	) {
 		(*output)
@@ -371,7 +372,7 @@ namespace {
 			| "last_solid_kmer_end"
 		;
 		
-		std::size_t const pos_N = 1000 ;
+		std::size_t const pos_N = length_to_track_at_read_ends ;
 		std::vector< uint64_t > start_of_read_errors( pos_N, 0 ) ;
 		std::vector< uint64_t > end_of_read_errors( pos_N, 0 ) ;
 		std::vector< uint64_t > start_of_read_count( pos_N, 0 ) ;
@@ -392,8 +393,8 @@ namespace {
 					<< result.k
 					<< result.number_of_kmers_at_threshold
 					<< result.number_of_solid_kmers_at_threshold
-					<< result.first_solid_kmer_start
-					<< result.last_solid_kmer_end
+					<< (result.first_solid_kmer_start+1) 			// convert to 1-based, closed
+					<< (result.last_solid_kmer_end) 				// 1-based, closed.
 					<< statfile::end_row() ;
 				
 				++count ;
@@ -409,8 +410,8 @@ namespace {
 						// Example:
 						//   = =               kmer pos = 1
 						// - - - - - - - - - - sequence length = 10
-						// 0 1 2 3 4 5 6 7 8 9  
-						//[         ]  pos_N = 4 capturing 4+k-1 bases
+						//  0 1 2 3 4 5 6 7 8 9  
+						// [         ]  pos_N = 4 capturing 4+k-1 bases
 						if( pos < pos_N ) {
 							++start_of_read_errors[pos] ;
 						}
@@ -423,7 +424,17 @@ namespace {
 						// and pos maps to pos + (pos_N + k - 1) - sequence length
 						// e.g. in this case 8+4+2-1-10 = 3.
 						if( (pos + pos_N + result.k ) > result.length ) {
-							++end_of_read_errors[pos + (pos_N + result.k - 1) - result.length] ;
+							std::size_t const idx = (pos + pos_N + result.k) - 1 - result.length ;
+#if DEBUG > 1
+							std::cerr
+								<<   "    pos: " << pos
+								<< "\n  pos_N: " << pos_N 
+								<< "\n      k: " << result.k
+								<< "\n length: " << result.length
+								<< "\n  index: " << idx
+								<< "\n" ;
+#endif
+							++end_of_read_errors[idx] ;
 						}
 					}
 				}
@@ -450,7 +461,8 @@ namespace {
 		for( std::size_t i = 0; i < end_of_read_errors.size(); ++i ) {
 			(*read_position_results)
 				<< "end"
-				<< uint64_t(i)
+				// 0 maps to -end_of_read_errors.size()
+				<< (-int64_t(end_of_read_errors.size()) + int64_t(i) )
 				<< end_of_read_errors[i]
 				<< end_of_read_count[i]
 				<< statfile::end_row() ;
@@ -508,15 +520,20 @@ public:
 			.set_takes_single_value()
 			.set_default_value( std::numeric_limits< uint32_t >::max() )
 		;
-		options[ "-threads" ]
-			.set_description( "Number of threads to use to load kmers with. " )
+		options[ "-read-end-length" ]
+			.set_description( "Length at end of each read to track errors in" )
 			.set_takes_single_value()
-			.set_default_value( 1 )
+			.set_default_value( 1000 )
 		;
 
 		options.declare_group( "Other options" ) ;
 		options[ "-verbose" ]
 			.set_description( "Print out details of what is being done." ) ;
+		options[ "-threads" ]
+			.set_description( "Number of threads to use to load kmers with. " )
+			.set_takes_single_value()
+			.set_default_value( 1 )
+		;
 	}
 } ;
  
@@ -585,10 +602,10 @@ private:
 			boost::timer timer ;
 			double start_time = timer.elapsed() ;
 			statfile::BuiltInTypeStatSink::UniquePtr
-				sink = statfile::BuiltInTypeStatSink::open( options().get< std::string >( "-o" ) ) ;
+				position_sink = statfile::BuiltInTypeStatSink::open( options().get< std::string >( "-op" ) ) ;
 
 			statfile::BuiltInTypeStatSink::UniquePtr
-				position_sink = statfile::BuiltInTypeStatSink::open( options().get< std::string >( "-op" ) ) ;
+				sink = statfile::BuiltInTypeStatSink::open( options().get< std::string >( "-o" ) ) ;
 
 			std::auto_ptr< std::istream >
 				fastq = genfile::open_text_file_for_input( options().get< std::string >( "-reads" ) ) ;
@@ -805,12 +822,14 @@ private:
 			}
 			std::cerr << "process_read(): constructing output thread...\n" ;
 
+			std::size_t const length_to_track_at_read_ends = options().get< std::size_t >( "-read-end-length" ) ;
 			threads.push_back(
 				std::thread(
 					write_read_results,
 					&read_result_queue,
 					&output,
 					&position_output,
+					length_to_track_at_read_ends,
 					&quit
 				)
 			) ;
