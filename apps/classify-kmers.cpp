@@ -372,11 +372,11 @@ namespace {
 			| "last_solid_kmer_end"
 		;
 		
-		std::size_t const pos_N = length_to_track_at_read_ends ;
-		std::vector< uint64_t > start_of_read_errors( pos_N, 0 ) ;
-		std::vector< uint64_t > end_of_read_errors( pos_N, 0 ) ;
-		std::vector< uint64_t > start_of_read_count( pos_N, 0 ) ;
-		std::vector< uint64_t > end_of_read_count( pos_N, 0 ) ;
+		std::size_t const ends_length = length_to_track_at_read_ends ;
+		std::vector< uint64_t > start_of_read_errors( ends_length, 0 ) ;
+		std::vector< uint64_t > end_of_read_errors( ends_length, 0 ) ;
+		std::vector< uint64_t > start_of_read_count( ends_length, 0 ) ;
+		std::vector< uint64_t > end_of_read_count( ends_length, 0 ) ;
 		std::size_t count = 0 ;
 		ReadResult result ;
 		while( !(*quit) ) {
@@ -400,8 +400,8 @@ namespace {
 				++count ;
 
 				// Account for where the errors lie in the read
-				if( result.length >= pos_N ) {
-					for( std::size_t i = 0; i < pos_N; ++i ) {
+				if( result.length >= ends_length ) {
+					for( std::size_t i = 0; i < ends_length; ++i ) {
 						++start_of_read_count[i] ;
 						++end_of_read_count[i] ;
 					}
@@ -411,27 +411,27 @@ namespace {
 						//   = =               kmer pos = 1
 						// - - - - - - - - - - sequence length = 10
 						//  0 1 2 3 4 5 6 7 8 9  
-						// [         ]  pos_N = 4 capturing 4+k-1 bases
-						if( pos < pos_N ) {
+						// [         ]  ends_length = 4 capturing 4+k-1 bases
+						if( pos < ends_length ) {
 							++start_of_read_errors[pos] ;
 						}
 						// Example:
 						//                 = = kmer pos = 8
 						// - - - - - - - - - - sequence length = 10
 						// 0 1 2 3 4 5 6 7 8 9  
-						//          [         ]  pos_N = 4 capturing 4+k-1 bases
-						// we need kmers with pos + pos_N + k > sequence length
-						// and pos maps to pos + (pos_N + k - 1) - sequence length
+						//          [         ]  ends_length = 4 capturing 4+k-1 bases in total
+						// we need kmers with pos + ends_length + k > sequence length
+						// and pos maps to pos + (ends_length + k - 1) - sequence length
 						// e.g. in this case 8+4+2-1-10 = 3.
-						if( (pos + pos_N + result.k ) > result.length ) {
-							std::size_t const idx = (pos + pos_N + result.k) - 1 - result.length ;
+						if( (pos + ends_length + result.k ) > result.length ) {
+							std::size_t const idx = (pos + ends_length + result.k) - 1 - result.length ;
 #if DEBUG > 1
 							std::cerr
-								<<   "    pos: " << pos
-								<< "\n  pos_N: " << pos_N 
-								<< "\n      k: " << result.k
-								<< "\n length: " << result.length
-								<< "\n  index: " << idx
+								<<   "         pos: " << pos
+								<< "\n ends_length: " << ends_length 
+								<< "\n           k: " << result.k
+								<< "\n      length: " << result.length
+								<< "\n       index: " << idx
 								<< "\n" ;
 #endif
 							++end_of_read_errors[idx] ;
