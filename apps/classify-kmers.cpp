@@ -129,6 +129,20 @@ namespace {
 	struct Read {
 		Read() {}
 
+		/*
+		Read( Read&& other ) {
+			*this = std::move( other ) ;
+		}
+
+		Read& operator=( Read&& other ) {
+			if( this != &other ) {
+				id = std::move( other.id ) ;
+				sequence = std::move( other.sequence ) ;
+				qualities = std::move( other.qualities ) ;
+			}
+		}
+		*/
+		
 		Read( Read const& other ):
 			id( other.id ),
 			sequence( other.sequence ),
@@ -142,6 +156,8 @@ namespace {
 			return *this ;
 		}
 
+		std::size_t length() const { return sequence.size() ; }
+
 		std::string id ;
 		std::string sequence ;
 		std::string qualities ;
@@ -150,8 +166,7 @@ namespace {
 	struct ReadResult {
 	public:
 		ReadResult():
-			id(""),
-			length(0),
+			read(),
 			k(0),
 			number_of_kmers_at_threshold(0),
 			number_of_solid_kmers_at_threshold(0),
@@ -163,8 +178,7 @@ namespace {
 		{}
 
 		ReadResult( ReadResult const& other ):
-			id( other.id ),
-			length( other.length ),
+			read( other.read ),
 			k( other.k ),
 			number_of_kmers_at_threshold( other.number_of_kmers_at_threshold ),
 			number_of_solid_kmers_at_threshold( other.number_of_solid_kmers_at_threshold ),
@@ -176,8 +190,7 @@ namespace {
 		{}
 
 		ReadResult& operator=( ReadResult const& other ) {
-			id = other.id ;
-			length = other.length ;
+			read = other.read ;
 			k = other.k ;
 			number_of_kmers_at_threshold = other.number_of_kmers_at_threshold ;
 			number_of_solid_kmers_at_threshold = other.number_of_solid_kmers_at_threshold ;
@@ -188,10 +201,11 @@ namespace {
 			error_positions = other.error_positions ;
 			return *this ;
 		}
-
+	
+		std::string const& id() const { return read.id ; }
+		std::size_t length() const { return read.sequence.size() ; }
 	public:
-		std::string id ;
-		uint64_t length ;
+		Read read ;
 		uint64_t k ;
 		uint64_t number_of_kmers_at_threshold ;
 		uint64_t number_of_solid_kmers_at_threshold ;
@@ -238,8 +252,7 @@ namespace {
 		typedef genfile::kmer::KmerHashIterator< std::string::const_iterator > KmerIterator ;
 
 		ReadResult result ;
-		result.id = read.id ;
-		result.length = read.sequence.size() ;
+		result.read = read ;
 		result.k = k ;
 		KmerIterator kmer_iterator( read.sequence.begin(), read.sequence.end(), k ) ;
 
@@ -253,11 +266,19 @@ namespace {
 
 		for(
 			;
-			(i+k) <= read.sequence.size();
+			(i+k) <= read.length();
 			++kmer_iterator, ++i
 		) {
 			int base_quality = get_quality_from_char(read.qualities[i]) ;
 			sum_of_base_qualities += double(base_quality) ;
+#if DEBUG > 2
+			std::cerr
+				<< "!! "
+				<< read.id << ": " << i << " bq = "
+				<< base_quality << ", " << base_quality_threshold
+				<< "; k = " << k 
+				<< "... adding\n" ;
+#endif
 			number_of_bases_at_q20 += ( base_quality >= 20 ) ? 1 : 0 ;
 
 			if( kmer_min_base_quality_at == 0 ) {
@@ -289,9 +310,12 @@ namespace {
 #endif
 				}
 			}
+			/*
 			if( kmer_iterator.finished() ) {
+				++i ;
 				break ;
 			}
+			*/
 		}
 
 #if DEBUF	
@@ -300,15 +324,18 @@ namespace {
 		// capture remaining bases for base quality metric
 		for(
 			;
-			i < read.sequence.size();
+			i < read.length();
 			++i
 		) {
 			int base_quality = get_quality_from_char(read.qualities[i]) ;
+#if DEBUG > 2
+			std::cerr << "!!! " << read.id << ": " << i << " bq = " << base_quality << "... adding\n" ;
+#endif
 			sum_of_base_qualities += double(base_quality) ;
 			number_of_bases_at_q20 += ( base_quality >= 20 ) ? 1 : 0 ;
 		}
 		
-		result.mean_base_quality = sum_of_base_qualities / result.length ;
+		result.mean_base_quality = sum_of_base_qualities / result.read.length() ;
 		result.number_of_bases_at_q20 = number_of_bases_at_q20 ;
 #if DEBUG
 		std::cerr << "analyse_read(): " << read.id << ": finished.\n" ;
@@ -372,11 +399,11 @@ namespace {
 			| "last_solid_kmer_end"
 		;
 		
-		std::size_t const ends_length = length_to_track_at_read_ends ;
-		std::vector< uint64_t > start_of_read_errors( ends_length, 0 ) ;
-		std::vector< uint64_t > end_of_read_errors( ends_length, 0 ) ;
-		std::vector< uint64_t > start_of_read_count( ends_length, 0 ) ;
-		std::vector< uint64_t > end_of_read_count( ends_length, 0 ) ;
+		std::size_t const end_length = length_to_track_at_read_ends ;
+		std::vector< uint64_t > start_of_read_errors( end_length, 0 ) ;
+		std::vector< uint64_t > end_of_read_errors( end_length, 0 ) ;
+		std::vector< uint64_t > start_of_read_count( end_length, 0 ) ;
+		std::vector< uint64_t > end_of_read_count( end_length, 0 ) ;
 		std::size_t count = 0 ;
 		ReadResult result ;
 		while( !(*quit) ) {
@@ -386,8 +413,8 @@ namespace {
 				std::cerr << "++ Outputting read " << result.id << ".\n" ;
 #endif
 				(*output)
-					<< result.id
-					<< result.length
+					<< result.read.id
+					<< uint64_t(result.read.length())
 					<< result.mean_base_quality
 					<< result.number_of_bases_at_q20
 					<< result.k
@@ -400,8 +427,8 @@ namespace {
 				++count ;
 
 				// Account for where the errors lie in the read
-				if( result.length >= ends_length ) {
-					for( std::size_t i = 0; i < ends_length; ++i ) {
+				if( result.read.length() >= end_length ) {
+					for( std::size_t i = 0; i < end_length; ++i ) {
 						++start_of_read_count[i] ;
 						++end_of_read_count[i] ;
 					}
@@ -411,27 +438,27 @@ namespace {
 						//   = =               kmer pos = 1
 						// - - - - - - - - - - sequence length = 10
 						//  0 1 2 3 4 5 6 7 8 9  
-						// [         ]  ends_length = 4 capturing 4+k-1 bases
-						if( pos < ends_length ) {
+						// [         ]  end_length = 4 capturing 4+k-1 bases
+						if( pos < end_length ) {
 							++start_of_read_errors[pos] ;
 						}
 						// Example:
 						//                 = = kmer pos = 8
 						// - - - - - - - - - - sequence length = 10
 						// 0 1 2 3 4 5 6 7 8 9  
-						//          [         ]  ends_length = 4 capturing 4+k-1 bases in total
-						// we need kmers with pos + ends_length + k > sequence length
-						// and pos maps to pos + (ends_length + k - 1) - sequence length
+						//          [         ]  end_length = 4 capturing 4+k-1 bases
+						// we need kmers with pos + end_length + k > sequence length
+						// and pos maps to pos + (end_length + k - 1) - sequence length
 						// e.g. in this case 8+4+2-1-10 = 3.
-						if( (pos + ends_length + result.k ) > result.length ) {
-							std::size_t const idx = (pos + ends_length + result.k) - 1 - result.length ;
+						if( (pos + end_length + result.k ) > result.read.length() ) {
+							std::size_t const idx = (pos + end_length + result.k) - 1 - result.read.length() ;
 #if DEBUG > 1
 							std::cerr
-								<<   "         pos: " << pos
-								<< "\n ends_length: " << ends_length 
-								<< "\n           k: " << result.k
-								<< "\n      length: " << result.length
-								<< "\n       index: " << idx
+								<<   "        pos: " << pos
+								<< "\n end_length: " << end_length 
+								<< "\n          k: " << result.k
+								<< "\n     length: " << result.read.length()
+								<< "\n      index: " << idx
 								<< "\n" ;
 #endif
 							++end_of_read_errors[idx] ;
