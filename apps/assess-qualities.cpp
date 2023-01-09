@@ -29,9 +29,6 @@ namespace seqlib = SeqLib;
 #include "genfile/string_utils/slice.hpp"
 #include "genfile/Error.hpp"
 #include "genfile/Fasta.hpp"
-#include "genfile/find_homopolymers_and_short_repeats.hpp"
-#include "genfile/repeats/repeat_tracts.hpp"
-#include "genfile/repeats/HomopolymerTractWalker.hpp"
 #include "statfile/BuiltInTypeStatSink.hpp"
 
 // #define DEBUG 1
@@ -98,144 +95,6 @@ namespace {
 		eDeletion = 'D',
 		eInsertion = 'I'
 	} ;
-
-	void analyse_alignment_base_qualities(
-		seqlib::BamRecord const& alignment,
-		seqlib::BamHeader const& header,
-		genfile::Fasta const& fasta,
-		// This is a 'callback' function to be called
-		// on every match or mismatch
-		std::function<
-			void(
-				MismatchType const& type,
-				int base_quality
-			)
-		> callback
-	) {
-		// Note: this function classifies read-reference mismatches by parsing the
-		// CIGAR string and comparing to the reference bases.
-		
-		// The CIGAR string alone does not contain enough information to reconstruct
-		// the mismatching bases.	Thus it is necessary to inspect the reference
-		// sequence at the same time.
-	
-		// Although CIGAR supports 'X' (mismatch) and '=' (identical match), many
-		// aligners (such as bwa or minimap2) just output 'M' for mismatches by
-		// default.	(Minimap2 does outputs X/= when given the -eqx flag; pbmm2 also
-		// seems to do this by default.)
-
-		// Aligners may also output additional information complementing the CIGAR
-		// string in the 'MD' tag, and minimap2 can also output a CS tag containing
-		// full information about the mismatches.	Use of these would avoid need to
-		// parse the reference sequence, but they're not found in every BAM file.
-	
-		// On balance it therefore seems simplest to work with the CIGAR string and
-		// the reference, and to treat 'M', 'X', and '=' as
-		// synonymous - which is what we do here.
-		
-		seqlib::Cigar const& cigar = alignment.GetCigar() ;
-
-		std::string const& read_sequence = alignment.Sequence() ;
-		std::string const contig_id = header.IDtoName( alignment.ChrID() ) ;
-		genfile::Fasta::PositionedSequenceRange const contig = fasta.get_sequence( contig_id ) ;
-
-		std::string const& base_qualities = alignment.Qualities() ;  // ASCII-encoded base qualities
-
-		// sanity check
-		assert( read_sequence.size() == base_qualities.size() ) ;
-
-		//bool const count_matches = options().check( "-count-matches" ) ;
-		uint32_t read_position = 0;
-		uint32_t aligned_position = alignment.Position() ; // 0-based
-
-#if DEBUG
-		std::cerr << "\n++ Inspecting read: " << alignment.Qname() << ", CIGAR = \"" << cigar << "\".\n" ;
-#endif
-
-		seqlib::Cigar::const_iterator i = cigar.begin(), end_i = cigar.end() ;
-		for( ; i != end_i; ++i ) {
-			char const type = i->Type() ;
-#if DEBUG
-			std::cerr << "  : read position = " << read_position << "; alignment pos = " << aligned_position << "; cigar elt = \"" << *i << "\".\n" ;
-#endif
-			// The cigar ops are:
-			// M    Alignment match (can be a sequence match or mismatch)
-			// I    Insertion to the reference
-			// D    Deletion from the reference
-			// N    Skipped region from the reference
-			// S    Soft clip on the read (clipped sequence present in <seq>)
-			// H    Hard clip on the read (clipped sequence NOT present in <seq>)
-			// P    Padding (silent deletion from the padded reference sequence)
-			// =    Sequence match
-			// X    Sequence mismatch
-
-			// We treat mismatching aligned bases (M/X/=), deleted bases (D) and
-			// inserted bases (I) as mismatches. Soft-clipped, hard-clipped and
-			// 'skipped regions are handled to keep track of position but do not count
-			// as mismatches.
-
-			// sanity check
-#if DEBUG
-			std::cerr << std::string( 1, type ) << ":" << std::distance( contig.sequence().begin(), walker.position() ) << " - " << aligned_position << ".\n" ;
-#endif
-			switch( type ) {
-				case 'M':
-				case 'X':
-				case '=':
-					// matching or mismatching bases. Iterate bases and test for mismatch.
-					for( int k = 0; k < i->Length(); ++k, ++aligned_position, ++read_position ) {
-						char const reference_base = *(contig.sequence().begin() + aligned_position) ;
-						char const read_base = read_sequence[read_position] ;
-						int const base_quality = (int(base_qualities[read_position]) - 33) ; // convert from ASCII code back to base quality.
-						if( std::toupper( reference_base ) == std::toupper( read_base )) {
-							// reference and read bases matched!
-							// report that now via the callback
-							callback(
-								eMatch, // '='
-								base_quality
-							) ;
-						} else {
-							// reference and read bases matched!
-							// report that now via the callback
-							callback(
-								eMismatch, // 'X'
-								base_quality
-							) ;
-						}
-					}
-					break ;
-				case 'D':
-					// TODO - need something to report about deletions.
-					aligned_position += i->Length() ;
-					// purely deleted bases so no change to read position
-					break ;
-				case 'I':
-					// TODO - need something to report about insertions.
-					read_position += i->Length() ;
-					// purely inserted bases so no change to aligned position
-					break ;
-				case 'N':
-					// no coverage but need to skip over part of reference.
-					read_position += i->Length() ;
-					aligned_position += i->Length() ;
-					break ;
-				case 'S':
-					// soft-clipped bases; skip this part of the read.
-					read_position += i->Length() ;
-					break ;
-				case 'H':
-					// hard-clipped bases not in the read sequence: nothing to do.
-				default:
-					// nothing to do for other cases
-					break ;
-			}
-		}
-		if( aligned_position != alignment.PositionEnd() ) {
-			std::cerr << "!! read alignment: " << alignment.Position() << "-" << alignment.PositionEnd() << ", but parsing ended at " << aligned_position << ".\n" ;
-			std::cerr << "!! CIGAR is " << alignment.GetCigar() << ".\n" ;
-		}
-		assert( aligned_position == alignment.PositionEnd() ) ;
-	}
 }
 
 struct IorekApplication: public appcontext::ApplicationContext
@@ -397,6 +256,144 @@ private:
 		output_results( matches, mismatches, *sink ) ;
 	}
 
+	void analyse_alignment_base_qualities(
+		seqlib::BamRecord const& alignment,
+		seqlib::BamHeader const& header,
+		genfile::Fasta const& fasta,
+		// This is a 'callback' function to be called
+		// on every match or mismatch
+		std::function<
+			void(
+				MismatchType const& type,
+				int base_quality
+			)
+		> callback
+	) {
+		// Note: this function classifies read-reference mismatches by parsing the
+		// CIGAR string and comparing to the reference bases.
+		
+		// The CIGAR string alone does not contain enough information to reconstruct
+		// the mismatching bases.	Thus it is necessary to inspect the reference
+		// sequence at the same time.
+	
+		// Although CIGAR supports 'X' (mismatch) and '=' (identical match), many
+		// aligners (such as bwa or minimap2) just output 'M' for mismatches by
+		// default.	(Minimap2 does outputs X/= when given the -eqx flag; pbmm2 also
+		// seems to do this by default.)
+
+		// Aligners may also output additional information complementing the CIGAR
+		// string in the 'MD' tag, and minimap2 can also output a CS tag containing
+		// full information about the mismatches.	Use of these would avoid need to
+		// parse the reference sequence, but they're not found in every BAM file.
+	
+		// On balance it therefore seems simplest to work with the CIGAR string and
+		// the reference, and to treat 'M', 'X', and '=' as
+		// synonymous - which is what we do here.
+		
+		seqlib::Cigar const& cigar = alignment.GetCigar() ;
+
+		std::string const& read_sequence = alignment.Sequence() ;
+		std::string const contig_id = header.IDtoName( alignment.ChrID() ) ;
+		genfile::Fasta::PositionedSequenceRange const contig = fasta.get_sequence( contig_id ) ;
+
+		std::string const& base_qualities = alignment.Qualities() ;  // ASCII-encoded base qualities
+
+		// sanity check
+		assert( read_sequence.size() == base_qualities.size() ) ;
+
+		//bool const count_matches = options().check( "-count-matches" ) ;
+		uint32_t read_position = 0;
+		uint32_t aligned_position = alignment.Position() ; // 0-based
+
+#if DEBUG
+		std::cerr << "\n++ Inspecting read: " << alignment.Qname() << ", CIGAR = \"" << cigar << "\".\n" ;
+#endif
+
+		seqlib::Cigar::const_iterator i = cigar.begin(), end_i = cigar.end() ;
+		for( ; i != end_i; ++i ) {
+			char const type = i->Type() ;
+#if DEBUG
+			std::cerr << "  : read position = " << read_position << "; alignment pos = " << aligned_position << "; cigar elt = \"" << *i << "\".\n" ;
+#endif
+			// The cigar ops are:
+			// M    Alignment match (can be a sequence match or mismatch)
+			// I    Insertion to the reference
+			// D    Deletion from the reference
+			// N    Skipped region from the reference
+			// S    Soft clip on the read (clipped sequence present in <seq>)
+			// H    Hard clip on the read (clipped sequence NOT present in <seq>)
+			// P    Padding (silent deletion from the padded reference sequence)
+			// =    Sequence match
+			// X    Sequence mismatch
+
+			// We treat mismatching aligned bases (M/X/=), deleted bases (D) and
+			// inserted bases (I) as mismatches. Soft-clipped, hard-clipped and
+			// 'skipped regions are handled to keep track of position but do not count
+			// as mismatches.
+
+			// sanity check
+#if DEBUG
+			std::cerr << std::string( 1, type ) << ":" << std::distance( contig.sequence().begin(), walker.position() ) << " - " << aligned_position << ".\n" ;
+#endif
+			switch( type ) {
+				case 'M':
+				case 'X':
+				case '=':
+					// matching or mismatching bases. Iterate bases and test for mismatch.
+					for( int k = 0; k < i->Length(); ++k, ++aligned_position, ++read_position ) {
+						char const reference_base = *(contig.sequence().begin() + aligned_position) ;
+						char const read_base = read_sequence[read_position] ;
+						int const base_quality = (int(base_qualities[read_position]) - 33) ; // convert from ASCII code back to base quality.
+						if( std::toupper( reference_base ) == std::toupper( read_base )) {
+							// reference and read bases matched!
+							// report that now via the callback
+							callback(
+								eMatch, // '='
+								base_quality
+							) ;
+						} else {
+							// reference and read bases matched!
+							// report that now via the callback
+							callback(
+								eMismatch, // 'X'
+								base_quality
+							) ;
+						}
+					}
+					break ;
+				case 'D':
+					// TODO - need something to report about deletions.
+					aligned_position += i->Length() ;
+					// purely deleted bases so no change to read position
+					break ;
+				case 'I':
+					// TODO - need something to report about insertions.
+					read_position += i->Length() ;
+					// purely inserted bases so no change to aligned position
+					break ;
+				case 'N':
+					// no coverage but need to skip over part of reference.
+					read_position += i->Length() ;
+					aligned_position += i->Length() ;
+					break ;
+				case 'S':
+					// soft-clipped bases; skip this part of the read.
+					read_position += i->Length() ;
+					break ;
+				case 'H':
+					// hard-clipped bases not in the read sequence: nothing to do.
+				default:
+					// nothing to do for other cases
+					break ;
+			}
+		}
+		if( aligned_position != alignment.PositionEnd() ) {
+			std::cerr << "!! read alignment: " << alignment.Position() << "-" << alignment.PositionEnd() << ", but parsing ended at " << aligned_position << ".\n" ;
+			std::cerr << "!! CIGAR is " << alignment.GetCigar() << ".\n" ;
+		}
+		assert( aligned_position == alignment.PositionEnd() ) ;
+	}
+	
 	void output_results(
 		std::vector< int > matches,
 		std::vector< int > const& mismatches,
