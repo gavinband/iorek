@@ -18,15 +18,23 @@ def configure( cfg ):
 		'LINKFLAGS': cfg.env[ 'LINKFLAGS' ]
 	}
 	flags['CXXFLAGS'].extend( [
-		'-std=c++11', '-Wall',
-		'-pedantic',
-		'-Wno-unused-local-typedefs', '-Wno-c++11-long-long', '-Wno-deprecated-declarations', '-Wno-long-long', '-fPIC' ]
-	)
-	flags['CFLAGS'].extend( [
+		'-std=c++11',
 		'-Wall',
 		'-pedantic',
-		'-Wno-unused-local-typedefs', '-Wno-c++11-long-long', 'Wno-deprecated-declarations', '-Wno-long-long', '-fPIC' ]
-	)
+		'-Wno-unused-local-typedefs', '-Wno-c++11-long-long', '-Wno-deprecated-declarations', '-Wno-long-long',
+		'-Wno-c11-extensions',
+		'-Wno-int-in-bool-context',
+		'-fPIC'
+	] )
+	flags['CFLAGS'].extend( [
+		'-std=c99',
+		'-Wall',
+		'-pedantic',
+		'-Wno-unused-local-typedefs', '-Wno-c++11-long-long', 'Wno-deprecated-declarations', '-Wno-long-long',
+		'-Wno-c11-extensions',
+		'-Wno-int-in-bool-context',
+		 '-fPIC'
+	] )
 	mode = 'debug'
 	if mode == 'release':
 			flags['CXXFLAGS'] += [ '-O3' ]

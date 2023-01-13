@@ -993,29 +993,29 @@ private:
 					break ;
 			}
 			
-			// accumulate mean base qualities - use Welford online algorithm
-			// for computing mean base quality.
+			// accumulate mean base qualities.
 			read_start_metrics.qualities[i] += get_quality_from_char( read_result.read.qualities[i] ) ;
 			read_end_metrics.qualities[i] += get_quality_from_char( read_result.read.qualities[end_of_read_i] ) ;
 		}
 		
+		// accumulate errors
 		for( std::size_t i = 0; i < read_result.error_positions.size(); ++i ) {
 			std::size_t const pos = read_result.error_positions[i] ;
 			// Example:
-			//   = =               kmer pos = 1
+			//   = =               kmer pos = 1, k = 2
 			// - - - - - - - - - - sequence length = 10
-			//  0 1 2 3 4 5 6 7 8 9  
-			// [         ]  end_length = 4 capturing 4+k-1 bases
+			// 0 1 2 3 4 5 6 7 8 9  
+			// [         ]  end_length = 4 capturing 4+k-1 = 5 bases in total
 			if( pos < end_length ) {
 				++read_start_metrics.errors[pos] ;
 			}
 			// Example:
-			//                 = = kmer pos = 8
+			//                 = = kmer pos = 8, k = 2
 			// - - - - - - - - - - sequence length = 10
 			// 0 1 2 3 4 5 6 7 8 9  
-			//          [         ]  end_length = 4 capturing 4+k-1 bases
-			// we need kmers with pos + end_length + k > sequence length
-			// and pos maps to pos + (end_length + k - 1) - sequence length
+			//          [         ]  end_length = 4 capturing 4+k-1 = 5 bases in total
+			// hence we need to track all kmer start positions with pos + end_length + k > sequence length
+			// and then pos maps to index (pos + (end_length + k - 1) - sequence length) in the read end metrics.
 			// e.g. in this case 8+4+2-1-10 = 3.
 			if( (pos + end_length + read_result.k ) > read_result.read.length() ) {
 				std::size_t const idx = (pos + end_length + read_result.k) - 1 - read_result.read.length() ;
