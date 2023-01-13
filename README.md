@@ -6,8 +6,10 @@ This repository contains a collection of programs for analysing sequence data.
 - `coverotron` computes per-base or per-window sequence read coverage from a set of BAM or CRAM files.
 - `seemsa` reads a multiple sequence alignment FASTA file, and writes an interactive HTML visualisation of it.
 - `tabulate-alignments` reports the count of reads split by read base (or insertion/deletion) and mapping quality at each position in a given range or ranges.
-- `find-homopolymers` finds homopolymer tracts (and di- and tri-nucleotide repeats) in sequences from a FASTA file.  See the [documentation](doc/trunk/doc/find-homopolymers.md)
+- `find-homopolymers` finds homopolymer tracts, as well as di- and tri-nucleotide repeats, in sequences from a FASTA file.  See the [documentation](doc/trunk/doc/find-homopolymers.md)
 - `tabulate-mismatches` walks all reads and reports all mismatches / insertions / deletions stratified by their type and flanking sequence.  See the [documentation](doc/trunk/doc/tabulate-mismatches.md)
+- `classify-kmers` quantifies the presence of 'true' and 'error' kmers in a set of sequence reads (from a FASTQ file), based on a database of true kmers in [jellyfish2](https://github.com/zippav/Jellyfish-2) format.
+- `assess-qualities` quantifies the error rate predicted by base qualities, against the observed error rate, in a set of read alignments.
 
 ## License ##
 
@@ -16,15 +18,16 @@ Iorek is released under the Boost software license.  See the LICENSE.txt file fo
 Iorek makes use of several other libraries that are included in the source repository
 and released under their own respective licenses.  These include:
 
-* boost
-* htslib
-* SeqLib
-* parallel-hashmap
-* jellyfish2
-* Eigen
-* sqlite3
-* zstandard
-* catch2
+* [boost](https://www.boost.org)
+* [htslib](https://www.htslib.org)
+* [SeqLib](https://github.com/walaj/SeqLib)
+* [parallel-hashmap](https://github.com/greg7mdp/parallel-hashmap)
+* [moodycamel concurrent queue](https://github.com/cameron314/concurrentqueue)
+* [jellyfish2](https://github.com/zippav/Jellyfish-2)
+* [Eigen](https://eigen.tuxfamily.org/index.php?title=Main_Page)
+* [sqlite3](https://www.sqlite.org)
+* [zstandard](http://facebook.github.io/zstd/)
+* [catch2](https://github.com/catchorg/Catch2)
 
 Please see the respective license files in subdirectories of 3rd_party/ for details.
 
