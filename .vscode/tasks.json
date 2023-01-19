@@ -6,7 +6,10 @@
             "type": "shell",
             "command": "./waf",
             "problemMatcher": [],
-            "group": "build"
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            }
         },
         {
             "label": "waf configure",
