@@ -1,0 +1,10 @@
+@HD	VN:1.6	SO:coordinate
+@SQ	SN:contig1	LN:64
+read1	0	contig1	1	60	8M	*	0	8	ATCGATCG	""""""""	XC:Z:four base match 
+read2	0	contig1	1	60	8M	*	0	8	ACCGATCG	########	XC:Z:2 base mismatch 
+read3	0	contig1	1	60	1D7M	*	0	8	TCGATCG	$$$$$$$	XC:Z:deletion base 1 
+read4	0	contig1	1	60	1I8M	*	0	8	AATCGATCG	%%%%%%%%%	XC:Z:intertation base 1  
+read5	0	contig1	2	60	7M	*	0	7	TCGATCG	&&&&&&&	XC:Z:four base match 
+read6	0	contig1	2	60	7M	*	0	7	TAGATCG	'''''''	XC:Z:2 base mismatch 
+read7	0	contig1	2	60	1D6M	*	0	7	CGATCG	((((((	XC:Z:deletion base 1 
+read8	0	contig1	2	60	1I7M	*	0	7	ATCGATCG	))))))))	XC:Z:intertation base 1 
