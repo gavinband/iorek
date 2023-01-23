@@ -27,12 +27,6 @@ def build( bld ):
 		includes = "./"
 	)
 	bld.program(
-		source = "assess-qualities.cpp",
-		target = 'assess-qualities',
-		use = 'seqan bamtools seqlib package_revision appcontext genfile qcdb pthread zlib',
-		includes = "./"
-	)
-	bld.program(
 		source = "tabulate-mismatches.cpp",
 		target = 'tabulate-mismatches',
 		use = 'seqan bamtools seqlib package_revision appcontext genfile qcdb pthread zlib',
