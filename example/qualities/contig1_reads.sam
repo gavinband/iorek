@@ -1,0 +1,22 @@
+@HD	VN:1.6	SO:coordinate
+@SQ	SN:contig1	LN:64
+read1	0	contig1	1	60	4M	*	0	4	ATCG	""""	XC:Z:four base match 
+read2	0	contig1	1	60	4M	*	0	4	CTCG	####	XC:Z:mismatch base 1 
+read3	0	contig1	1	60	4M	*	0	4	ACCG	$$$$	XC:Z:mismatch base 2 
+read4	0	contig1	1	60	4M	*	0	4	ATTG	%%%%	XC:Z:mismatch base 3
+read5	0	contig1	1	60	4M	*	0	4	ATCC	&&&&	XC:Z:mismatch base 4 
+read6	0	contig1	1	60	4M	*	0	4	ACGG	''''	XC:Z:mismatch base 2 and 3
+read7	0	contig1	1	60	1D3M	*	0	4	TCG	(((	XC:Z:Deletion base 1
+read8	0	contig1	1	60	1M1D2M	*	0	4	ACG	)))	XC:Z:Deletion base 2
+read9	0	contig1	1	60	2M1D1M	*	0	4	ATG	***	XC:Z:Deletion base 3
+read10	0	contig1	1	60	3M1D	*	0	4	ATC	+++	XC:Z:Deletion base 4
+read11	0	contig1	1	60	1M2D1M	*	0	4	AG	,,	XC:Z:Deletion base 2 and 3
+read12	0	contig1	1	60	1M1I3M	*	0	4	AATCG	-----	XC:Z:Insertion base 1
+read13	0	contig1	1	60	2M1I2M	*	0	4	ATTCG	.....	XC:Z:Insertation base 2
+read14	0	contig1	1	60	3M1I1M	*	0	4	ATCCG	/////	XC:Z:Insertation base 3
+read15	0	contig1	1	60	4M1I	*	0	4	ATCGG	00000	XC:Z:Insertation base 4
+read16	0	contig1	1	60	2M2I2M	*	0	4	ATTTCG	111111	XC:Z:Insertation base 2 and 3
+read17	0	contig1	1	60	1M1I3M	*	0	4	TATCG	22222	XC:Z:Insertation base 2 and mismatch base 3
+read18	0	contig1	1	60	1M1D2M	*	0	4	ACC	333	XC:Z:deletion b3 and mismatch base 4
+read19	0	contig1	1	60	1M1I1D2M	*	0	4	AGCG	4444	XC:Z:Insertation 2 deletion 3
+read20	0	contig1	1	60	4M	*	0	4	AGCG	~~~~	XC:Z:mismatch 2
