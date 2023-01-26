@@ -1,0 +1,3 @@
+@HD	VN:1.6	SO:coordinate
+@SQ	SN:contig1	LN:64
+read1	0	*	1	0	*	*	0	4	ATCG	""""	XC:Z:four base match 

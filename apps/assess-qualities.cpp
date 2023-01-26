@@ -294,6 +294,14 @@ private:
 
 		std::string const& read_sequence = alignment.Sequence() ;
 		std::string const contig_id = header.IDtoName( alignment.ChrID() ) ;
+		if( !fasta.contains( contig_id ) ) {
+			throw genfile::BadArgumentError(
+				"IorekApplication::analyse_alignment_base_qualities()",
+				"contig_id=\"" + contig_id + "\"",
+				"Contig was not found in reference FASTA file."
+			) ;
+		}
+
 		genfile::Fasta::PositionedSequenceRange const contig = fasta.get_sequence( contig_id ) ;
 
 		std::string const& base_qualities = alignment.Qualities() ;  // ASCII-encoded base qualities

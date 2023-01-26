@@ -280,6 +280,7 @@ namespace genfile {
 	Fasta::PositionedSequenceRange
 	Fasta::get_sequence( genfile::Chromosome const& chromosome ) const {
 		SequenceData::const_iterator where = m_data.find( chromosome ) ;
+		assert( where != m_data.end() ) ;
 		return get_sequence(
 			chromosome,
 			where->second.first.first, where->second.first.second
