@@ -212,8 +212,8 @@ private:
 		
 		// Construct two vectors each containin 100 zeros
 		// I think of these as bins for bq = 0, bq = 1, etc. 
-		std::vector< int > mismatches( 100, 0 ) ;
-		std::vector< int > matches( 100, 0 ) ;
+		std::vector< int64_t > mismatches( 100, 0 ) ;
+		std::vector< int64_t > matches( 100, 0 ) ;
 		
 		seqlib::BamRecord alignment ;
 		std::size_t count = 0 ;
@@ -395,8 +395,8 @@ private:
 	}
 	
 	void output_results(
-		std::vector< int > matches,
-		std::vector< int > const& mismatches,
+		std::vector< int64_t > matches,
+		std::vector< int64_t > const& mismatches,
 		statfile::BuiltInTypeStatSink& sink
 	) {
 		// 'sink' is using a class I wrote (BuiltInTypeStatSink) which helps to output
@@ -425,4 +425,6 @@ int main( int argc, char** argv )
 	}
 	return 0 ;
 }
+
+
 
