@@ -43,7 +43,9 @@ namespace genfile {
 	}
 
 	Position GenomePosition::get_max_position( Chromosome chromosome ) {
-		return std::numeric_limits< Position >::max() ;
+		// Report largest number in 32-bit signed integer, minus 1.
+		// This matches htslib, which uses INT_MAX to denote a missing chromosome
+		return Position(INT_MAX) - 1 ;
 	}
 
 	Position GenomePosition::get_min_position( Chromosome chromosome ) {

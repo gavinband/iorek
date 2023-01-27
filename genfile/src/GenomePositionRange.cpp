@@ -100,6 +100,10 @@ namespace genfile {
 		return *this ;
 	}
 	
+	bool GenomePositionRange::contains( Chromosome const chromosome, Position const position ) const {
+		return contains( GenomePosition( chromosome, position )) ;
+	}
+
 	bool GenomePositionRange::contains( GenomePosition const& position ) const {
 		if( !m_have_chromosome ) {
 			return m_start.position() <= position.position() && position.position() <= m_end.position() ;
@@ -130,9 +134,7 @@ namespace genfile {
 		if( range.start().chromosome() != Chromosome() ) {
 			out << range.start().chromosome() << ":" ;
 		}
-		if( range.start().position() > 0 ) {
-			out << range.start().position() ;
-		}
+		out << range.start().position() ;
 		out << "-" ;
 		if( range.end().chromosome() != range.start().chromosome() && range.end().chromosome() != Chromosome() ) {
 			out << range.end().chromosome() << ":" ;

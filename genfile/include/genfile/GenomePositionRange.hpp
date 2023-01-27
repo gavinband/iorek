@@ -28,6 +28,7 @@ namespace genfile {
 		GenomePosition const& end() const { return m_end ; }
 		uint32_t size() const { return m_end.position() - m_start.position() ; }
 
+		bool contains( Chromosome const chromosome, Position const position ) const ;
 		bool contains( GenomePosition const& position ) const ;
 
 		bool operator==( GenomePositionRange const& other ) const ;

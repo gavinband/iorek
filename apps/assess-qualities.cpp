@@ -170,14 +170,31 @@ private:
 		}
 		seqlib::BamHeader const& header = reader.Header() ;
 		if( options().check( "-range" )) {
+			//std::string const range = options().get< std::string >( "-range" ) ;
 			genfile::GenomePositionRange range = genfile::GenomePositionRange::parse( options().get< std::string >( "-range" )) ;
 			try {
 				// note:  SeqLib is a bit weird on positions.
 				// htslib uses 0-based, half-open positions throughout.  See e.g. the hts_parse_reg function which SeqLib uses here under the hood.
 				// However, SeqLib changes this back into a 1-based, closed position internally.
-				// The upshot is we pass in 1-based coords and that's how SeqLib treats them.
-				// (But when we use this region below, the alignments come back 0-based).
-				reader.SetRegion( seqlib::GenomicRegion( range.toString(), header )) ;
+				// I found that to correctly capture all reads covering range positions in the range
+				// an expanded range is needed.  Therefore I extend both leftwards and rightwards by one.
+				// This is ok here because actual precise filtering of positions is done in process_reads() below.
+				std::string const range_as_string = (
+					std::string(range.chromosome())
+					+ ":"
+					+ genfile::string_utils::to_string( std::max( int( range.start().position() ) -1, 0 ))
+					+ "-"
+					+ genfile::string_utils::to_string( range.end().position() + 1 )
+				) ;
+				seqlib::GenomicRegion R( range_as_string, header) ;
+				std::cerr << "Setting range: " << range.toString() << ", " << range_as_string << ": " << R << "\n" ;
+				if( !reader.SetRegion( seqlib::GenomicRegion( range_as_string, header ))) {
+					throw genfile::BadArgumentError(
+						"seqlib::GenomicRegion()",
+						"-range",
+						"A BAM/CRAM index file (.bai/.crai) must be available to use -range."
+					) ;
+				}
 			} catch( std::invalid_argument const& e ) {
 				throw genfile::BadArgumentError(
 					"seqlib::GenomicRegion()",
@@ -202,14 +219,13 @@ private:
 		statfile::BuiltInTypeStatSink::UniquePtr sink = statfile::BuiltInTypeStatSink::open(
 			options().get< std::string >( "-o" )
 		) ;
-		
 		bool use_range = options().check( "-range" ) ;
-		genfile::GenomePositionRange const range
+		genfile::GenomePositionRange range
 			= use_range
-			? genfile::GenomePositionRange::parse( options().get<std::string>( "-range" ))
-			: genfile::GenomePositionRange( 0,0 )
+			? genfile::GenomePositionRange::parse( options().get< std::string >( "-range" ))
+			: genfile::GenomePositionRange(0,0)
 		;
-		
+
 		// Construct two vectors each containin 100 zeros
 		// I think of these as bins for bq = 0, bq = 1, etc. 
 		std::vector< int64_t > mismatches( 100, 0 ) ;
@@ -235,14 +251,18 @@ private:
 					// This is a 'callback' function.  It gets called inside the loop in 
 					// analyse_alignment_base_qualities for every match or mismatch.
 					[&](
+						genfile::Chromosome const chromosome,
+						uint32_t const one_based_position,
 						MismatchType const& type,
 						int base_quality
 					) {
 						assert( base_quality < 100 ) ;
-						if( type == eMismatch ) { // 'X'
-							++mismatches[base_quality] ;
-						} else if( type == eMatch ) { // '='
-							++matches[base_quality] ;
+						if( !use_range || range.contains( chromosome, one_based_position )) {
+							if( type == eMismatch ) { // 'X'
+								++mismatches[base_quality] ;
+							} else if( type == eMatch ) { // '='
+								++matches[base_quality] ;
+							}
 						}
 					}
 				) ; 
@@ -264,6 +284,8 @@ private:
 		// on every match or mismatch
 		std::function<
 			void(
+				std::string const& aligned_chromosome,
+				uint32_t const aligned_position,
 				MismatchType const& type,
 				int base_quality
 			)
@@ -301,6 +323,7 @@ private:
 				"Contig was not found in reference FASTA file."
 			) ;
 		}
+
 
 		genfile::Fasta::PositionedSequenceRange const contig = fasta.get_sequence( contig_id ) ;
 
@@ -356,6 +379,8 @@ private:
 							// reference and read bases matched!
 							// report that now via the callback
 							callback(
+								contig_id,
+								aligned_position+1, // convert back to 1-based
 								eMatch, // '='
 								base_quality
 							) ;
@@ -363,6 +388,8 @@ private:
 							// reference and read bases matched!
 							// report that now via the callback
 							callback(
+								contig_id,
+								aligned_position+1, // convert back to 1-based
 								eMismatch, // 'X'
 								base_quality
 							) ;
