@@ -1,0 +1,16 @@
+read1:____________all_bq40	A
+read2:____________all_bq30	A
+read3:____________all_bq20	A
+read4:____________all_bq10	A
+read5:_________last28_bq20	B
+read6:________first28_bq20	B
+read7:__error_at_18_and_50	B
+read8:_________error_at_33	B
+read9:_long____error_at_30	B
+readA:_long____error_at_31	B
+readB:_long____error_at_32	A
+readC:_long____error_at_33	A
+readD:_long____error_at_89	A
+readE:_long____error_at_90	C
+readF:_long____error_at_91	C
+a_short_read______________	D
