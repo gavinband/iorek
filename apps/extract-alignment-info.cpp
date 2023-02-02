@@ -74,6 +74,10 @@ public:
 			.set_default_value( "NM" )
 			.set_default_value( "AS" )
 		;
+
+		options[ "-cigar" ]
+			.set_description( "Specify that the CIGAR string should be included in output." )
+		;
 	}
 } ;
 
@@ -222,9 +226,13 @@ private:
 			| "aligned_length"
 			| "query_clipped"
 			| "inserted_bases"
-			| "deleted_bases"
-			| "CIGAR"
-		;
+			| "deleted_bases" ;
+
+		bool output_cigar = options().check( "-cigar" ) ;
+
+		if( output_cigar ) {
+			sink | "CIGAR" ;
+		} ;
 		for( auto& tag: tags ) {
 			sink | tag.human_readable_name ;
 		}
@@ -256,8 +264,10 @@ private:
 				<< alignment.NumAlignedBases()
 				<< clipped
 				<< insertions
-				<< deletions
-				<< genfile::string_utils::to_string(cigar)
+				<< deletions ;
+			if( output_cigar ) {
+				sink << genfile::string_utils::to_string(cigar) ;
+			}
 			;
 			for( auto& tag: tags ) {
 				if( alignment.GetTag( tag.tag_name, tag_value ) ) {
