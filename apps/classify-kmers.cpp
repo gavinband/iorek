@@ -37,6 +37,7 @@ namespace seqlib = SeqLib;
 #include "genfile/string_utils/slice.hpp"
 #include "genfile/Error.hpp"
 #include "genfile/kmer/KmerHashIterator.hpp"
+#include "statfile/BuiltInTypeStatSource.hpp"
 #include "statfile/BuiltInTypeStatSink.hpp"
 
 #include "jellyfish/jellyfish.hpp"
@@ -57,6 +58,84 @@ namespace globals {
 	std::string const program_version = package_version ;
 	std::string const program_revision = std::string( package_revision ).substr( 0, 7 ) ;
 }
+
+struct ClassifyKmersOptionProcessor: public appcontext::CmdLineOptionProcessor
+{
+public:
+	std::string get_program_name() const { return globals::program_name ; }
+
+	void declare_options( appcontext::OptionProcessor& options ) {
+		// Meta-options
+		options.set_help_option( "-help" ) ;
+		
+		options.declare_group( "Input / output file options" ) ;
+		options[ "-jf" ]
+			.set_description( "Path of jellyfish file to load kmers from." )
+			.set_takes_values_until_next_option()
+			.set_is_required()
+		;
+
+		options[ "-min-kmer-count" ]
+			.set_description( "Kmer multiplicity above which kmers will be treated as solid" )
+			.set_takes_single_value()
+			.set_default_value(5)
+		;
+
+		options[ "-reads" ]
+			.set_description( "Path of fastq file of reads to load." )
+			.set_takes_single_value()
+			.set_is_required()
+		;
+
+		options[ "-read-tags" ]
+			.set_description( "Path of a text file with two (named) columns.  The first column is the "
+			" read id, the second is a string value to associate to the read.  Results will be split over the different tag values." )
+			.set_takes_single_value()
+		;
+
+		options[ "-min-base-quality" ]
+			.set_description( "Minimum base quality; kmers containing bases below this quality will not be counted." )
+			.set_takes_single_value()
+			.set_default_value(0)
+		;
+
+		options[ "-or" ]
+			.set_description( "Path of per-read output file." )
+			.set_takes_single_value()
+			.set_default_value( "-" ) ;
+
+		options[ "-op" ]
+			.set_description( "Path of per-position-in-read output file." )
+			.set_takes_single_value()
+			.set_default_value( "-" ) ;
+		
+		options[ "-oq" ]
+			.set_description( "Path of per-base quality output file." )
+			.set_takes_single_value()
+			.set_default_value( "-" ) ;
+
+		options.declare_group( "Algorithm options" ) ;
+		options[ "-max-kmers" ]
+			.set_description( "Only read a maximum of this many kmers.  This is useful for testing." )
+			.set_takes_single_value()
+			.set_default_value( std::numeric_limits< uint32_t >::max() )
+		;
+		options[ "-read-end-length" ]
+			.set_description( "Length at end of each read to track errors in" )
+			.set_takes_single_value()
+			.set_default_value( 1000 )
+		;
+
+		options.declare_group( "Other options" ) ;
+		options[ "-verbose" ]
+			.set_description( "Print out details of what is being done." ) ;
+		options[ "-threads" ]
+			.set_description( "Number of threads to use to load kmers with. " )
+			.set_takes_single_value()
+			.set_default_value( 1 )
+		;
+	}
+} ;
 
 namespace {
 	typedef phmap::parallel_flat_hash_map< uint64_t, uint16_t > ParallelHashMap ;
@@ -167,38 +246,47 @@ namespace {
 	public:
 		ReadResult():
 			read(),
+			tag(),
 			k(0),
 			number_of_kmers_at_threshold(0),
 			number_of_solid_kmers_at_threshold(0),
 			first_solid_kmer_start(0),
 			last_solid_kmer_end(0),
 			mean_base_quality(0.0),
-			number_of_bases_at_q20(0),
-			error_positions()
+			mean_base_quality2(0.0), // accumulated on the error probability scale
+			number_of_bases_ge_q(10, 0ul ),
+			error_positions(),
+			bases_at_q(90,0)
 		{}
 
 		ReadResult( ReadResult const& other ):
 			read( other.read ),
+			tag( other.tag ),
 			k( other.k ),
 			number_of_kmers_at_threshold( other.number_of_kmers_at_threshold ),
 			number_of_solid_kmers_at_threshold( other.number_of_solid_kmers_at_threshold ),
 			first_solid_kmer_start( other.first_solid_kmer_start ),
 			last_solid_kmer_end( other.last_solid_kmer_end ),
 			mean_base_quality( other.mean_base_quality ),
-			number_of_bases_at_q20( other.number_of_bases_at_q20 ),
-			error_positions( other.error_positions )
+			mean_base_quality2( other.mean_base_quality2 ),
+			number_of_bases_ge_q( other.number_of_bases_ge_q ),
+			error_positions( other.error_positions ),
+			bases_at_q( other.bases_at_q )
 		{}
 
 		ReadResult& operator=( ReadResult const& other ) {
 			read = other.read ;
+			tag = other.tag ;
 			k = other.k ;
 			number_of_kmers_at_threshold = other.number_of_kmers_at_threshold ;
 			number_of_solid_kmers_at_threshold = other.number_of_solid_kmers_at_threshold ;
 			first_solid_kmer_start = other.first_solid_kmer_start ;
 			last_solid_kmer_end = other.last_solid_kmer_end ;
 			mean_base_quality = other.mean_base_quality ;
-			number_of_bases_at_q20 = other.number_of_bases_at_q20 ;
+			mean_base_quality2 = other.mean_base_quality2 ;
+			number_of_bases_ge_q = other.number_of_bases_ge_q ;
 			error_positions = other.error_positions ;
+			bases_at_q = other.bases_at_q ;
 			return *this ;
 		}
 	
@@ -206,14 +294,17 @@ namespace {
 		std::size_t length() const { return read.sequence.size() ; }
 	public:
 		Read read ;
+		std::string tag ;
 		uint64_t k ;
 		uint64_t number_of_kmers_at_threshold ;
 		uint64_t number_of_solid_kmers_at_threshold ;
 		uint64_t first_solid_kmer_start ;
 		uint64_t last_solid_kmer_end ;
 		double mean_base_quality ;
-		uint64_t number_of_bases_at_q20 ;
+		double mean_base_quality2 ;
+		std::vector< uint64_t > number_of_bases_ge_q ;
 		std::vector< std::size_t > error_positions ;
+		std::vector< uint64_t > bases_at_q ;
 	} ;
 	
 	struct ReadEndMetrics {
@@ -269,72 +360,6 @@ namespace {
 
 }
 
-struct AssessPositionOptionProcessor: public appcontext::CmdLineOptionProcessor
-{
-public:
-	std::string get_program_name() const { return globals::program_name ; }
-
-	void declare_options( appcontext::OptionProcessor& options ) {
-		// Meta-options
-		options.set_help_option( "-help" ) ;
-		
-		options.declare_group( "Input / output file options" ) ;
-		options[ "-jf" ]
-			.set_description( "Path of jellyfish file to load kmers from." )
-			.set_takes_values_until_next_option()
-			.set_is_required()
-		;
-
-		options[ "-min-kmer-count" ]
-			.set_description( "Kmer multiplicity above which kmers will be treated as solid" )
-			.set_takes_single_value()
-			.set_default_value(5)
-		;
-
-		options[ "-reads" ]
-			.set_description( "Path of fastq file of reads to load." )
-			.set_takes_single_value()
-			.set_is_required()
-		;
-
-		options[ "-min-base-quality" ]
-			.set_description( "Minimum base quality; kmers containing bases below this quality will not be counted." )
-			.set_takes_single_value()
-			.set_default_value(0)
-		;
-
-		options[ "-o" ]
-			.set_description( "Path of output file." )
-			.set_takes_single_value()
-			.set_default_value( "-" ) ;
-
-		options[ "-op" ]
-			.set_description( "Path of position-in-read output file." )
-			.set_takes_single_value()
-			.set_default_value( "-" ) ;
-		
-		options.declare_group( "Algorithm options" ) ;
-		options[ "-max-kmers" ]
-			.set_description( "Only read a maximum of this many kmers.  This is useful for testing." )
-			.set_takes_single_value()
-			.set_default_value( std::numeric_limits< uint32_t >::max() )
-		;
-		options[ "-read-end-length" ]
-			.set_description( "Length at end of each read to track errors in" )
-			.set_takes_single_value()
-			.set_default_value( 1000 )
-		;
-
-		options.declare_group( "Other options" ) ;
-		options[ "-verbose" ]
-			.set_description( "Print out details of what is being done." ) ;
-		options[ "-threads" ]
-			.set_description( "Number of threads to use to load kmers with. " )
-			.set_takes_single_value()
-			.set_default_value( 1 )
-		;
-	}
-} ;
  
 struct ClassifyKmerApplication: public appcontext::ApplicationContext
 {
@@ -343,11 +368,12 @@ public:
 		appcontext::ApplicationContext(
 			globals::program_name,
 			globals::program_version + ", revision " + globals::program_revision,
-			std::auto_ptr< appcontext::OptionProcessor >( new AssessPositionOptionProcessor ),
+			std::auto_ptr< appcontext::OptionProcessor >( new ClassifyKmersOptionProcessor ),
 			argc,
 			argv,
 			"-log"
-		)
+		),
+		m_k(0)
 	{}
 	
 	void run() {
@@ -361,23 +387,30 @@ public:
 	}
 
 private:
+	typedef std::unordered_map< std::string, std::string > ReadTags ;
+	ReadTags m_read_tags ;
+	std::size_t m_k ;
+	HashSet m_kmers ;
 
+private:
 	void unsafe_process() {
-		HashSet kmers ;
 		std::size_t const number_of_threads = options().get< std::size_t >( "-threads" ) ;
 		uint64_t const multiplicity_threshold = options().get_value< uint64_t >( "-min-kmer-count" ) ;
 		std::size_t const max_kmers = options().get< std::size_t >( "-max-kmers" ) ;
 		int const base_quality_threshold = options().get< std::size_t >( "-min-base-quality" ) ;
 		bool const verbose = options().check( "-verbose" ) ;
-		std::size_t k = 0 ;
+
+		if( options().check( "-read-tags" )) {
+			m_read_tags = load_read_tags( options().get< std::string >( "-read-tags" )) ;
+		}
 
 		{
 			boost::timer timer ;
 			double start_time = timer.elapsed() ;
 
-			k = load_kmers(
+			m_k = load_kmers(
 				options().get< std::string >( "-jf" ),
-				&kmers,
+				&m_kmers,
 				number_of_threads,
 				multiplicity_threshold,
 				max_kmers,
@@ -387,8 +420,8 @@ private:
 			double end_time = timer.elapsed() ;
 			ui().logger()
 				<< "++ Ok, "
-				<< kmers.size() << " "
-				<< k << "-mers loaded in "
+				<< m_kmers.size() << " "
+				<< m_k << "-mers loaded in "
 				<< (end_time-start_time)
 				<< " seconds:\n" ;
 		}
@@ -400,26 +433,52 @@ private:
 			ui().logger() << "++ Inspecting reads from \"" << options().get< std::string >( "-reads" ) << "\"...\n" ;
 			boost::timer timer ;
 			double start_time = timer.elapsed() ;
-			statfile::BuiltInTypeStatSink::UniquePtr
-				position_sink = statfile::BuiltInTypeStatSink::open( options().get< std::string >( "-op" ) ) ;
 
-			statfile::BuiltInTypeStatSink::UniquePtr
-				sink = statfile::BuiltInTypeStatSink::open( options().get< std::string >( "-o" ) ) ;
+			// Construct sinks in reverse order.  If outputting to stdout, this makes them output
+			// in the right order.
+			auto quality_sink = statfile::BuiltInTypeStatSink::open( options().get< std::string >( "-oq" ) ) ;
+			auto position_sink = statfile::BuiltInTypeStatSink::open( options().get< std::string >( "-op" ) ) ;
+			auto read_sink = statfile::BuiltInTypeStatSink::open( options().get< std::string >( "-or" ) ) ;
 
 			std::auto_ptr< std::istream >
 				fastq = genfile::open_text_file_for_input( options().get< std::string >( "-reads" ) ) ;
 		
 			std::size_t number_of_reads = process_reads(
 				*fastq,
-				kmers,
-				k,
+				m_kmers,
+				m_k,
 				base_quality_threshold,
-				*sink,
-				*position_sink
+				*read_sink,
+				*position_sink,
+				*quality_sink
 			) ;
 			double end_time = timer.elapsed() ;
 			ui().logger() << "++ Ok, processed " << number_of_reads << " reads in " << (end_time - start_time) << " seconds.\n" ;
 		}
+	}
+
+	ReadTags load_read_tags( std::string const& filename ) const {
+		ReadTags result ;
+		auto source = statfile::BuiltInTypeStatSource::open( filename ) ;
+		std::string read_id, read_class ;
+		std::size_t count = 0 ;
+		while( (*source) >> read_id >> read_class ) {
+			if( !result.insert( std::make_pair( read_id, read_class )).second ) {
+				throw genfile::BadArgumentError(
+					"ClassifyKmerApplication::load_read_tags()",
+					"filename=\"" + filename + "\"",
+					(
+						"Could not insert read id \""
+						+ read_id
+						+ "\" on line "
+						+ genfile::string_utils::to_string( count+2 )
+						+ ", was it duplicated?"
+					)
+				) ;
+			} ;
+			(*source) >> statfile::ignore_all() ;
+		}
+		return result ;
 	}
 
 	std::size_t load_kmers(
@@ -589,8 +648,9 @@ private:
 		HashSet const& kmers,
 		std::size_t k,
 		uint64_t base_quality_threshold,
-		statfile::BuiltInTypeStatSink& output,
-		statfile::BuiltInTypeStatSink& position_output
+		statfile::BuiltInTypeStatSink& read_sink,
+		statfile::BuiltInTypeStatSink& position_sink,
+		statfile::BuiltInTypeStatSink& quality_sink
 	) {
 		std::size_t const number_of_threads = options().get< std::size_t >( "-threads" ) ;
 
@@ -628,8 +688,9 @@ private:
 					&ClassifyKmerApplication::process_read_results,
 					this,
 					&read_result_queue,
-					&output,
-					&position_output,
+					&read_sink,
+					&position_sink,
+					&quality_sink,
 					length_to_track_at_read_ends,
 					&quit
 				)
@@ -718,13 +779,15 @@ private:
 
 		ReadResult result ;
 		result.read = read ;
+		result.tag = get_read_tag( read.id ) ;
 		result.k = k ;
 		KmerIterator kmer_iterator( read.sequence.begin(), read.sequence.end(), k ) ;
 
 		int kmer_min_base_quality = 0 ;
 		std::size_t kmer_min_base_quality_at = 0 ;
-		double sum_of_base_qualities = 0.0 ;
-		uint64_t number_of_bases_at_q20 = 0 ;
+		double sum_of_base_qualities = 0.0 ;       // sum of PHRED-scale base qualities
+		double sum_of_predicted_errors = 0.0 ; // same thing, accumulated on probability not PHRED scale 
+		std::vector< uint64_t > number_of_bases_ge_q( 10, 0ul ) ; // bases at q0, q10, q20, q30, q40, q90 and so on.
 		bool have_first = false ;
 		
 		std::size_t i = 0;
@@ -734,8 +797,19 @@ private:
 			(i+k) <= read.length();
 			++kmer_iterator, ++i
 		) {
+			// Base quality metrics
 			int base_quality = get_quality_from_char(read.qualities[i]) ;
+			assert( base_quality <= 90 ) ;
+			++result.bases_at_q[std::size_t(base_quality)] ;
 			sum_of_base_qualities += double(base_quality) ;
+			// bq = -10 log10 (error probability) so use 
+			// inverse is 10^(-bq/10)
+			sum_of_predicted_errors += double(pow( 10, -base_quality/10.0 )) ;
+
+			for( std::size_t b = 0; b < 9; ++b ) {
+				number_of_bases_ge_q[b] += ( base_quality >= (10*b) ) ? 1 : 0 ;
+			}
+
 #if DEBUG > 2
 			std::cerr
 				<< "!! "
@@ -744,8 +818,8 @@ private:
 				<< "; k = " << k 
 				<< "... adding\n" ;
 #endif
-			number_of_bases_at_q20 += ( base_quality >= 20 ) ? 1 : 0 ;
 
+			// Kmer metrics
 			if( kmer_min_base_quality_at == 0 ) {
 				compute_min_quality(
 					genfile::string_utils::slice( read.qualities, i, i+k ),
@@ -775,36 +849,49 @@ private:
 #endif
 				}
 			}
-			/*
-			if( kmer_iterator.finished() ) {
-				++i ;
-				break ;
-			}
-			*/
 		}
 
 #if DEBUF	
 		std::cerr << "analyse_read(): " << read.id << ": capturing quality metrics...\n" ;
 #endif
-		// capture remaining bases for base quality metric
+		// The above loop only covers kmer start positions,
+		// now iterate to the end of the read.
 		for(
 			;
 			i < read.length();
 			++i
 		) {
 			int base_quality = get_quality_from_char(read.qualities[i]) ;
+			assert( base_quality <= 90 ) ;
+			++result.bases_at_q[std::size_t(base_quality)] ;
+			sum_of_base_qualities += double(base_quality) ;
+			sum_of_predicted_errors += double(pow( 10, -base_quality/10.0 )) ;
+			for( std::size_t b = 0; b < 9; ++b ) {
+				number_of_bases_ge_q[b] += ( base_quality >= (10*b) ) ? 1 : 0 ;
+			}
 #if DEBUG > 2
 			std::cerr << "!!! " << read.id << ": " << i << " bq = " << base_quality << "... adding\n" ;
 #endif
-			sum_of_base_qualities += double(base_quality) ;
-			number_of_bases_at_q20 += ( base_quality >= 20 ) ? 1 : 0 ;
 		}
 		
 		result.mean_base_quality = sum_of_base_qualities / result.read.length() ;
-		result.number_of_bases_at_q20 = number_of_bases_at_q20 ;
+		result.mean_base_quality2 = -10 * log10( sum_of_predicted_errors / result.read.length()) ;
+		for( std::size_t b = 0; b < 9; ++b ) {
+			result.number_of_bases_ge_q[b] = number_of_bases_ge_q[b] ;
+		}
 #if DEBUG
 		std::cerr << "analyse_read(): " << read.id << ": finished.\n" ;
 #endif
+		return result ;
+	}
+
+	std::string get_read_tag( std::string const& read_id ) const {
+		std::string result = "NA" ;
+		ReadTags::const_iterator where
+			= m_read_tags.find( read_id ) ;
+		if( where != m_read_tags.end() ) {
+			result = where->second ;
+		}
 		return result ;
 	}
 	
@@ -822,57 +909,53 @@ private:
 #endif	
 		Read read ;
 		while( !(*quit) ) {
-#if DEBUG > 1
-			std::cerr << "!! (" << thread_index << ", " << std::this_thread::get_id() << "): " << queue << ".\n" ;
-#endif
 			bool popped = read_queue->try_dequeue( read ) ;
 			if( popped ) {
-#if DEBUG
-				std::cerr << "++ Analysing read " << read.id << ".\n" ;
-#endif
 				ReadResult const result = analyse_read( read, *kmers, k, base_quality_threshold ) ;
 				while( !result_queue->try_enqueue( result )) {
 					std::this_thread::sleep_for( std::chrono::microseconds(10) ) ;
 				}
-#if DEBUG
-				std::cerr << "++ Analysed read " << read.id << ".\n" ;
-#endif
 			} else {
 				// nothing to pop, sleep to allow queue to fill.
 				std::this_thread::sleep_for( std::chrono::microseconds(10) ) ;
 			}
 		}
 	}
-	
-
 
 	void process_read_results(
 		ReadResultQueue* result_queue,
-		statfile::BuiltInTypeStatSink* output,
-		statfile::BuiltInTypeStatSink* read_position_results,
+		statfile::BuiltInTypeStatSink* read_sink,
+		statfile::BuiltInTypeStatSink* read_position_sink,
+		statfile::BuiltInTypeStatSink* quality_sink,
 		std::size_t const length_to_track_at_read_ends,
 		std::atomic< int >* quit
 	) {
-		write_per_read_result_header( output ) ;
+		bool const include_tags = options().check( "-read-tags" ) ;
+		write_per_read_result_header( read_sink, include_tags ) ;
 		
-		std::size_t const end_length = length_to_track_at_read_ends ;
-		ReadEndMetrics read_start_metrics( end_length ) ;
-		ReadEndMetrics read_end_metrics( end_length ) ;
+		std::map< std::string, ReadEndMetrics > read_start_metrics ;
+		std::map< std::string, ReadEndMetrics > read_end_metrics ;
+		std::map< std::string, std::vector< uint64_t > > quality_metrics ;
 
 		std::size_t count = 0 ;
-
+		
 		ReadResult result ;
 		while( !(*quit) ) {
 			bool popped = result_queue->try_dequeue( result ) ;
 			if( popped ) {
-				process_read_result( result, output ) ;
-				if( result.read.length() >= 2 * end_length ) {
+				process_read_result( result, read_sink, include_tags ) ;
+				if( result.read.length() >= 2 * length_to_track_at_read_ends ) {
 					accumulate_read_end_metrics(
 						result,
+						length_to_track_at_read_ends,
 						read_start_metrics,
 						read_end_metrics
 					) ;
 				}
+				accumulate_quality_metrics(
+					result,
+					quality_metrics
+				) ;
 				++count ;
 			} else {
 				// nothing to pop, sleep to allow queue to fill.
@@ -880,57 +963,123 @@ private:
 			}
 		}
 
-		process_per_position_results(
+		process_read_end_metrics(
 			read_start_metrics,
 			read_end_metrics,
-			read_position_results
+			read_position_sink
+		) ;
+
+		output_quality_metrics(
+			quality_metrics,
+			quality_sink
 		) ;
 	}
 	
 	void process_read_result(
 		ReadResult const& read_result,
-		statfile::BuiltInTypeStatSink* output
+		statfile::BuiltInTypeStatSink* output,
+		bool const include_tags
 	) {
 		write_per_read_result(
 			read_result,
-			output
+			output,
+			include_tags
 		) ;
 	}
 	
 	void write_per_read_result_header(
-		statfile::BuiltInTypeStatSink* output
+		statfile::BuiltInTypeStatSink* output,
+		bool const include_tags
 	) {
 		(*output)
-			| "read_id"
+			| "read_id" ;
+		if( include_tags ) {
+			(*output) | "read_tag" ;
+		}
+		(*output)
 			| "read_length"
 			| "mean_base_quality"
-			| "number_of_bases_at_q20"
+			| "mean_base_quality2"
 			| "kmer_k"
 			| "number_of_kmers_at_threshold"
 			| "number_of_solid_kmers_at_threshold"
 			| "first_solid_kmer_start"
 			| "last_solid_kmer_end"
+			| "n_bases_at_q10"
+			| "n_bases_at_q20"
+			| "n_bases_at_q30"
+			| "n_bases_at_q40"
+			| "n_bases_at_q50"
+			| "n_bases_at_q60"
+			| "n_bases_at_q70"
+			| "n_bases_at_q80"
+			| "n_bases_at_q90"
 		;
 	}
 
 	void write_per_read_result(
 		ReadResult const& read_result,
-		statfile::BuiltInTypeStatSink* output
+		statfile::BuiltInTypeStatSink* output,
+		bool include_tags
 	) {
 #if DEBUG
 		std::cerr << "++ write_per_read_result(): " << result.id << ".\n" ;
 #endif
 		(*output)
-			<< read_result.read.id
+			<< read_result.read.id ;
+		if( include_tags ) {
+			(*output) << read_result.tag ;
+		}
+		(*output)
 			<< uint64_t(read_result.read.length())
 			<< read_result.mean_base_quality
-			<< read_result.number_of_bases_at_q20
+			<< read_result.mean_base_quality2
 			<< read_result.k
 			<< read_result.number_of_kmers_at_threshold
 			<< read_result.number_of_solid_kmers_at_threshold
 			<< (read_result.first_solid_kmer_start+1) 			// convert to 1-based, closed
 			<< (read_result.last_solid_kmer_end) 				// 1-based, closed.
+			<< read_result.number_of_bases_ge_q[1] 				// q10
+			<< read_result.number_of_bases_ge_q[2] 				// q20
+			<< read_result.number_of_bases_ge_q[3] 				// q30
+			<< read_result.number_of_bases_ge_q[4] 				// q40
+			<< read_result.number_of_bases_ge_q[5] 				// q50
+			<< read_result.number_of_bases_ge_q[6] 				// q60
+			<< read_result.number_of_bases_ge_q[7] 				// q70
+			<< read_result.number_of_bases_ge_q[8] 				// q80
+			<< read_result.number_of_bases_ge_q[9] 				// q90
 			<< statfile::end_row() ;
+	}
+
+	void accumulate_read_end_metrics(
+		ReadResult const& read_result,
+		std::size_t length_to_track,
+		std::map< std::string, ReadEndMetrics >& read_start_metrics,
+		std::map< std::string, ReadEndMetrics >& read_end_metrics
+	) {
+		typedef std::map< std::string, ReadEndMetrics >::iterator Iterator ;
+		Iterator
+			start_where = read_start_metrics.find( read_result.tag ),
+			end_where = read_end_metrics.find( read_result.tag ) ;
+		if( start_where == read_start_metrics.end() ) {
+			auto inserted = read_start_metrics.emplace(
+				read_result.tag,
+				ReadEndMetrics( length_to_track ) 
+			) ;
+			start_where = inserted.first ;
+		}
+		if( end_where == read_end_metrics.end() ) {
+			auto inserted = read_end_metrics.emplace(
+				read_result.tag,
+				ReadEndMetrics( length_to_track ) 
+			) ;
+			end_where = inserted.first ;
+		}
+		accumulate_read_end_metrics(
+			read_result,
+			start_where->second,
+			end_where->second
+		) ;
 	}
 
 	void accumulate_read_end_metrics(
@@ -1033,12 +1182,29 @@ private:
 		}
 	}
 	
-	void process_per_position_results(
-		ReadEndMetrics const& read_start_metrics,
-		ReadEndMetrics const& read_end_metrics,
+	void process_read_end_metrics(
+		std::map< std::string, ReadEndMetrics > const& read_start_metrics,
+		std::map< std::string, ReadEndMetrics > const& read_end_metrics,
 		statfile::BuiltInTypeStatSink* read_position_results
 	) const {
-		(*read_position_results)
+		output_read_end_metrics(
+			read_start_metrics,
+			read_end_metrics,
+			read_position_results
+		) ;
+	}
+
+	void output_read_end_metrics(
+		std::map< std::string, ReadEndMetrics > const& read_start_metrics,
+		std::map< std::string, ReadEndMetrics > const& read_end_metrics,
+		statfile::BuiltInTypeStatSink* sink
+	) const {
+		bool const have_tags = options().check( "-read-tags" ) ;
+		if( have_tags ) {
+			(*sink) | "read_tag" ;
+		}
+
+		(*sink)
 			| "start_or_end"
 			| "position"
 			| "number_of_errors"
@@ -1049,32 +1215,91 @@ private:
 			| "G"
 			| "T"
 		;
-		for( std::size_t i = 0; i < read_start_metrics.length(); ++i ) {
-			(*read_position_results)
-				<< "start"
-				<< uint64_t(i+1)
-				<< read_start_metrics.errors[i]
-				<< read_start_metrics.counts[i]
-				<< read_start_metrics.qualities[i]
-				<< read_start_metrics.A[i]
-				<< read_start_metrics.C[i]
-				<< read_start_metrics.G[i]
-				<< read_start_metrics.T[i]
-				<< statfile::end_row() ;
+
+		for( auto& kv: read_start_metrics ) {
+			ReadEndMetrics const& start_metrics = kv.second ;
+			for( std::size_t i = 0; i < start_metrics.length(); ++i ) {
+				if( have_tags ) {
+					(*sink) << kv.first ;
+				}
+				(*sink)
+					<< "start"
+					<< uint64_t(i+1)
+					<< start_metrics.errors[i]
+					<< start_metrics.counts[i]
+					<< start_metrics.qualities[i]
+					<< start_metrics.A[i]
+					<< start_metrics.C[i]
+					<< start_metrics.G[i]
+					<< start_metrics.T[i]
+					<< statfile::end_row() ;
+			}
 		}
-		for( std::size_t i = 0; i < read_end_metrics.length(); ++i ) {
-			(*read_position_results)
-				<< "end"
-				// 0 maps to -end_of_read_errors.size()
-				<< (-int64_t(read_end_metrics.length()) + int64_t(i) )
-				<< read_end_metrics.errors[i]
-				<< read_end_metrics.counts[i]
-				<< read_end_metrics.qualities[i]
-				<< read_end_metrics.A[i]
-				<< read_end_metrics.C[i]
-				<< read_end_metrics.G[i]
-				<< read_end_metrics.T[i]
-				<< statfile::end_row() ;
+	
+		for( auto& kv: read_end_metrics ) {
+			ReadEndMetrics const& end_metrics = kv.second ;
+			for( std::size_t i = 0; i < end_metrics.length(); ++i ) {
+				(*sink)
+					<< "end"
+					// 0 maps to -end_of_read_errors.size()
+					<< (-int64_t(end_metrics.length()) + int64_t(i) )
+					<< end_metrics.errors[i]
+					<< end_metrics.counts[i]
+					<< end_metrics.qualities[i]
+					<< end_metrics.A[i]
+					<< end_metrics.C[i]
+					<< end_metrics.G[i]
+					<< end_metrics.T[i]
+					<< statfile::end_row() ;
+			}
+		}
+	}
+
+	void accumulate_quality_metrics(
+		ReadResult const& read_result,
+		std::map< std::string, std::vector< uint64_t > >& quality_metrics
+	) {
+		typedef std::map< std::string, std::vector< uint64_t > >::iterator Iterator ;
+		Iterator
+			where = quality_metrics.find( read_result.tag ) ;
+		if( where == quality_metrics.end() ) {
+			auto inserted = quality_metrics.emplace(
+				read_result.tag,
+				read_result.bases_at_q
+			) ;
+			assert( inserted.second ) ;
+			assert( inserted.first->second.size() == 90 ) ;
+		} else {
+			for( std::size_t b = 0; b < 90; ++b ) {
+				(where->second)[b] += read_result.bases_at_q[b] ;
+			}
+		}
+	}
+
+	void output_quality_metrics(
+		std::map< std::string, std::vector< uint64_t > > const& metrics,
+		statfile::BuiltInTypeStatSink* sink
+	) const {
+		bool const have_tags = options().check( "-read-tags" ) ;
+		if( have_tags ) {
+			(*sink) | "read_tag" ;
+		}
+		(*sink)
+			| "base_quality"
+			| "count"
+		;
+
+		for( auto& kv: metrics ) {
+			std::vector< uint64_t > const& counts = kv.second ;
+			for( std::size_t b = 0; b < counts.size(); ++b ) {
+				if( have_tags ) {
+					(*sink) << kv.first ;
+				}
+				(*sink)
+					<< int64_t(b)
+					<< counts[b]
+					<< statfile::end_row() ;
+			}
 		}
 	}
 } ;
