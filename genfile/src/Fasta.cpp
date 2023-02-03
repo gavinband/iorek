@@ -178,8 +178,6 @@ namespace genfile {
 						std::make_pair( start, end ),
 						sequence
 					) ;
-			
-			
 				}
 			) ;
 		} catch( genfile::MalformedInputError const& e ) {
