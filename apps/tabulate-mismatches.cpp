@@ -518,19 +518,21 @@ namespace {
 				case '=':
 					// matching or mismatching bases. Iterate bases and test for mismatch.
 					for( int k = 0; k < i->Length(); ++k, ++aligned_position, ++read_position, ++walker ) {
+						MismatchType mismatch_type = eMatch ;
 						if( std::toupper(*(contig.sequence().begin() + aligned_position)) != std::toupper( read_sequence[read_position] )) {
-							callback(
-								eMismatch,
-								contig_id,
-								contig.sequence(),
-								aligned_position,
-								aligned_position + 1,
-								read_sequence,
-								read_position,
-								read_position+1,
-								walker
-							) ;
+							mismatch_type = eMismatch ;
 						}
+						callback(
+							mismatch_type,
+							contig_id,
+							contig.sequence(),
+							aligned_position,
+							aligned_position + 1,
+							read_sequence,
+							read_position,
+							read_position+1,
+							walker
+						) ;
 					}
 					break ;
 				case 'D':
