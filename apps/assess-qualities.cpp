@@ -29,6 +29,7 @@ namespace seqlib = SeqLib;
 #include "genfile/string_utils/slice.hpp"
 #include "genfile/Error.hpp"
 #include "genfile/Fasta.hpp"
+#include "genfile/FastaMask.hpp"
 #include "statfile/BuiltInTypeStatSink.hpp"
 
 // #define DEBUG 1
@@ -77,14 +78,6 @@ public:
 			.set_description( "Ignore alignments below this mapping quality threshold" )
 			.set_takes_single_value()
 			.set_default_value( 20 ) ;
-
-		options.declare_group( "Miscellaneous options" ) ;
-		options[ "-threads" ]
-			.set_description( "Use this many extra threads for file reading" )
-			.set_takes_single_value()
-			.set_hidden()
-			.set_default_value( 0 ) ;
-
 	}
 } ;
 
@@ -122,6 +115,9 @@ public:
 	}
 
 private:
+	genfile::FastaMask::UniquePtr m_fasta_mask ;
+
+private:
 
 	void unsafe_process() {
 		genfile::Fasta::UniquePtr fasta = genfile::Fasta::create() ;
@@ -131,37 +127,58 @@ private:
 			fasta->add_sequences_from_file( fasta_filename, progress_context ) ;
 		}
 		
-		unsafe_process(
-			options().get_value< std::string >( "-reads" ),
-			*fasta
-		) ;
-	}
-
-	void unsafe_process(
-		std::string const& filename,
-		genfile::Fasta const& fasta
-	) {
 		statfile::BuiltInTypeStatSink::UniquePtr sink = statfile::BuiltInTypeStatSink::open(
 			options().get< std::string >( "-o" )
 		) ;
-		sink->write_metadata(
-			"Computed by tabulate-mismatches " + appcontext::get_current_time_as_string() + "\n"
-			+ "Coordinates are 1-based, closed."
-		) ;
-		
-		process_reads( filename, fasta ) ;
+
+		// We store the results in two vectors each containin 100 zeros
+		// I think of these as bins for bq = 0, bq = 1, etc. 
+		// Note: base qualities can generally only go up to 96(ASCII character ~).
+		std::vector< int64_t > mismatches( 100, 0 ) ;
+		std::vector< int64_t > matches( 100, 0 ) ;
+
+		{
+			std::string const& filename = options().get_value< std::string >( "-reads" ) ;
+			auto progress_context = ui().get_progress_context( "Processing \"" + filename + "\"" ) ;
+
+			process_reads(
+				filename,
+				*fasta,
+				&matches,
+				&mismatches,
+				progress_context
+			) ;
+		}
+
+		output_results( matches, mismatches, *sink ) ;
 	}
-	
+
+	void output_results(
+		std::vector< int64_t > matches,
+		std::vector< int64_t > const& mismatches,
+		statfile::BuiltInTypeStatSink& sink
+	) {
+		// 'sink' is using a class I wrote (BuiltInTypeStatSink) which helps to output
+		// column-based text file formats like csv, tab-separated and so on.
+		// Here is an example of how it works.
+		sink | "base_quality" | "matches" | "mismatches" ;
+		for( std::size_t bq = 0; bq < matches.size(); ++bq ) {
+			sink
+				<< int64_t(bq)
+				<< int64_t(matches[bq])
+				<< int64_t(mismatches[bq])
+				<< statfile::end_row() ;
+		}
+	}
+
 	void process_reads(
 		std::string const& filename,
-		genfile::Fasta const& fasta
+		genfile::Fasta const& fasta,
+		std::vector< int64_t >* matches,
+		std::vector< int64_t >* mismatches,
+		std::function< void( std::size_t ) > progress_callback
 	) {
 		seqlib::BamReader reader;
-		std::unique_ptr< seqlib::ThreadPool > thread_pool ;
-		if( options().get< uint32_t >( "-threads" ) > 0 ) {
-			thread_pool.reset( new seqlib::ThreadPool( options().get< int >( "-threads" ) )) ;
-			reader.SetThreadPool( *thread_pool ) ;
-		}
 		if( options().check( "-reference" )) {
 			reader.SetCramReference( options().get< std::string >( "-reference" )) ;
 		}
@@ -204,32 +221,33 @@ private:
 			}
 		}
 		
-		auto progress_context = ui().get_progress_context( "Processing \"" + filename + "\"" ) ;
-		process_reads( reader, header, fasta, [&] ( std::size_t count ) { progress_context( count ) ; } ) ;
+		process_reads(
+			reader,
+			header,
+			fasta,
+			matches,
+			mismatches,
+			progress_callback
+			
+		) ;
 	}
 	
 	void process_reads(
 		seqlib::BamReader reader,
 		seqlib::BamHeader header,
 		genfile::Fasta const& fasta,
+		std::vector< int64_t >* matches,
+		std::vector< int64_t >*  mismatches,
 		std::function< void( std::size_t ) > progress_callback
 	) {
 		int32_t const mq_threshold = options().get< int32_t >( "-mq" ) ;
 		
-		statfile::BuiltInTypeStatSink::UniquePtr sink = statfile::BuiltInTypeStatSink::open(
-			options().get< std::string >( "-o" )
-		) ;
 		bool use_range = options().check( "-range" ) ;
 		genfile::GenomePositionRange range
 			= use_range
 			? genfile::GenomePositionRange::parse( options().get< std::string >( "-range" ))
 			: genfile::GenomePositionRange(0,0)
 		;
-
-		// Construct two vectors each containin 100 zeros
-		// I think of these as bins for bq = 0, bq = 1, etc. 
-		std::vector< int64_t > mismatches( 100, 0 ) ;
-		std::vector< int64_t > matches( 100, 0 ) ;
 		
 		seqlib::BamRecord alignment ;
 		std::size_t count = 0 ;
@@ -259,9 +277,9 @@ private:
 						assert( base_quality < 100 ) ;
 						if( !use_range || range.contains( chromosome, one_based_position )) {
 							if( type == eMismatch ) { // 'X'
-								++mismatches[base_quality] ;
+								++(*mismatches)[base_quality] ;
 							} else if( type == eMatch ) { // '='
-								++matches[base_quality] ;
+								++(*matches)[base_quality] ;
 							}
 						}
 					}
@@ -272,8 +290,6 @@ private:
 				progress_callback( count ) ;
 			}
 		}
-		
-		output_results( matches, mismatches, *sink ) ;
 	}
 
 	void analyse_alignment_base_qualities(
@@ -429,23 +445,7 @@ private:
 		assert( aligned_position == alignment.PositionEnd() ) ;
 	}
 	
-	void output_results(
-		std::vector< int64_t > matches,
-		std::vector< int64_t > const& mismatches,
-		statfile::BuiltInTypeStatSink& sink
-	) {
-		// 'sink' is using a class I wrote (BuiltInTypeStatSink) which helps to output
-		// column-based text file formats like csv, tab-separated and so on.
-		// Here is an example of how it works.
-		sink | "base_quality" | "matches" | "mismatches" ;
-		for( std::size_t bq = 0; bq < matches.size(); ++bq ) {
-			sink
-				<< int64_t(bq)
-				<< int64_t(matches[bq])
-				<< int64_t(mismatches[bq])
-				<< statfile::end_row() ;
-		}
-	}
+
 } ;
 
 int main( int argc, char** argv )
