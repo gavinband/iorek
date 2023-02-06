@@ -29,8 +29,6 @@ namespace genfile {
 		typedef std::deque< char > ContigSequence ;
 		typedef genfile::Chromosome Chromosome ;
 		typedef ContigSequence::const_iterator ConstSequenceIterator ;
-		//typedef std::pair< ConstSequenceIterator, ConstSequenceIterator > ConstSequenceRange ;
-		//typedef std::pair< genfile::GenomePositionRange, ConstSequenceRange > ContigRange ;
 
 		struct ConstSequenceRange
 		{
@@ -59,7 +57,9 @@ namespace genfile {
 			ConstSequenceIterator m_end ;
 		} ;
 
-		// represents a subrange of a contig.
+		// Represents a subrange of a contig.
+		// It contains both the position range (half-open) and
+		// a range of iterators into the sequence itself (half-open).
 		struct ContigRange
 		{
 			ContigRange( ContigRange const& other ):
@@ -98,7 +98,6 @@ namespace genfile {
 		static UniquePtr create() ;
 
 	public:
-
 		Fasta() {}
 
 		void add_sequences_from_file( std::string const& fasta_filename, ProgressCallback ) ;
