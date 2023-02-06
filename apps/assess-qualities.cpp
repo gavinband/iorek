@@ -29,7 +29,6 @@ namespace seqlib = SeqLib;
 #include "genfile/string_utils/slice.hpp"
 #include "genfile/Error.hpp"
 #include "genfile/Fasta.hpp"
-#include "genfile/FastaMask.hpp"
 #include "statfile/BuiltInTypeStatSink.hpp"
 
 // #define DEBUG 1
