@@ -256,7 +256,7 @@ namespace {
 			mean_base_quality2(0.0), // accumulated on the error probability scale
 			number_of_bases_ge_q(10, 0ul ),
 			error_positions(),
-			bases_at_q(90,0)
+			bases_at_q(94,0)
 		{}
 
 		ReadResult( ReadResult const& other ):
@@ -463,19 +463,33 @@ private:
 		std::string read_id, read_class ;
 		std::size_t count = 0 ;
 		while( (*source) >> read_id >> read_class ) {
-			if( !result.insert( std::make_pair( read_id, read_class )).second ) {
-				throw genfile::BadArgumentError(
-					"ClassifyKmerApplication::load_read_tags()",
-					"filename=\"" + filename + "\"",
-					(
-						"Could not insert read id \""
-						+ read_id
-						+ "\" on line "
-						+ genfile::string_utils::to_string( count+2 )
-						+ ", was it duplicated?"
-					)
-				) ;
-			} ;
+			auto where = result.find( read_id ) ;
+			if( where != result.end() ) {
+				if( read_class != where->second ) {
+					throw genfile::BadArgumentError(
+						"ClassifyKmerApplication::load_read_tags()",
+						"filename=\"" + filename + "\"",
+						(
+							"Read id \""
+							+ read_id
+							+ "\" appears at least twice with differenct classes."
+						)
+					) ;
+				}
+			} else {
+				if( !result.insert( std::make_pair( read_id, read_class )).second ) {
+					throw genfile::BadArgumentError(
+						"ClassifyKmerApplication::load_read_tags()",
+						"filename=\"" + filename + "\"",
+						(
+							"Could not insert read id \""
+							+ read_id
+							+ "\", for unknown reasons."
+						)
+					) ;
+				}
+			}
+				
 			(*source) >> statfile::ignore_all() ;
 		}
 		return result ;
@@ -799,7 +813,7 @@ private:
 		) {
 			// Base quality metrics
 			int base_quality = get_quality_from_char(read.qualities[i]) ;
-			assert( base_quality <= 90 ) ;
+			assert( base_quality <= 93 ) ;
 			++result.bases_at_q[std::size_t(base_quality)] ;
 			sum_of_base_qualities += double(base_quality) ;
 			// bq = -10 log10 (error probability) so use 
@@ -862,7 +876,7 @@ private:
 			++i
 		) {
 			int base_quality = get_quality_from_char(read.qualities[i]) ;
-			assert( base_quality <= 90 ) ;
+			assert( base_quality <= 93 ) ;
 			++result.bases_at_q[std::size_t(base_quality)] ;
 			sum_of_base_qualities += double(base_quality) ;
 			sum_of_predicted_errors += double(pow( 10, -base_quality/10.0 )) ;
@@ -962,17 +976,19 @@ private:
 				std::this_thread::sleep_for( std::chrono::microseconds(10) ) ;
 			}
 		}
-
+		ui().logger() << "++ Outputting read-end metrics...\n" ;
 		process_read_end_metrics(
 			read_start_metrics,
 			read_end_metrics,
 			read_position_sink
 		) ;
 
+		ui().logger() << "++ Outputting quality metrics...\n" ;
 		output_quality_metrics(
 			quality_metrics,
 			quality_sink
 		) ;
+		ui().logger() << "++ Success.\n" ;
 	}
 	
 	void process_read_result(
@@ -1239,6 +1255,9 @@ private:
 		for( auto& kv: read_end_metrics ) {
 			ReadEndMetrics const& end_metrics = kv.second ;
 			for( std::size_t i = 0; i < end_metrics.length(); ++i ) {
+				if( have_tags ) {
+					(*sink) << kv.first ;
+				}
 				(*sink)
 					<< "end"
 					// 0 maps to -end_of_read_errors.size()
@@ -1268,9 +1287,9 @@ private:
 				read_result.bases_at_q
 			) ;
 			assert( inserted.second ) ;
-			assert( inserted.first->second.size() == 90 ) ;
+			assert( inserted.first->second.size() == 94 ) ;
 		} else {
-			for( std::size_t b = 0; b < 90; ++b ) {
+			for( std::size_t b = 0; b < 94; ++b ) {
 				(where->second)[b] += read_result.bases_at_q[b] ;
 			}
 		}
