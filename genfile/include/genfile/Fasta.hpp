@@ -30,7 +30,7 @@ namespace genfile {
 		typedef genfile::Chromosome Chromosome ;
 		typedef ContigSequence::const_iterator ConstSequenceIterator ;
 		//typedef std::pair< ConstSequenceIterator, ConstSequenceIterator > ConstSequenceRange ;
-		//typedef std::pair< genfile::GenomePositionRange, ConstSequenceRange > PositionedSequenceRange ;
+		//typedef std::pair< genfile::GenomePositionRange, ConstSequenceRange > ContigRange ;
 
 		struct ConstSequenceRange
 		{
@@ -59,35 +59,36 @@ namespace genfile {
 			ConstSequenceIterator m_end ;
 		} ;
 
-		struct PositionedSequenceRange
+		// represents a subrange of a contig.
+		struct ContigRange
 		{
-			PositionedSequenceRange( PositionedSequenceRange const& other ):
-				m_positions( other.m_positions ),
+			ContigRange( ContigRange const& other ):
+				m_range( other.m_range ),
 				m_length( other.m_length ),
 				m_sequence( other.m_sequence )
 			{}
 
-			PositionedSequenceRange(
-				genfile::GenomePositionRange const& positions,
+			ContigRange(
+				genfile::GenomePositionRange const& range,
 				ConstSequenceRange const& sequence
 			):
-				m_positions( positions ),
-				m_length( positions.end().position() - positions.start().position() ),
+				m_range( range ),
+				m_length( range.end().position() - range.start().position() ),
 				m_sequence( sequence )
 			{}
 
-			genfile::GenomePositionRange positions() const { return m_positions ; }
+			genfile::GenomePositionRange positions() const { return m_range ; }
 			std::size_t length() const { return m_length ; }
 			std::size_t size() const { return m_length ; }
 			ConstSequenceRange sequence() const { return m_sequence ; }
 
 		private:
-			genfile::GenomePositionRange const m_positions ;
+			genfile::GenomePositionRange const m_range ;
 			std::size_t const m_length ;
 			ConstSequenceRange const m_sequence ;
 		private:
-			PositionedSequenceRange() ;
-			PositionedSequenceRange& operator=( PositionedSequenceRange const& other ) ;
+			ContigRange() ;
+			ContigRange& operator=( ContigRange const& other ) ;
 		} ;
 		
 		typedef std::pair< std::pair< genfile::Position, genfile::Position >, ContigSequence > ChromosomeRangeAndSequence ;
@@ -125,13 +126,13 @@ namespace genfile {
 			genfile::Position end,
 			std::deque< char >* result
 		) const ;
-		PositionedSequenceRange get_sequence(
+		ContigRange get_sequence(
 			genfile::Chromosome const& name
 		) const ;
 		genfile::GenomePositionRange get_range(
 			genfile::Chromosome const& name
 		) const ;
-		PositionedSequenceRange get_sequence(
+		ContigRange get_sequence(
 			genfile::Chromosome const& name,
 			genfile::Position start,
 			genfile::Position end

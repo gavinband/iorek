@@ -325,7 +325,7 @@ private:
 		}
 
 
-		genfile::Fasta::PositionedSequenceRange const contig = fasta.get_sequence( contig_id ) ;
+		genfile::Fasta::ContigRange const contig = fasta.get_sequence( contig_id ) ;
 
 		std::string const& base_qualities = alignment.Qualities() ;  // ASCII-encoded base qualities
 

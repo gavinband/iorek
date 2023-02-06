@@ -115,7 +115,7 @@ private:
 		sink | "sequence_id" | "start" | "end" | "repeat" | "length" ;
 		for( auto sequence_id: sequence_ids ) {
 			auto progress_context = ui().get_progress_context( "Processing \"" + sequence_id + "\"" ) ;
-			genfile::Fasta::PositionedSequenceRange const& contig = fasta.get_sequence( sequence_id ) ;
+			genfile::Fasta::ContigRange const& contig = fasta.get_sequence( sequence_id ) ;
 			genfile::find_homopolymers_and_short_repeats(
 				contig.sequence().begin(),
 				contig.sequence().end(),

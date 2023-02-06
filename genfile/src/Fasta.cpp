@@ -266,7 +266,7 @@ namespace genfile {
 		genfile::Position end,
 		std::deque<char>* result
 	) const {
-		PositionedSequenceRange range = get_sequence( chromosome, start, end ) ;
+		ContigRange range = get_sequence( chromosome, start, end ) ;
 		result->resize( end - start, '.' ) ;
 
 		std::copy(
@@ -275,7 +275,7 @@ namespace genfile {
 		) ;
 	}
 
-	Fasta::PositionedSequenceRange
+	Fasta::ContigRange
 	Fasta::get_sequence( genfile::Chromosome const& chromosome ) const {
 		SequenceData::const_iterator where = m_data.find( chromosome ) ;
 		assert( where != m_data.end() ) ;
@@ -285,7 +285,7 @@ namespace genfile {
 		) ;
 	}
 
-	Fasta::PositionedSequenceRange
+	Fasta::ContigRange
 	Fasta::get_sequence( genfile::Chromosome const& chromosome, genfile::Position start, genfile::Position end ) const {
 		using namespace genfile::string_utils ;
 		assert( end >= start ) ;
@@ -312,7 +312,7 @@ namespace genfile {
 		genfile::Position actual_start = std::max( start, one_based_sequence_start ) ;
 		genfile::Position actual_end = std::min( end, one_based_sequence_end ) ;
 
-		return PositionedSequenceRange(
+		return ContigRange(
 			genfile::GenomePositionRange(
 				chromosome, actual_start, actual_end
 			),

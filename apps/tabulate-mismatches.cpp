@@ -469,7 +469,7 @@ namespace {
 
 		std::string const& read_sequence = alignment.Sequence() ;
 		std::string const contig_id = header.IDtoName( alignment.ChrID() ) ;
-		genfile::Fasta::PositionedSequenceRange const contig = fasta.get_sequence( contig_id ) ;
+		genfile::Fasta::ContigRange const contig = fasta.get_sequence( contig_id ) ;
 
 		//bool const count_matches = options().check( "-count-matches" ) ;
 

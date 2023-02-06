@@ -46,7 +46,7 @@ namespace genfile {
 		std::vector< std::string > const& sequence_ids = fasta.sequence_ids() ;
 		std::size_t count = 0 ;
 		for( auto sequence_id: sequence_ids ) {
-			genfile::Fasta::PositionedSequenceRange const& contig = fasta.get_sequence( sequence_id ) ;
+			genfile::Fasta::ContigRange const& contig = fasta.get_sequence( sequence_id ) ;
 			find_homopolymers_and_short_repeats(
 				contig.sequence().begin(),
 				contig.sequence().end(),

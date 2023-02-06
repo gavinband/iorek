@@ -412,7 +412,7 @@ private:
 		std::size_t sequence_length = 0 ;
 		std::vector< std::string > const& sequence_ids = fasta.sequence_ids() ;
 		for( std::size_t i = 0; i < sequence_ids.size(); ++i ) {
-			genfile::Fasta::PositionedSequenceRange p = fasta.get_sequence( sequence_ids[i] ) ;
+			genfile::Fasta::ContigRange p = fasta.get_sequence( sequence_ids[i] ) ;
 			std::string sequence( p.sequence().begin(), p.sequence().end() ) ; 
 			if( i == 0 ) {
 				sequence_length = sequence.size() ;
@@ -689,7 +689,7 @@ private:
 		std::size_t count = 0 ;
 		std::deque< char > sequence ;
 		for( auto& sequence_id: sequence_ids ) {
-			genfile::Fasta::PositionedSequenceRange p = fasta.get_sequence( sequence_id.spec() ) ;
+			genfile::Fasta::ContigRange p = fasta.get_sequence( sequence_id.spec() ) ;
 			s << (count>0 ? ",\n" : "" )
 				<< "{ \"name\": \""
 				<< sequence_id.id()
