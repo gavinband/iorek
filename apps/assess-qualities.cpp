@@ -115,17 +115,17 @@ public:
 	}
 
 private:
-	genfile::FastaMask::UniquePtr m_fasta_mask ;
+	genfile::Fasta::UniquePtr m_fasta ;
 
 private:
 
 	void unsafe_process() {
 		// Load fasta records
-		genfile::Fasta::UniquePtr fasta = genfile::Fasta::create() ;
+		m_fasta = genfile::Fasta::create() ;
 		{
 			std::string const& fasta_filename = options().get< std::string >( "-reference" ) ;
 			auto progress_context = ui().get_progress_context( "Loading sequences from \"" + fasta_filename + "\"" ) ;
-			fasta->add_sequences_from_file( fasta_filename, progress_context ) ;
+			m_fasta->add_sequences_from_file( fasta_filename, progress_context ) ;
 		}
 
 		// Load fasta records
@@ -145,7 +145,6 @@ private:
 
 		process_reads(
 			options().get_value< std::string >( "-reads" ),
-			*fasta,
 			&matches,
 			&mismatches
 		) ;
@@ -155,7 +154,6 @@ private:
 
 	void process_reads(
 		std::string const& filename,
-		genfile::Fasta const& fasta,
 		std::vector< int64_t >* matches,
 		std::vector< int64_t >* mismatches
 	) {
@@ -163,7 +161,6 @@ private:
 
 		process_reads(
 			filename,
-			fasta,
 			matches,
 			mismatches,
 			progress_context
@@ -190,7 +187,6 @@ private:
 
 	void process_reads(
 		std::string const& filename,
-		genfile::Fasta const& fasta,
 		std::vector< int64_t >* matches,
 		std::vector< int64_t >* mismatches,
 		std::function< void( std::size_t ) > progress_callback
@@ -241,7 +237,6 @@ private:
 		process_reads(
 			reader,
 			header,
-			fasta,
 			matches,
 			mismatches,
 			progress_callback
@@ -252,13 +247,12 @@ private:
 	void process_reads(
 		seqlib::BamReader reader,
 		seqlib::BamHeader header,
-		genfile::Fasta const& fasta,
 		std::vector< int64_t >* matches,
 		std::vector< int64_t >*  mismatches,
 		std::function< void( std::size_t ) > progress_callback
 	) {
 		int32_t const mq_threshold = options().get< int32_t >( "-mq" ) ;
-		
+
 		bool use_range = options().check( "-range" ) ;
 		genfile::GenomePositionRange range
 			= use_range
@@ -280,11 +274,8 @@ private:
 				analyse_alignment_base_qualities(
 					alignment,
 					header,
-					fasta,
-					// GB;
-					// You could replace this with a function like this:
-					// This is a 'callback' function.  It gets called inside the loop in 
-					// analyse_alignment_base_qualities for every match or mismatch.
+					// This is a callback function to get the results from the above function. 
+					// It will get called once for each matching/mismatching base in the data.
 					[&](
 						genfile::Chromosome const chromosome,
 						uint32_t const one_based_position,
@@ -312,7 +303,6 @@ private:
 	void analyse_alignment_base_qualities(
 		seqlib::BamRecord const& alignment,
 		seqlib::BamHeader const& header,
-		genfile::Fasta const& fasta,
 		// This is a 'callback' function to be called
 		// on every match or mismatch
 		std::function<
@@ -349,7 +339,7 @@ private:
 
 		std::string const& read_sequence = alignment.Sequence() ;
 		std::string const contig_id = header.IDtoName( alignment.ChrID() ) ;
-		if( !fasta.contains( contig_id ) ) {
+		if( !m_fasta->contains( contig_id ) ) {
 			throw genfile::BadArgumentError(
 				"IorekApplication::analyse_alignment_base_qualities()",
 				"contig_id=\"" + contig_id + "\"",
@@ -357,8 +347,7 @@ private:
 			) ;
 		}
 
-
-		genfile::Fasta::ContigRange const contig = fasta.get_sequence( contig_id ) ;
+		genfile::Fasta::ContigRange const contig = m_fasta->get_sequence( contig_id ) ;
 
 		std::string const& base_qualities = alignment.Qualities() ;  // ASCII-encoded base qualities
 
