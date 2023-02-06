@@ -120,37 +120,54 @@ private:
 private:
 
 	void unsafe_process() {
+		// Load fasta records
 		genfile::Fasta::UniquePtr fasta = genfile::Fasta::create() ;
 		{
 			std::string const& fasta_filename = options().get< std::string >( "-reference" ) ;
 			auto progress_context = ui().get_progress_context( "Loading sequences from \"" + fasta_filename + "\"" ) ;
 			fasta->add_sequences_from_file( fasta_filename, progress_context ) ;
 		}
-		
+
+		// Load fasta records
+
+
+		// Open output sink
 		statfile::BuiltInTypeStatSink::UniquePtr sink = statfile::BuiltInTypeStatSink::open(
 			options().get< std::string >( "-o" )
 		) ;
 
+		// Create place to store results 
 		// We store the results in two vectors each containin 100 zeros
 		// I think of these as bins for bq = 0, bq = 1, etc. 
 		// Note: base qualities can generally only go up to 96(ASCII character ~).
 		std::vector< int64_t > mismatches( 100, 0 ) ;
 		std::vector< int64_t > matches( 100, 0 ) ;
 
-		{
-			std::string const& filename = options().get_value< std::string >( "-reads" ) ;
-			auto progress_context = ui().get_progress_context( "Processing \"" + filename + "\"" ) ;
-
-			process_reads(
-				filename,
-				*fasta,
-				&matches,
-				&mismatches,
-				progress_context
-			) ;
-		}
+		process_reads(
+			options().get_value< std::string >( "-reads" ),
+			*fasta,
+			&matches,
+			&mismatches
+		) ;
 
 		output_results( matches, mismatches, *sink ) ;
+	}
+
+	void process_reads(
+		std::string const& filename,
+		genfile::Fasta const& fasta,
+		std::vector< int64_t >* matches,
+		std::vector< int64_t >* mismatches
+	) {
+		auto progress_context = ui().get_progress_context( "Processing \"" + filename + "\"" ) ;
+
+		process_reads(
+			filename,
+			fasta,
+			matches,
+			mismatches,
+			progress_context
+		) ;
 	}
 
 	void output_results(
@@ -228,7 +245,7 @@ private:
 			matches,
 			mismatches,
 			progress_callback
-			
+
 		) ;
 	}
 	
