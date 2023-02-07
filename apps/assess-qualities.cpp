@@ -29,6 +29,7 @@ namespace seqlib = SeqLib;
 #include "genfile/string_utils/slice.hpp"
 #include "genfile/Error.hpp"
 #include "genfile/Fasta.hpp"
+#include "genfile/FastaMask.hpp"
 #include "statfile/BuiltInTypeStatSink.hpp"
 
 // #define DEBUG 1
@@ -65,6 +66,12 @@ public:
 				" (These regions should have few copy number variants)" 
 				" Alternatively this can be the name of a file containing a list of regions."
 			)
+			.set_takes_single_value()
+		;
+		options[ "-mask" ]
+			.set_description( "Specify a BED file of regions to mask out of the analysis."
+			" The file should have no column names and should have contig, start and end columns, "
+			" expressed in 0-based right-closed form." )
 			.set_takes_single_value()
 		;
 		options[ "-reference" ]
@@ -115,6 +122,7 @@ public:
 
 private:
 	genfile::Fasta::UniquePtr m_fasta ;
+	genfile::FastaMask::UniquePtr m_mask ;
 
 private:
 
@@ -127,8 +135,13 @@ private:
 			m_fasta->add_sequences_from_file( fasta_filename, progress_context ) ;
 		}
 
-		// Load fasta records
-
+		m_mask = genfile::FastaMask::create( *m_fasta ) ;
+		if( options().check( "-mask" )) {
+			load_mask(
+				options().get< std::string >( "-mask" ),
+				&(*m_mask)
+			) ;
+		}
 
 		// Open output sink
 		statfile::BuiltInTypeStatSink::UniquePtr sink = statfile::BuiltInTypeStatSink::open(
@@ -149,6 +162,44 @@ private:
 		) ;
 
 		output_results( matches, mismatches, *sink ) ;
+	}
+
+	void load_mask(
+		std::string const& filename,
+		genfile::FastaMask* mask
+	) {
+		assert( mask ) ;
+		std::auto_ptr< std::istream >
+			in = genfile::open_text_file_for_input( filename ) ;
+
+		using genfile::string_utils::slice ;
+		using genfile::string_utils::to_repr ;
+		using genfile::string_utils::to_string ;
+		{
+			std::string line ;
+			std::size_t count = 0 ;
+			auto progress_context = ui().get_progress_context( "Loading mask from \"" + filename + "\"" ) ;
+			while( std::getline( *in, line )) {
+				++count ;
+				std::vector< slice > elts = slice( line ).split( "\t" ) ;
+				if( elts.size() != 3 ) {
+					throw genfile::BadArgumentError(
+						"IorekApplication::load_mask()",
+						"filename=\"" + filename + "\"",
+						(
+							"Wrong number of columns on line "
+							+ to_string( count )
+							+ " (" + to_string( elts.size() ) + ", expected 3)."
+						)
+					) ;
+				}
+				uint32_t start = std::max( to_repr< int32_t >( elts[1] ), int32_t(0) ) ;
+				uint32_t end = std::max( to_repr< int32_t >( elts[2] ), int32_t(0) ) ;
+				std::cerr << "MASKED: " << elts[0] << ":" << start << "-" << end << "\n" ;
+				mask->set_zero_based( elts[0], start, end, genfile::FastaMask::eMasked ) ;
+				progress_context( count ) ;
+			}
+		}
 	}
 
 	void process_reads(
@@ -282,7 +333,13 @@ private:
 						int base_quality
 					) {
 						assert( base_quality < 100 ) ;
-						if( !use_range || range.contains( chromosome, one_based_position )) {
+						// only process the base if it is in the range (if -range is specified)
+						// and it is not in the mask.						
+						std::cerr << chromosome << ":" << one_based_position << ":  mask = " << m_mask->at_one_based( chromosome, one_based_position ) << ".\n" ;
+						if(
+							(m_mask->at_one_based( chromosome, one_based_position ) == genfile::FastaMask::eUnmasked)
+							&& (!use_range || range.contains( chromosome, one_based_position ))
+						) {
 							if( type == eMismatch ) { // 'X'
 								++(*mismatches)[base_quality] ;
 							} else if( type == eMatch ) { // '='

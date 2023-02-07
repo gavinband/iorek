@@ -30,9 +30,23 @@ namespace genfile {
 		Value at_zero_based( std::string chromosome, uint32_t position ) const ;
 
 	private:
+
+		struct ContigMask {
+			ContigMask( uint32_t length = 0 ) ;
+			ContigMask( ContigMask const& other ) ;
+			ContigMask& operator=( ContigMask const& other ) ;
+
+			void set_zero_based( uint32_t lower, uint32_t upper, Value value ) ; // half-open interval
+			Value at_zero_based( uint32_t position ) const ;
+
+		private:
+			uint32_t m_length ;
+			std::vector< uint64_t > m_data ;
+		} ;
+
 		typedef std::map<
 			std::string,
-			std::vector< uint64_t >
+			ContigMask
 		> Mask ;
 		Mask m_mask ;
 
