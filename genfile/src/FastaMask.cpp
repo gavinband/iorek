@@ -70,13 +70,11 @@ namespace genfile {
 		assert( lower <= upper ) ;
 		lower = std::min( lower, m_length ) ;
 		upper = std::min( upper, m_length ) ;
-		std::cerr << lower << " ---- " << upper << ".\n" ;
 		for( std::size_t pos = lower; pos < upper; ++pos ) {
 			std::size_t const word = pos/64 ;
 			std::size_t const bit = pos % 64 ;
 			uint64_t const bitmask = (value << bit) ;
 			m_data[word] |= bitmask ;
-			std::cerr << word << ":" << bit << ": " << m_data[word] << "\n" ;
 		}
 	}
 
