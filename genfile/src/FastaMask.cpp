@@ -52,7 +52,7 @@ namespace genfile {
 
 	FastaMask::ContigMask::ContigMask( uint32_t length ):
 		m_length( length ),
-		m_data( length, 0ul )
+		m_data( (length+63) / 64, 0ul )
 	{}
 
 	FastaMask::ContigMask::ContigMask( FastaMask::ContigMask const& other ):

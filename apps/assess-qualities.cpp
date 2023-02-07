@@ -195,7 +195,6 @@ private:
 				}
 				uint32_t start = std::max( to_repr< int32_t >( elts[1] ), int32_t(0) ) ;
 				uint32_t end = std::max( to_repr< int32_t >( elts[2] ), int32_t(0) ) ;
-				std::cerr << "MASKED: " << elts[0] << ":" << start << "-" << end << "\n" ;
 				mask->set_zero_based( elts[0], start, end, genfile::FastaMask::eMasked ) ;
 				progress_context( count ) ;
 			}
@@ -335,7 +334,7 @@ private:
 						assert( base_quality < 100 ) ;
 						// only process the base if it is in the range (if -range is specified)
 						// and it is not in the mask.						
-						std::cerr << chromosome << ":" << one_based_position << ":  mask = " << m_mask->at_one_based( chromosome, one_based_position ) << ".\n" ;
+						//std::cerr << chromosome << ":" << one_based_position << ":  mask = " << m_mask->at_one_based( chromosome, one_based_position ) << ".\n" ;
 						if(
 							(m_mask->at_one_based( chromosome, one_based_position ) == genfile::FastaMask::eUnmasked)
 							&& (!use_range || range.contains( chromosome, one_based_position ))
