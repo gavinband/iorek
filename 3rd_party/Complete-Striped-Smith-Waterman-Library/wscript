@@ -1,0 +1,12 @@
+import os.path
+
+def configure( conf ):
+	conf.define( "HAVE_CSSW", 1 )
+
+def build( bld ):
+	bld.stlib(
+		target = 'cssw',
+		source = [ 'src/ssw.c', 'src/ssw_cpp.cpp' ],
+		includes = './include',
+		export_includes = './include',
+	)
