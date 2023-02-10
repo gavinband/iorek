@@ -27,7 +27,7 @@ namespace statfile {
 		
 		BuiltInTypeStatSinkChain() ;
 		~BuiltInTypeStatSinkChain() ;
-		void add_sink( std::auto_ptr< BuiltInTypeStatSink > sink ) ;
+		void add_sink( BuiltInTypeStatSink::UniquePtr sink ) ;
 		std::size_t index_of_current_sink() const ;
 		void add_column_impl( std::string const& name ) ;
 		operator bool() const ;

@@ -20,7 +20,7 @@ namespace statfile {
 	}
 	struct BuiltInTypeStatSink: public Base
 	{
-		typedef std::auto_ptr< BuiltInTypeStatSink > UniquePtr ;
+		typedef std::unique_ptr< BuiltInTypeStatSink > UniquePtr ;
 		static UniquePtr open( std::string const& filename ) ;
 		using Base::write_value ;
 		
@@ -37,7 +37,7 @@ namespace statfile {
 	
 	struct NullBuiltInTypeStatSink: public ColumnNamingStatSink< BuiltInTypeStatSink >
 	{
-		static std::auto_ptr< BuiltInTypeStatSink > open() ;
+		static BuiltInTypeStatSink::UniquePtr open() ;
 		
 		operator bool() const { return 0 ; }
 		

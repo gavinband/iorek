@@ -30,7 +30,7 @@ namespace statfile {
 		}
 	}
 
-	void BuiltInTypeStatSinkChain::add_sink( std::auto_ptr< BuiltInTypeStatSink > sink ) {
+	void BuiltInTypeStatSinkChain::add_sink( BuiltInTypeStatSink::UniquePtr sink ) {
 		m_sinks.push_back( sink.release() ) ;
 	}
 

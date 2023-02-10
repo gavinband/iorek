@@ -11,8 +11,8 @@
 #include "statfile/DelimitedStatSink.hpp"
 
 namespace statfile {
-	std::auto_ptr< BuiltInTypeStatSink > BuiltInTypeStatSink::open( std::string const& filename ) {
-		std::auto_ptr< statfile::BuiltInTypeStatSink > result ;
+	BuiltInTypeStatSink::UniquePtr BuiltInTypeStatSink::open( std::string const& filename ) {
+		BuiltInTypeStatSink::UniquePtr result ;
 		FileFormatType format = get_file_format_type_indicated_by_filename( filename ) ;
 		
 		if( format == statfile::e_CommaDelimitedFormat ) {
@@ -31,8 +31,8 @@ namespace statfile {
 		return result ;
 	}
 	
-	std::auto_ptr< BuiltInTypeStatSink > NullBuiltInTypeStatSink::open() {
-		return std::auto_ptr< BuiltInTypeStatSink >( new NullBuiltInTypeStatSink ) ;
+	BuiltInTypeStatSink::UniquePtr NullBuiltInTypeStatSink::open() {
+		return BuiltInTypeStatSink::UniquePtr( new NullBuiltInTypeStatSink ) ;
 	}
 }
 
