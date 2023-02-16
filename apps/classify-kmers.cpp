@@ -582,7 +582,7 @@ private:
 				// Now read kmers into queues.
 				// There is one queue per thread and gets kmers destined for ith
 				// hash submap.
-				read_into_queues(
+				read_kmers_into_queues(
 					k,
 					multiplicity_threshold,
 					reader,
@@ -613,7 +613,7 @@ private:
 	}
 	
 	template< typename Iterator >
-	void read_into_queues(
+	void read_kmers_into_queues(
 		unsigned int const k,
 		uint64_t const multiplicity_threshold,
 		Iterator it,
@@ -653,7 +653,7 @@ private:
 				}
 			}
 		}
-		ui().logger() << "++ read_into_queue(): Read " << count << " kmers in total.\n" ;
+		ui().logger() << "++ read_kmers_into_queues(): Read " << count << " kmers in total.\n" ;
 	}
 	
 
