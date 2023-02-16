@@ -8,9 +8,9 @@
 #define SVELTE_APPS_RANGECOVERAGE_HPP
 
 #include <vector>
-#include "svelte/HalfOpenRange.hpp"
+#include "iorek/HalfOpenRange.hpp"
 
-namespace svelte {
+namespace iorek {
 	struct HalfOpenRangeLevel {
 		HalfOpenRangeLevel():
 			m_range(),

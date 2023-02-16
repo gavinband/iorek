@@ -7,19 +7,19 @@
 
 #include <Eigen/Core>
 #include "boost/unordered_map.hpp"
-#include "svelte/HalfOpenRange.hpp"
-#include "svelte/HalfOpenRangeLevel.hpp"
-#include "svelte/CoverageProfile.hpp"
-#include "svelte/GaussianCoverageLoglikelihood.hpp"
-#include "svelte/SVPopulationModel.hpp"
-#include "svelte/MixtureCoverageLoglikelihood.hpp"
+#include "iorek/HalfOpenRange.hpp"
+#include "iorek/HalfOpenRangeLevel.hpp"
+#include "iorek/CoverageProfile.hpp"
+#include "iorek/GaussianCoverageLoglikelihood.hpp"
+#include "iorek/SVPopulationModel.hpp"
+#include "iorek/MixtureCoverageLoglikelihood.hpp"
 
 //#define DEBUG 1
 #if DEBUG
 #include <iostream>
 #endif
 
-namespace svelte {
+namespace iorek {
 	MixtureCoverageLoglikelihood::MixtureCoverageLoglikelihood(
 		Eigen::VectorXd const& means,
 		Eigen::VectorXd const& variances,

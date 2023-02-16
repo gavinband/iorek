@@ -10,11 +10,11 @@
 #include <vector>
 #include <map>
 #include <functional>
-#include "svelte/HalfOpenRange.hpp"
-#include "svelte/HalfOpenRangeLevel.hpp"
-#include "svelte/CoverageProfile.hpp"
+#include "iorek/HalfOpenRange.hpp"
+#include "iorek/HalfOpenRangeLevel.hpp"
+#include "iorek/CoverageProfile.hpp"
 
-namespace svelte {
+namespace iorek {
 	// An SVPopulationModel consists of a set of coverage profiles (to be thought
 	// of as profiles from individual haplotypes)
 	// together with frequencies summing to 1.

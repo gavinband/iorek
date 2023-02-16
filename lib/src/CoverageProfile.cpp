@@ -8,10 +8,10 @@
 #include <sstream>
 #include <iostream>
 #include <iomanip>
-#include "svelte/HalfOpenRangeLevel.hpp"
-#include "svelte/CoverageProfile.hpp"
+#include "iorek/HalfOpenRangeLevel.hpp"
+#include "iorek/CoverageProfile.hpp"
 
-namespace svelte {
+namespace iorek {
 	std::string CoverageProfile::toString() const {
 		std::ostringstream result ;
 		for( std::size_t i = 0; i < m_data.size(); ++i ) {

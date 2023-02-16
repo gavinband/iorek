@@ -10,12 +10,12 @@
 #include <vector>
 #include <numeric>
 
-#include "svelte/HalfOpenRange.hpp"
-#include "svelte/HalfOpenRangeLevel.hpp"
-#include "svelte/CoverageProfile.hpp"
-#include "svelte/SVPopulationModel.hpp"
+#include "iorek/HalfOpenRange.hpp"
+#include "iorek/HalfOpenRangeLevel.hpp"
+#include "iorek/CoverageProfile.hpp"
+#include "iorek/SVPopulationModel.hpp"
 
-namespace svelte {
+namespace iorek {
 	
 	std::string SVPopulationModel::toString() const {
 		std::ostringstream str ;

@@ -25,11 +25,11 @@
 #include "statfile/BuiltInTypeStatSource.hpp"
 #include "statfile/BuiltInTypeStatSink.hpp"
 
-#include "svelte/GaussianCoverageLoglikelihood.hpp"
-#include "svelte/MixtureCoverageLoglikelihood.hpp"
-#include "svelte/CoverageProfile.hpp"
-#include "svelte/SVHaplotype.hpp"
-#include "svelte/SVPopulationModel.hpp"
+#include "iorek/GaussianCoverageLoglikelihood.hpp"
+#include "iorek/MixtureCoverageLoglikelihood.hpp"
+#include "iorek/CoverageProfile.hpp"
+#include "iorek/SVHaplotype.hpp"
+#include "iorek/SVPopulationModel.hpp"
 
 #define DEBUG 0
 
@@ -111,8 +111,8 @@ public:
 
 private:
 
-	typedef svelte::CoverageProfile CoverageProfile ;
-	typedef svelte::SVHaplotype SVHaplotype ;
+	typedef iorek::CoverageProfile CoverageProfile ;
+	typedef iorek::SVHaplotype SVHaplotype ;
 	typedef std::map< CoverageProfile, std::vector< SVHaplotype > > ProfileSVMap ;
 	ProfileSVMap m_profileHaplotypeMap ;
 	
@@ -156,10 +156,10 @@ private:
 		std::cerr << "\n...processing...\n\n" ;
 
 		SVHaplotype haplotype( 0, bins.size() ) ;
-		svelte::SVPopulationModel referenceModel( haplotype.toProfile() ) ;
+		iorek::SVPopulationModel referenceModel( haplotype.toProfile() ) ;
 		m_profileHaplotypeMap[ haplotype.toProfile() ].push_back( haplotype ) ;
 
-		svelte::MixtureCoverageLoglikelihood ll(
+		iorek::MixtureCoverageLoglikelihood ll(
 			means / ploidy,
 			variances / ploidy,
 			coverage
@@ -167,7 +167,7 @@ private:
 
 		Eigen::MatrixXd theLLs ;
 		Eigen::VectorXd totalLLs( means.size() ) ;
-		svelte::SVPopulationModel bestPopulationModel = referenceModel ;
+		iorek::SVPopulationModel bestPopulationModel = referenceModel ;
 
 		boost::math::geometric geometric( options().get< double >( "-penalty" )) ;
 		using boost::math::pdf ;
@@ -178,7 +178,7 @@ private:
 				std::set< SVHaplotype > visited_haplotypes ;
 				std::set< CoverageProfile > visited_profiles ;
 				
-				std::vector< svelte::SVPopulationModel > new_models ;
+				std::vector< iorek::SVPopulationModel > new_models ;
 				new_models.reserve( 1000000 ) ;
 
 				// Always include this one
@@ -186,7 +186,7 @@ private:
 
 				// Try removing one
 				for( std::size_t i = 1; i < referenceModel.profiles().size(); ++i ) {
-					svelte::SVPopulationModel model = referenceModel ;
+					iorek::SVPopulationModel model = referenceModel ;
 					model.remove( referenceModel.profiles()[i] ) ;
 					new_models.push_back( model ) ;
 				}
@@ -197,7 +197,7 @@ private:
 					sample_frequencies(
 						referenceModel,
 						200,
-						[&]( svelte::SVPopulationModel const& model ) {
+						[&]( iorek::SVPopulationModel const& model ) {
 							new_models.push_back( model ) ;
 						}
 					) ;
@@ -224,14 +224,14 @@ private:
 							
 							// add
 							for( std::size_t f = 5; f <= 95; f += 10 ) {
-								svelte::SVPopulationModel model = referenceModel ;
+								iorek::SVPopulationModel model = referenceModel ;
 								model.add( profile, double(f)/100 ) ;
 								new_models.push_back( model ) ;
 							}
 
 							// replace
 							for( std::size_t i = 1 ; i < referenceModel.profiles().size(); ++i ) {
-								svelte::SVPopulationModel model = referenceModel ;
+								iorek::SVPopulationModel model = referenceModel ;
 								model.replace( i, profile ) ;
 								new_models.push_back( model ) ;
 							}
@@ -320,7 +320,7 @@ private:
 		}
 	}
 	
-	// Read an output file from svelte.
+	// Read an output file from iorek.
 	void read_svelte_output(
 		statfile::BuiltInTypeStatSource& source,
 		std::vector< std::string >* samples,
@@ -388,7 +388,7 @@ private:
 	}
 	
 	void generate_recombinant_haplotypes_from_profiles(
-		std::vector< svelte::CoverageProfile > const& profiles,
+		std::vector< iorek::CoverageProfile > const& profiles,
 		ProfileSVMap const& profileHaplotypeMap,
 		std::function< void( SVHaplotype const& ) > callback
 	) {
@@ -411,9 +411,9 @@ private:
 	}
 
 	void sample_frequencies(
-		svelte::SVPopulationModel const& model,
+		iorek::SVPopulationModel const& model,
 		std::size_t N,
-		std::function< void( svelte::SVPopulationModel const& ) > callback
+		std::function< void( iorek::SVPopulationModel const& ) > callback
 	) {
 		typedef boost::random::uniform_int_distribution< std::size_t > Uniform ;
 		typedef boost::random::beta_distribution< double > Beta ;
@@ -434,7 +434,7 @@ private:
 					new_frequencies[k] /= sumOfOthers ;
 				}
 			}
-			svelte::SVPopulationModel newModel = model ;
+			iorek::SVPopulationModel newModel = model ;
 			newModel.set_frequencies( new_frequencies ) ;
 			callback( newModel ) ;
 		}
@@ -456,12 +456,12 @@ private:
 	}
 
 	void sample_recombinant_haplotypes_from_profiles(
-		svelte::SVPopulationModel const& model,
+		iorek::SVPopulationModel const& model,
 		ProfileSVMap const& profileHaplotypeMap,
 		std::size_t const N,
 		std::function< void( SVHaplotype const& ) > callback
 	) {
-		std::vector< svelte::CoverageProfile > const& profiles = model.profiles() ;
+		std::vector< iorek::CoverageProfile > const& profiles = model.profiles() ;
 		std::vector< double > const frequencies = model.frequencies() ;
 		typedef boost::random::uniform_int_distribution< std::size_t > UniformInt ;
 		for( std::size_t i = 0; i < N; ++i ) {

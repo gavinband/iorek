@@ -5,11 +5,11 @@
 //					http://www.boost.org/LICENSE_1_0.txt)
 
 #include <sstream>
-#include "svelte/HalfOpenRange.hpp"
-#include "svelte/HalfOpenRangeLevel.hpp"
-#include "svelte/SVHaplotype.hpp"
+#include "iorek/HalfOpenRange.hpp"
+#include "iorek/HalfOpenRangeLevel.hpp"
+#include "iorek/SVHaplotype.hpp"
 
-namespace svelte {
+namespace iorek {
 	// size of this haplotype (considered as a sequence)
 	std::size_t SVHaplotype::size() const {
 		std::size_t result = 0 ;

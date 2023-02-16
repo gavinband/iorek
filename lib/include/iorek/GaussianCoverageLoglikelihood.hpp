@@ -8,11 +8,11 @@
 #define SVELTE_APPS_GAUSSIANCOVERAGELOGLIKELIHOOD_HPP
 
 #include <Eigen/Core>
-#include "svelte/HalfOpenRange.hpp"
-#include "svelte/HalfOpenRangeLevel.hpp"
-#include "svelte/CoverageProfile.hpp"
+#include "iorek/HalfOpenRange.hpp"
+#include "iorek/HalfOpenRangeLevel.hpp"
+#include "iorek/CoverageProfile.hpp"
 
-namespace svelte {
+namespace iorek {
 
 	struct GaussianCoverageLoglikelihood {
 	public:

@@ -6,11 +6,11 @@
 
 #include <vector>
 #include <sstream>
-#include "svelte/SVPopulationModel.hpp"
+#include "iorek/SVPopulationModel.hpp"
 
 #include "catch.hpp"
 
-using namespace svelte ;
+using namespace iorek ;
 
 TEST_CASE( "SVPopulationModel:construction" ) {
 	REQUIRE( SVPopulationModel(0,0).toString() == "{[0,0):1:1}" ) ;

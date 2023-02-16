@@ -9,9 +9,9 @@
 
 #include <vector>
 #include <string>
-#include "svelte/HalfOpenRangeLevel.hpp"
+#include "iorek/HalfOpenRangeLevel.hpp"
 
-namespace svelte {
+namespace iorek {
 	struct CoverageProfile {
 	public:
 		CoverageProfile():

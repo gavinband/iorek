@@ -6,11 +6,11 @@
 
 #include <vector>
 #include <sstream>
-#include "svelte/SVHaplotype.hpp"
+#include "iorek/SVHaplotype.hpp"
 
 #include "catch.hpp"
 
-using namespace svelte ;
+using namespace iorek ;
 
 TEST_CASE( "SVHaplotype:construction" ) {
 	REQUIRE( SVHaplotype().toString() == "" ) ;

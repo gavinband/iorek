@@ -9,7 +9,7 @@
 
 #include <cassert>
 
-namespace svelte {
+namespace iorek {
 	
 	// model a half-open-range [start,end)]
 	struct HalfOpenRange {

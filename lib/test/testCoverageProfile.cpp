@@ -6,11 +6,11 @@
 
 #include <vector>
 #include <sstream>
-#include "svelte/CoverageProfile.hpp"
+#include "iorek/CoverageProfile.hpp"
 
 #include "catch.hpp"
 
-using namespace svelte ;
+using namespace iorek ;
 
 TEST_CASE( "CoverageProfile:construction" ) {
 	REQUIRE( CoverageProfile(0,0,0).toString() == "[0,0):0" ) ;

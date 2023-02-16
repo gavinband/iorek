@@ -10,13 +10,13 @@
 #include <map>
 #include <Eigen/Core>
 #include <boost/unordered_map.hpp>
-#include "svelte/HalfOpenRange.hpp"
-#include "svelte/HalfOpenRangeLevel.hpp"
-#include "svelte/CoverageProfile.hpp"
-#include "svelte/GaussianCoverageLoglikelihood.hpp"
-#include "svelte/SVPopulationModel.hpp"
+#include "iorek/HalfOpenRange.hpp"
+#include "iorek/HalfOpenRangeLevel.hpp"
+#include "iorek/CoverageProfile.hpp"
+#include "iorek/GaussianCoverageLoglikelihood.hpp"
+#include "iorek/SVPopulationModel.hpp"
 
-namespace svelte {
+namespace iorek {
 	struct MixtureCoverageLoglikelihood {
 		typedef Eigen::MatrixXd Matrix ;
 		typedef Eigen::VectorXd Vector ;

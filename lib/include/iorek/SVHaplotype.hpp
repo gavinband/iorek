@@ -7,11 +7,11 @@
 #ifndef SVELTE_APPS_SVHAPLOTYPE_HPP
 #define SVELTE_APPS_SVHAPLOTYPE_HPP
 
-#include "svelte/HalfOpenRange.hpp"
-#include "svelte/HalfOpenRangeLevel.hpp"
-#include "svelte/CoverageProfile.hpp"
+#include "iorek/HalfOpenRange.hpp"
+#include "iorek/HalfOpenRangeLevel.hpp"
+#include "iorek/CoverageProfile.hpp"
 
-namespace svelte {
+namespace iorek {
 
 	// A SVHaplotype conceptually models a finite sequence of integers from some
 	// contiguous range e.g. 0, 1, ....., N

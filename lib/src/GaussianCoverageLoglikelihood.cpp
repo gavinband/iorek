@@ -5,17 +5,17 @@
 //					http://www.boost.org/LICENSE_1_0.txt)
 
 #include <Eigen/Core>
-#include "svelte/HalfOpenRange.hpp"
-#include "svelte/HalfOpenRangeLevel.hpp"
-#include "svelte/CoverageProfile.hpp"
-#include "svelte/GaussianCoverageLoglikelihood.hpp"
+#include "iorek/HalfOpenRange.hpp"
+#include "iorek/HalfOpenRangeLevel.hpp"
+#include "iorek/CoverageProfile.hpp"
+#include "iorek/GaussianCoverageLoglikelihood.hpp"
 
 // #define DEBUG 1
 #if DEBUG
 #include <iostream>
 #endif
 
-namespace svelte {
+namespace iorek {
 
 	GaussianCoverageLoglikelihood::GaussianCoverageLoglikelihood(
 		Eigen::VectorXd const& means,
