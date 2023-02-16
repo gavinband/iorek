@@ -169,6 +169,10 @@ private:
 			&m_tags
 		) ;
 
+		if( std::find( m_tags.begin(), m_tags.end(), "NA" ) == m_tags.end() ) {
+			m_tags.push_back( "NA" ) ;
+		}
+
 		{
 			ui().logger() << "++ Inspecting reads from \"" << options().get< std::string >( "-reads" ) << "\"...\n" ;
 			boost::timer timer ;
