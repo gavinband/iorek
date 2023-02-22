@@ -6,6 +6,7 @@ def configure( conf ):
 def build( bld ):
 	bld.stlib(
 		target = 'ssw',
+		features = "cxx",
 		source = [ 'src/ssw.c', 'src/ssw_cpp.cpp' ],
 		includes = './include',
 		export_includes = './include',

@@ -1,0 +1,28 @@
+import os.path
+
+def configure( conf ):
+	conf.define( "HAVE_WFA2", 1 )
+
+def build( bld ):
+	bld.stlib(
+		target = 'wfa2',
+		features = 'c',
+		source = (
+			bld.path.ant_glob( "alignment/*.c" )
+			+ bld.path.ant_glob( "wavefront/*.c" )
+		),
+		includes = './include',
+		export_includes = './include',
+		ccflags = [ '-fno-omit-frame-pointer', '-fno-common' ]
+	)
+	bld.stlib(
+		target = 'wfa2cpp',
+		features = "cxx",
+		source = [ 'bindings/cpp/WFAligner.cpp' ],
+		includes = './include',
+		export_includes = './include',
+		ccflags = [ '-fno-omit-frame-pointer', '-fno-common' ],
+		uselib = 'wfa2'
+	)
+
+

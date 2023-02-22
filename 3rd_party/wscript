@@ -9,7 +9,8 @@ subdirs = [
 	'jellyfish-2.3.0',
 	'parallel-hashmap',
 	'concurrentqueue',
-	'Complete-Striped-Smith-Waterman-Library'
+	'Complete-Striped-Smith-Waterman-Library',
+	'WFA2-lib'
 ]
 
 def configure( cfg ):
