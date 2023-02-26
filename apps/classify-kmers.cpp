@@ -42,9 +42,9 @@ namespace seqlib = SeqLib;
 
 #include "jellyfish/jellyfish.hpp"
 
-#include "parallel_hashmap/phmap.h"
-#include "parallel_hashmap/meminfo.h"
 #include "concurrentqueue/concurrentqueue.h"
+#include "parallel_hashmap/meminfo.h"
+
 #include "iorek/kmer/load_kmers_from_jf_threaded.hpp"
 
 /*
@@ -293,11 +293,8 @@ namespace {
 	inline int get_quality_from_char( char const c ) {
 		return int(c - 33) ;
 	}
-	
-
 }
 
- 
 struct ClassifyKmerApplication: public appcontext::ApplicationContext
 {
 public:
@@ -373,9 +370,12 @@ private:
 
 			// Construct sinks in reverse order.  If outputting to stdout, this makes them output
 			// in the right order.
-			auto quality_sink = statfile::BuiltInTypeStatSink::open( options().get< std::string >( "-oq" ) ) ;
-			auto position_sink = statfile::BuiltInTypeStatSink::open( options().get< std::string >( "-op" ) ) ;
-			auto read_sink = statfile::BuiltInTypeStatSink::open( options().get< std::string >( "-or" ) ) ;
+			// by_quality_sink: count of bases at each quality
+			auto by_quality_sink = statfile::BuiltInTypeStatSink::open( options().get< std::string >( "-oq" ) ) ;
+			// by_position_sink: metrics per each position at start or end of reads
+			auto by_position_sink = statfile::BuiltInTypeStatSink::open( options().get< std::string >( "-op" ) ) ;
+			// by_read_sink: metrics per each read
+			auto by_read_sink = statfile::BuiltInTypeStatSink::open( options().get< std::string >( "-or" ) ) ;
 
 			std::auto_ptr< std::istream >
 				fastq = genfile::open_text_file_for_input( options().get< std::string >( "-reads" ) ) ;
@@ -385,9 +385,9 @@ private:
 				m_kmers,
 				m_k,
 				base_quality_threshold,
-				*read_sink,
-				*position_sink,
-				*quality_sink
+				*by_read_sink,
+				*by_position_sink,
+				*by_quality_sink
 			) ;
 			double end_time = timer.elapsed() ;
 			ui().logger() << "++ Ok, processed " << number_of_reads << " reads in " << (end_time - start_time) << " seconds.\n" ;
@@ -483,11 +483,9 @@ private:
 	) {
 		std::size_t const number_of_threads = options().get< std::size_t >( "-threads" ) ;
 
-		auto progress = ui().get_progress_context( "Examining reads" ) ;
-
 		std::size_t count = 0 ;
 
-		std::cerr << "process_read(): constructing " << number_of_threads << " worker threads...\n" ;
+		ui().logger() << "process_read(): constructing " << number_of_threads << " worker threads...\n" ;
 		std::vector< std::thread > threads ;
 		{
 			ReadQueue read_queue( 2048 ) ;
@@ -511,7 +509,6 @@ private:
 			}
 			std::cerr << "process_read(): constructing output thread...\n" ;
 
-			std::size_t const length_to_track_at_read_ends = options().get< std::size_t >( "-read-end-length" ) ;
 			threads.push_back(
 				std::thread(
 					&ClassifyKmerApplication::process_read_results,
@@ -520,12 +517,15 @@ private:
 					&read_sink,
 					&position_sink,
 					&quality_sink,
-					length_to_track_at_read_ends,
+					options().get< std::size_t >( "-read-end-length" ),
 					&quit
 				)
 			) ;
 
 			std::cerr << "process_read(): processing reads...\n" ;
+
+			auto progress = ui().get_progress_context( "Examining reads" ) ;
+
 			Read read ;
 			std::string line ;
 			std::size_t l = 0 ;
