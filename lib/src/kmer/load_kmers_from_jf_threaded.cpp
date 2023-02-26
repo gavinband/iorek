@@ -10,7 +10,6 @@
 
 #include "jellyfish/jellyfish.hpp"
 #include "parallel_hashmap/phmap.h"
-#include "parallel_hashmap/meminfo.h"
 #include "concurrentqueue/concurrentqueue.h"
 
 #include "genfile/Error.hpp"
@@ -108,8 +107,8 @@ namespace iorek {
 			ParallelHashSet* result,
 			std::size_t number_of_threads,
 			std::function< void (std::size_t) > progress_callback,
-			uint64_t multiplicity_threshold,
-			std::size_t max_kmers
+			uint64_t const multiplicity_threshold,
+			std::size_t const max_kmers
 		) {
 			std::ifstream ifs( filename ) ;
 			jellyfish::file_header header( ifs ) ;

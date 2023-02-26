@@ -13,8 +13,6 @@
 
 #include "parallel_hashmap/phmap.h"
 
-#define DEBUG 1
-
 namespace iorek {
 	namespace kmer {
 		typedef phmap::parallel_flat_hash_set<
@@ -31,9 +29,8 @@ namespace iorek {
 			ParallelHashSet* destination,
 			std::size_t number_of_threads,
 			std::function< void (std::size_t) > progress_callback,
-			uint64_t lower_multiplicity_threshold = 0,
-			std::size_t max_kmers = std::numeric_limits< std::size_t >::max(),
-			bool verbose = false
+			uint64_t const lower_multiplicity_threshold = 0,
+			std::size_t const max_kmers = std::numeric_limits< std::size_t >::max()
 		) ;
 	}
 }

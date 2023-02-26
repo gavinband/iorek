@@ -139,73 +139,9 @@ public:
 } ;
 
 namespace {
-	typedef phmap::parallel_flat_hash_map< uint64_t, uint16_t > ParallelHashMap ;
-	struct identity_hash {
-		std::size_t operator()( uint64_t const value ) { return value ; }
-	} ;
-	typedef phmap::flat_hash_set<uint64_t> FlatHashSet ;
-
-	typedef phmap::parallel_flat_hash_set<
-		uint64_t,
-		phmap::priv::hash_default_hash<uint64_t>,
-		phmap::priv::hash_default_eq<uint64_t>,
-		phmap::priv::Allocator<uint64_t>,
-		5, // 2^(this number) of submaps
-		std::mutex
-	> ParallelFlatHashSet ;
-
-	typedef jellyfish::cooperative::hash_counter<jellyfish::mer_dna> JellyfishHashMap ; 
-
-	// HashSet in actual use.
-	//typedef FlatHashSet HashSet ;
-	typedef ParallelFlatHashSet HashSet ;
-
+	typedef iorek::kmer::ParallelHashSet HashSet ;
 	typedef moodycamel::ConcurrentQueue< uint64_t > Queue ;
 
-	template< typename HashMap >
-	void insert_kmer_threaded(
-		std::size_t const k,
-		Queue* queue,
-		HashMap* result,
-		std::size_t const thread_index,
-		std::atomic< int >* quit
-	) {
-#if DEBUG
-		std::cerr << "(thread " << thread_index << "): Starting...\n" ;
-#endif	
-		std::size_t count = 0 ;
-		uint64_t elt ;
-		while( !(*quit) ) {
-#if DEBUG > 1
-			std::cerr << "!! (" << thread_index << ", " << std::this_thread::get_id() << "): " << queue << ".\n" ;
-#endif
-			bool popped = queue->try_dequeue( elt ) ;
-#if DEBUG > 1
-			std::cerr
-				<< "(thread " << thread_index << ") "
-				<< "!! " << ( popped ? "popped" : "nothing to pop" )
-				<< ", queue approx size = " << queue->size_approx()
-				<< ".\n" ;
-#endif
-			if( popped ) {
-				result->insert( elt ) ;
-				++count ;
-				if( (count & 0xFFFFFFF) == 0 ) {
-					std::cerr << "(thread " << thread_index << ") ++ Added " << count << " kmers.\n" ;
-				}
-			} else {
-				// nothing to pop, sleep to allow queue to fill.
-				std::this_thread::sleep_for( std::chrono::microseconds(10) ) ;
-			}
-		}
-#if DEBUG
-		std::cerr
-			<< "(thread " << thread_index << "): ++ Added "
-			<< count << " kmers in total.\n" ;
-		std::cerr << "(thread " << thread_index << "): ++ Ending...\n" ;
-#endif
-	}
-	
 	struct Read {
 		Read() {}
 
@@ -462,6 +398,8 @@ private:
 		ReadTags result ;
 		auto source = statfile::BuiltInTypeStatSource::open( filename ) ;
 		std::string read_id, read_class ;
+
+		auto progress = ui().get_progress_context( "Loading read tags from \"" + filename + "\"" ) ;
 		std::size_t count = 0 ;
 		while( (*source) >> read_id >> read_class ) {
 			auto where = result.find( read_id ) ;
@@ -492,171 +430,47 @@ private:
 			}
 				
 			(*source) >> statfile::ignore_all() ;
+			progress( ++count ) ;
 		}
 		return result ;
+	}
+
+	std::size_t find_power_of_two_le( std::size_t k ) const {
+		// Make sure we get a power-of-two number of threads
+		// while not a power of two
+		while( (k & (k-1)) ) {
+			// keep only some of the bits, *including* the most significant
+			k &= (k-1) ; //
+		}
+		return k ;
 	}
 
 	std::size_t load_kmers(
 		std::string const& jf_filename,
 		HashSet* result,
-		std::size_t number_of_threads,
-		uint64_t multiplicity_threshold = 0,
+		std::size_t requested_number_of_threads,
+		uint64_t lower_multiplicity_threshold = 0,
 		std::size_t max_kmers = std::numeric_limits< std::size_t >::max(),
 		bool verbose = false
 	) {
-		std::ifstream ifs( jf_filename ) ;
-		jellyfish::file_header header( ifs ) ;
-		std::size_t const k = header.key_len() / 2 ;
-		if(verbose) {
-			ui().logger()
-				<< "++ Loaded header from \"" << jf_filename << "\":\n"
-				<< "    size: " << header.size() << "\n"
-				<< "    nb_hashes: " << header.nb_hashes() << "\n"
-				<< "    key_len: " << header.key_len() << "\n"
-				<< "          k: " << k << ".\n" ;
-		}
+		std::size_t const number_of_threads = find_power_of_two_le(
+			std::min(
+				requested_number_of_threads,
+				32ul
+			)
+		) ;
 
-		if( header.format() != binary_dumper::format ) {
-			throw genfile::BadArgumentError( "ClassifyKmerApplication::unsafe_process()", "-jf", "Expected a binary-format jellyfish count file." ) ;
-		}
+		auto progress = ui().get_progress_context( "Loading kmers from \"" + jf_filename + "\"" ) ;
 
-		{
-			{
-				if( number_of_threads < 1 ) {
-					throw genfile::BadArgumentError(
-						"ClassifyKmerApplication::load_kmers()",
-						"number_of_threads",
-						"You must supply a value >= 1"
-					) ;
-				}
-
-				if( (number_of_threads & (number_of_threads - 1) ) != 0 ) {
-					throw genfile::BadArgumentError(
-						"ClassifyKmerApplication::load_kmers()",
-						"number_of_threads",
-						"Number of threads must be zero or a power of two."
-					) ;
-				}
-
-				if( number_of_threads > 32 ) {
-					throw genfile::BadArgumentError(
-						"ClassifyKmerApplication::load_kmers()",
-						"number_of_threads",
-						"A maximum of 32 threads are supported."
-					) ;
-				}
-			}
-			
-			jellyfish::mer_dna::k( k ) ;
-			binary_reader reader(ifs, &header);
-
-			{
-				std::vector< Queue > queues ;
-				std::vector< std::thread > threads ;
-				std::atomic< int > quit(0) ;
-				ui().logger() << "++ Loading kmers from \"" << jf_filename << "\"\n"
-					<< "   ...using " << number_of_threads << " worker threads...\n" ;
-			
-				// Create worker threads
-				for( std::size_t i = 0; i < number_of_threads; ++i ) {
-					queues.push_back( Queue( 32768 ) ) ;
-					if( verbose ) {
-						ui().logger() << "!! Created queue " << i << " at (" << &(queues.back()) << ").\n" ;
-					}
-				}
-				for( std::size_t i = 0; i < number_of_threads; ++i ) {
-					threads.push_back(
-						std::thread(
-							insert_kmer_threaded< HashSet >,
-							k,
-							&(queues[i]),
-							result,
-							i,
-							&quit
-						)
-					) ;
-					if( verbose ) {
-						ui().logger() << "!! Created thread " << i << " at (" << &(threads.back()) << ").\n" ;
-					}
-				}
-				
-				// Now read kmers into queues.
-				// There is one queue per thread and gets kmers destined for ith
-				// hash submap.
-				read_kmers_into_queues(
-					k,
-					multiplicity_threshold,
-					reader,
-					queues,
-					*result,
-					max_kmers
-				) ;
-				
-				// Wait for it to finish.
-				for( std::size_t i = 0; i < number_of_threads; ++i ) {
-					while( queues[i].size_approx() > 0 ) {
-#if DEBUG
-						std::cerr << "++ Queue[" << i << "] size = " << queues[i].size_approx() << ", waiting..." ;
-#endif
-						std::this_thread::sleep_for( std::chrono::milliseconds(1)) ;
-					}
-				}
-
-				ui().logger() << "++ Tidying up...\n" ;
-				quit = 1 ;
-				std::this_thread::sleep_for( std::chrono::milliseconds(1)) ;
-				for( std::size_t i = 0; i < number_of_threads; ++i ) {
-					threads[i].join() ;
-				}
-			}
-		}
-		return k ;
+		return iorek::kmer::load_kmers_from_jf_threaded(
+			jf_filename,
+			result,
+			number_of_threads,
+			progress,
+			lower_multiplicity_threshold,
+			max_kmers
+		) ;
 	}
-	
-	template< typename Iterator >
-	void read_kmers_into_queues(
-		unsigned int const k,
-		uint64_t const multiplicity_threshold,
-		Iterator it,
-		std::vector< Queue >& queues,
-		HashSet const& set,
-		std::size_t const max_kmers = std::numeric_limits< std::size_t >::max()
-	) {
-		jellyfish::mer_dna::k( k ) ;
-		std::size_t count = 0 ;
-		{
-			auto progress = ui().get_progress_context( "Loading kmers" ) ;
-			while( it.next() && count < max_kmers ) {
-				if( it.val() >= multiplicity_threshold ) {
-					uint64_t const kmer = it.key().get_bits( 0, 2*k ) ;
-					std::size_t const hashvalue = set.hash( kmer ) ;
-					std::size_t idx = set.subidx( hashvalue ) ;
-#if DEBUG > 1
-					std::cerr << "++ kmer: " << genfile::kmer::decode_hash( kmer, k )
-						<< ", "
-						<< std::hex << kmer << std::dec
-						<< ": " << "hashvalue: "
-						<< hashvalue << ", idx: " << idx << ".\n" ;
-#endif
-					std::size_t const queue_index = idx % queues.size() ;
-					// Queue& queue = queues[ queue_index ] ;
-					Queue& queue = queues[ queue_index ] ;
-					while( !queue.try_enqueue( kmer )) {
-#if DEBUG > 1
-						std::cerr << "-- queue full after " << count << " kmers, sleeping...\n" ;
-#endif
-						std::this_thread::sleep_for( std::chrono::microseconds(10) ) ;
-					}
-#if DEBUG > 1
-					std::cerr << "++ Wrote " << kmer << " to queue " << queue_index << ".\n" ;
-#endif
-					progress( ++count ) ;
-				}
-			}
-		}
-		ui().logger() << "++ read_kmers_into_queues(): Read " << count << " kmers in total.\n" ;
-	}
-	
 
 	std::size_t process_reads(
 		std::istream& input,

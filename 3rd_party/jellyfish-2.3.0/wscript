@@ -4,7 +4,10 @@ def configure( conf ):
 	pass
 
 def build( bld ):
-	sources = ( bld.path.ant_glob( 'lib/*.cc' ))
+	sources = (
+		bld.path.ant_glob( 'lib/*.cc' )
+		+ bld.path.ant_glob( 'lib/*.cpp' )
+	)
 	bld.stlib(
 		target = 'jellyfish',
 		source = sources,

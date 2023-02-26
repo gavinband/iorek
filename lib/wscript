@@ -11,21 +11,22 @@ def build( bld ):
 	#---------------------
 	bld.stlib(
 		features = "cxx",
-		target = "libsvelte",
+		target = "iorek",
 		source = (
-			bld.path.ant_glob( 'src/*.cpp')
+			bld.path.ant_glob( 'src/*.cpp') +
+			bld.path.ant_glob( 'src/kmer/*.cpp')
 		),
 		includes = [ './include' ],
-		use = 'svelte_config boost eigen',
+		use = 'svelte_config genfile boost eigen jellyfish parallel_hashmap concurrentqueue',
 		export_includes = './include'
 	)
 
 	bld.program(
 		features = "cxx",
-		target = "test_libsvelte",
+		target = "test_iorek",
 		source = (
 			bld.path.ant_glob( 'test/*.cpp')
 		),
 		includes = [ './include', './test' ],
-		use = 'svelte_config libsvelte boost eigen',
+		use = 'svelte_config iorek boost eigen',
 	)

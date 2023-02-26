@@ -53,7 +53,7 @@ def build( bld ):
 	bld.program(
 		source = "classify-kmers.cpp",
 		target = 'classify-kmers',
-		use = 'seqan bamtools seqlib package_revision appcontext genfile qcdb pthread jellyfish parallel_hashmap concurrentqueue iorek zlib',
+		use = 'seqan bamtools seqlib package_revision appcontext genfile qcdb iorek pthread parallel_hashmap concurrentqueue zlib',
 		includes = "./"
 	)
 	bld.program(
