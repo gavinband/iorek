@@ -92,7 +92,7 @@ def build( bld ):
 	seqlib_sources = [
 		'src/BamHeader.cpp', 'src/BamReader.cpp', 'src/BamRecord.cpp',
 		'src/GenomicRegion.cpp', 'src/ReadFilter.cpp', 'src/RefGenome.cpp',
-		'src/ssw_cpp.cpp', 'src/jsoncpp.cpp', 'src/ssw.c'
+		'src/ssw_cpp.cpp', 'src/ssw.c'
 		#, 'src/BFC.cpp'
 	]
 
