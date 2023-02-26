@@ -45,6 +45,7 @@ namespace seqlib = SeqLib;
 #include "parallel_hashmap/phmap.h"
 #include "parallel_hashmap/meminfo.h"
 #include "concurrentqueue/concurrentqueue.h"
+#include "iorek/kmer/load_kmers_from_jf_threaded.hpp"
 
 /*
 #include <sys/types.h>
