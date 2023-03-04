@@ -5,15 +5,61 @@
 //          http://www.boost.org/LICENSE_1_0.txt)
 
 #include <map>
+#include <vector>
+#include <iostream>
 #include <boost/noncopyable.hpp>
 #include "genfile/Fasta.hpp"
 #include "genfile/FastaMask.hpp"
+#include "genfile/FileUtils.hpp"
+#include "genfile/Error.hpp"
+#include "genfile/string_utils/string_utils.hpp"
+#include "genfile/string_utils/slice.hpp"
 
 namespace genfile {
 	FastaMask::UniquePtr FastaMask::create(
 		Fasta const& fasta
 	) {
 		return FastaMask::UniquePtr( new FastaMask( fasta )) ;
+	}
+
+	FastaMask::UniquePtr FastaMask::load_from_bed3_file(
+		Fasta const& fasta,
+		std::string const& filename,
+		std::function< void( std::size_t ) > progress_callback
+	) {
+		FastaMask::UniquePtr result = FastaMask::create( fasta ) ;
+		std::auto_ptr< std::istream >
+			in = genfile::open_text_file_for_input( filename ) ;
+
+		using genfile::string_utils::slice ;
+		using genfile::string_utils::to_repr ;
+		using genfile::string_utils::to_string ;
+		{
+			std::string line ;
+			std::size_t count = 0 ;
+			while( std::getline( *in, line )) {
+				++count ;
+				std::vector< slice > elts = slice( line ).split( "\t" ) ;
+				if( elts.size() != 3 ) {
+					throw genfile::BadArgumentError(
+						"IorekApplication::load_mask()",
+						"filename=\"" + filename + "\"",
+						(
+							"Wrong number of columns on line "
+							+ to_string( count )
+							+ " (" + to_string( elts.size() ) + ", expected 3)."
+						)
+					) ;
+				}
+				uint32_t start = std::max( to_repr< int32_t >( elts[1] ), int32_t(0) ) ;
+				uint32_t end = std::max( to_repr< int32_t >( elts[2] ), int32_t(0) ) ;
+				result->set_zero_based( elts[0], start, end, genfile::FastaMask::eMasked ) ;
+				if( progress_callback ) {
+					progress_callback( count ) ;
+				}
+			}
+		}
+		return result ;
 	}
 
 	FastaMask::FastaMask( Fasta const& fasta ) {
@@ -29,6 +75,7 @@ namespace genfile {
 			m_mask[ id ] = ContigMask( range.length() ) ;
 		}
 	}
+
 
 	void FastaMask::set_one_based( std::string id, uint32_t lower, uint32_t upper, Value value ) {
 		set_zero_based( id, lower-1, upper, value ) ;

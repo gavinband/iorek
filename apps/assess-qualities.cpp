@@ -135,12 +135,16 @@ private:
 			m_fasta->add_sequences_from_file( fasta_filename, progress_context ) ;
 		}
 
-		m_mask = genfile::FastaMask::create( *m_fasta ) ;
 		if( options().check( "-mask" )) {
-			load_mask(
-				options().get< std::string >( "-mask" ),
-				&(*m_mask)
+			std::string const filename = options().get< std::string >( "-mask" ) ;
+			auto progress_context = ui().get_progress_context( "Loading mask from \"" + filename + "\"" ) ;
+			m_mask = genfile::FastaMask::load_from_bed3_file(
+				*m_fasta,
+				filename,
+				progress_context
 			) ;
+		} else {
+			m_mask = genfile::FastaMask::create( *m_fasta ) ;
 		}
 
 		// Open output sink
@@ -162,43 +166,6 @@ private:
 		) ;
 
 		output_results( matches, mismatches, *sink ) ;
-	}
-
-	void load_mask(
-		std::string const& filename,
-		genfile::FastaMask* mask
-	) {
-		assert( mask ) ;
-		std::auto_ptr< std::istream >
-			in = genfile::open_text_file_for_input( filename ) ;
-
-		using genfile::string_utils::slice ;
-		using genfile::string_utils::to_repr ;
-		using genfile::string_utils::to_string ;
-		{
-			std::string line ;
-			std::size_t count = 0 ;
-			auto progress_context = ui().get_progress_context( "Loading mask from \"" + filename + "\"" ) ;
-			while( std::getline( *in, line )) {
-				++count ;
-				std::vector< slice > elts = slice( line ).split( "\t" ) ;
-				if( elts.size() != 3 ) {
-					throw genfile::BadArgumentError(
-						"IorekApplication::load_mask()",
-						"filename=\"" + filename + "\"",
-						(
-							"Wrong number of columns on line "
-							+ to_string( count )
-							+ " (" + to_string( elts.size() ) + ", expected 3)."
-						)
-					) ;
-				}
-				uint32_t start = std::max( to_repr< int32_t >( elts[1] ), int32_t(0) ) ;
-				uint32_t end = std::max( to_repr< int32_t >( elts[2] ), int32_t(0) ) ;
-				mask->set_zero_based( elts[0], start, end, genfile::FastaMask::eMasked ) ;
-				progress_context( count ) ;
-			}
-		}
 	}
 
 	void process_reads(

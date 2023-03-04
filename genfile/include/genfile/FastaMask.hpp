@@ -8,6 +8,7 @@
 #define GENFILE_FASTA_MASK_HPP
 
 #include <map>
+#include <functional>
 #include <boost/noncopyable.hpp>
 #include "genfile/Fasta.hpp"
 
@@ -18,6 +19,12 @@ namespace genfile {
 		typedef std::unique_ptr< FastaMask > UniquePtr ;
 		static UniquePtr create(
 			Fasta const& fasta
+		) ;
+
+		static UniquePtr load_from_bed3_file(
+			Fasta const& fasta,
+			std::string const& filename,
+			std::function< void( std::size_t ) > progress_callback = std::function< void( std::size_t ) >()
 		) ;
 
 		enum Value:uint64_t { eUnmasked = 0ul, eMasked = 1ul } ;
