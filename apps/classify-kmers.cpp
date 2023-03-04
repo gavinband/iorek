@@ -562,8 +562,8 @@ private:
 			}
 
 			ui().logger() << "++ Done, read " << count << " reads in total.\n" ;
-
 			ui().logger() << "++ Waiting to finish...\n" ;
+
 			while( (read_queue.size_approx() > 0) || (read_result_queue.size_approx() > 0) ) {
 				std::this_thread::sleep_for( std::chrono::milliseconds(10)) ;
 			}
