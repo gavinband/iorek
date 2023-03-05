@@ -32,6 +32,7 @@ namespace seqlib = SeqLib;
 #include "genfile/string_utils/slice.hpp"
 #include "genfile/Error.hpp"
 #include "genfile/Fasta.hpp"
+#include "genfile/FastaMask.hpp"
 #include "genfile/find_homopolymers_and_short_repeats.hpp"
 #include "genfile/repeats/repeat_tracts.hpp"
 #include "genfile/repeats/HomopolymerTractWalker.hpp"
@@ -71,6 +72,12 @@ public:
 				" (These regions should have few copy number variants)" 
 				" Alternatively this can be the name of a file containing a list of regions."
 			)
+			.set_takes_single_value()
+		;
+		options[ "-mask" ]
+			.set_description( "Specify a BED file of regions to mask out of the analysis."
+			" The file should have no column names and should have contig, start and end columns, "
+			" expressed in 0-based right-closed form." )
 			.set_takes_single_value()
 		;
 		options[ "-reference" ]
@@ -623,23 +630,34 @@ private:
 	Annotation m_repeat_tracts ;
 	std::vector< std::string > m_annotation_names ;
 
+	genfile::Fasta::UniquePtr m_fasta ;
+	genfile::FastaMask::UniquePtr m_mask ;
+
 	void unsafe_process() {
-		genfile::Fasta::UniquePtr fasta = genfile::Fasta::create() ;
+		m_fasta = genfile::Fasta::create() ;
 		{
 			std::string const& fasta_filename = options().get< std::string >( "-reference" ) ;
 			auto progress_context = ui().get_progress_context( "Loading sequences from \"" + fasta_filename + "\"" ) ;
-			fasta->add_sequences_from_file( fasta_filename, progress_context ) ;
+			m_fasta->add_sequences_from_file( fasta_filename, progress_context ) ;
 		}
 		
+		if( options().check( "-mask" )) {
+			std::string const filename = options().get< std::string >( "-mask" ) ;
+			auto progress_context = ui().get_progress_context( "Loading mask from \"" + filename + "\"" ) ;
+			m_mask = genfile::FastaMask::load_from_bed3_file(
+				*m_fasta,
+				filename,
+				progress_context
+			) ;
+		}
+
 		unsafe_process(
-			options().get_values< std::string >( "-reads" ),
-			*fasta
+			options().get_values< std::string >( "-reads" )
 		) ;
 	}
 
 	void unsafe_process(
-		std::vector< std::string > const& filenames,
-		genfile::Fasta const& fasta
+		std::vector< std::string > const& filenames
 	) {
 		Result result ;
 
@@ -654,7 +672,6 @@ private:
 		for( std::size_t file_i = 0; file_i < filenames.size(); ++file_i ) {
 			process_reads(
 				filenames[file_i],
-				fasta,
 				&result
 			) ;
 		}
@@ -664,7 +681,6 @@ private:
 	
 	void process_reads(
 		std::string const& filename,
-		genfile::Fasta const& fasta,
 		Result* result
 	) {
 		seqlib::BamReader reader;
@@ -699,13 +715,12 @@ private:
 		}
 		
 		auto progress_context = ui().get_progress_context( "Processing \"" + filename + "\"" ) ;
-		process_reads( reader, header, fasta, result, [&] ( std::size_t count ) { progress_context( count ) ; } ) ;
+		process_reads( reader, header, result, [&] ( std::size_t count ) { progress_context( count ) ; } ) ;
 	}
 	
 	void process_reads(
 		seqlib::BamReader reader,
 		seqlib::BamHeader header,
-		genfile::Fasta const& fasta,
 		Result* result,
 		std::function< void( std::size_t ) > progress_callback
 	) {
@@ -736,7 +751,7 @@ private:
 				classify_alignment_mismatches(
 					alignment,
 					header,
-					fasta,
+					*m_fasta,
 					[&](
 						MismatchType const& type,
 						std::string const& contig_id,
@@ -748,12 +763,22 @@ private:
 						std::size_t end_in_read,
 						genfile::repeats::HomopolymerTractWalker< genfile::Fasta::ConstSequenceIterator > walker
 					) {
+						// Ignore if out of specified range
 						if( use_range ) {
 							if(
 								(end_in_contig < (range.start().position()-1)) // here using 0 based coords, range is in 1-based
 								|| (begin_in_contig > range.end().position() )
 							) {
 								return ;
+							}
+						}
+						// Ignore if any position covered is masked out
+						{
+							std::size_t pos = begin_in_contig ;
+							for( ; pos < end_in_contig; ++pos ) {
+								if( m_mask && m_mask->at_zero_based( contig_id, pos ) == genfile::FastaMask::eMasked ) {
+									return ;
+								}
 							}
 						}
 
