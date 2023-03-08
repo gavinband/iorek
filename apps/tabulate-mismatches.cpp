@@ -633,6 +633,7 @@ private:
 	genfile::Fasta::UniquePtr m_fasta ;
 	genfile::FastaMask::UniquePtr m_mask ;
 
+private:
 	void unsafe_process() {
 		m_fasta = genfile::Fasta::create() ;
 		{
@@ -652,36 +653,78 @@ private:
 		}
 
 		unsafe_process(
-			options().get_values< std::string >( "-reads" )
+			options().get_values< std::string >( "-reads" ),
+			open_results_sink( options().get< std::string >( "-o" ) )
 		) ;
 	}
 
-	void unsafe_process(
-		std::vector< std::string > const& filenames
-	) {
-		Result result ;
-
-		statfile::BuiltInTypeStatSink::UniquePtr sink = statfile::BuiltInTypeStatSink::open(
-			options().get< std::string >( "-o" )
-		) ;
-		sink->write_metadata(
+	statfile::BuiltInTypeStatSink::UniquePtr open_results_sink(std::string const& filename ) const {
+		statfile::BuiltInTypeStatSink::UniquePtr result = statfile::BuiltInTypeStatSink::open( filename ) ;
+		result->write_metadata(
 			"Computed by tabulate-mismatches " + appcontext::get_current_time_as_string() + "\n"
 			+ "Coordinates are 1-based, closed."
 		) ;
+		bool const by_position = options().check( "-by-position" ) ;
+		bool const with_annotations = options().check( "-annotate-homopolymers" ) ;
+		(*result) | "count" ;
+		if( by_position ) {
+			(*result) | "contig_id" | "position" ;
+		}
+		(*result) | "type" | "contig_sequence" | "read_sequence" | "left_flank" | "right_flank" ;
+		if( with_annotations ) {
+			(*result) | "tract1" | "tract1_length" | "tract2" | "tract2_length" ;
+		}
+		return result ;
+	}
+
+	void unsafe_process(
+		std::vector< std::string > const& filenames,
+		statfile::BuiltInTypeStatSink::UniquePtr sink
+	) {
+		Result result ;
 		
 		for( std::size_t file_i = 0; file_i < filenames.size(); ++file_i ) {
 			process_reads(
 				filenames[file_i],
-				&result
+				&result,
+				*sink
 			) ;
 		}
 		
-		output_results( result, *sink ) ;
+		output_all_results( result, *sink ) ;
 	}
-	
+
+	void output_one_result(
+		MismatchClass const& m,
+		int count,
+		statfile::BuiltInTypeStatSink& sink,
+		bool by_position,
+		bool include_annotations
+	) const {
+		sink << count ; // count
+		if( by_position ) {
+			sink << m.contig_id() << (m.position()+1) ; // convert back to 1-based coords
+		}
+		sink << std::string( 1, m.type() ) << m.contig_sequence() << m.read_sequence() << m.left_flank() << m.right_flank() ;
+
+		if( include_annotations ) {
+			std::set< RepeatTractClass >::const_iterator i = m.repeat_tract_classes().begin() ;
+			std::size_t tract_count = 0 ;
+			for( ; tract_count < 2 && i != m.repeat_tract_classes().end(); ++tract_count, ++i ) {
+				sink << i->repeat_unit() << i->length() ;
+			}
+			for( ; tract_count < 2; ++tract_count ) {
+				sink << genfile::MissingValue() << genfile::MissingValue() ;
+			}
+		}
+
+		sink << statfile::end_row() ;
+	}
+
 	void process_reads(
 		std::string const& filename,
-		Result* result
+		Result* result,
+		statfile::BuiltInTypeStatSink& sink
 	) {
 		seqlib::BamReader reader;
 		std::unique_ptr< seqlib::ThreadPool > thread_pool ;
@@ -715,13 +758,14 @@ private:
 		}
 		
 		auto progress_context = ui().get_progress_context( "Processing \"" + filename + "\"" ) ;
-		process_reads( reader, header, result, [&] ( std::size_t count ) { progress_context( count ) ; } ) ;
+		process_reads( reader, header, result, sink, [&] ( std::size_t count ) { progress_context( count ) ; } ) ;
 	}
 	
 	void process_reads(
 		seqlib::BamReader reader,
 		seqlib::BamHeader header,
 		Result* result,
+		statfile::BuiltInTypeStatSink& sink,
 		std::function< void( std::size_t ) > progress_callback
 	) {
 		int32_t const mq_threshold = options().get< int32_t >( "-mq" ) ;
@@ -781,12 +825,36 @@ private:
 								}
 							}
 						}
-
-						process_mismatch( type, contig_id, contig, begin_in_contig, end_in_contig, read_sequence, begin_in_read, end_in_read, walker, flank, annotate_repeats, by_position, result ) ;
+						// otherwise process...
+						process_mismatch(
+							type,
+							contig_id,
+							contig,
+							begin_in_contig,
+							end_in_contig,
+							read_sequence,
+							begin_in_read,
+							end_in_read,
+							walker,
+							flank,
+							annotate_repeats,
+							by_position,
+							result
+						) ;
 					},
 					flank
 				) ; 
 			}
+
+			if( by_position ) {
+				output_results_so_far(
+					*result,
+					sink,
+					header.IDtoName( alignment.ChrID() ),
+					std::max( alignment.AlignmentPosition() - 1, 0 )
+				) ;
+			}
+
 			++count ;
 			if( progress_callback ) {
 				progress_callback( count ) ;
@@ -891,40 +959,51 @@ private:
 		++(*result)[e] ;		
 	}
 
-	void output_results( Result const& result, statfile::BuiltInTypeStatSink& sink ) {
+	void output_results_so_far(
+		Result& result,
+		statfile::BuiltInTypeStatSink& sink,
+		std::string const& contig_id,
+		std::size_t until_position
+	) {
 		bool const by_position = options().check( "-by-position" ) ;
-		bool const with_annotations = options().check( "-annotate-homopolymers" ) ;
-		sink | "count" ;
-		if( by_position ) {
-			sink | "contig_id" | "position" ;
+		bool const include_annotations = options().check( "-annotate-homopolymers" ) ;
+		std::size_t count = 0 ;
+		Result::iterator i = result.begin() ;
+		Result::const_iterator end_i = result.end() ;
+		while( i != end_i ) {
+			if( i->first.contig_id() == contig_id && i->first.position() <= until_position ) {
+				output_one_result(
+					i->first,
+					i->second,
+					sink,
+					by_position,
+					include_annotations
+				) ;
+				// Now delete the result as already output.
+				Result::iterator j = i++ ;
+				result.erase( j ) ;
+			} else {
+				++i ;
+			}
 		}
-		sink | "type" | "contig_sequence" | "read_sequence" | "left_flank" | "right_flank" ;
-		if( with_annotations ) {
-			sink | "tract1" | "tract1_length"
-			| "tract2" | "tract2_length" ;
-		}
-		auto progress_context = ui().get_progress_context( "Storing results" ) ;
+	}
+
+	void output_all_results(
+		Result const& result,
+		statfile::BuiltInTypeStatSink& sink
+	) {
+		bool const by_position = options().check( "-by-position" ) ;
+		bool const include_annotations = options().check( "-annotate-homopolymers" ) ;
+		auto progress_context = ui().get_progress_context( "Storing remaining results" ) ;
 		std::size_t count = 0 ;
 		for( auto& kv: result ) {
-			MismatchClass const& m = kv.first ;
-			sink << kv.second ; // count
-			if( by_position ) {
-				sink << m.contig_id() << (m.position()+1) ; // convert back to 1-based coords
-			}
-			sink << std::string( 1, m.type() ) << m.contig_sequence() << m.read_sequence() << m.left_flank() << m.right_flank() ;
-
-			if( with_annotations ) {
-				std::set< RepeatTractClass >::const_iterator i = m.repeat_tract_classes().begin() ;
-				std::size_t tract_count = 0 ;
-				for( ; tract_count < 2 && i != m.repeat_tract_classes().end(); ++tract_count, ++i ) {
-					sink << i->repeat_unit() << i->length() ;
-				}
-				for( ; tract_count < 2; ++tract_count ) {
-					sink << genfile::MissingValue() << genfile::MissingValue() ;
-				}
-			}
-
-			sink << statfile::end_row() ;
+			output_one_result(
+				kv.first,
+				kv.second,
+				sink,
+				by_position,
+				include_annotations
+			) ;
 			progress_context( ++count, result.size() ) ;
 		}
 	}
