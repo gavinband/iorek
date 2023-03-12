@@ -35,7 +35,6 @@ namespace seqlib = SeqLib;
 #include "genfile/FastaMask.hpp"
 #include "genfile/find_homopolymers_and_short_repeats.hpp"
 #include "genfile/repeats/repeat_tracts.hpp"
-#include "genfile/repeats/HomopolymerTractWalker.hpp"
 #include "statfile/BuiltInTypeStatSink.hpp"
 
 // #define DEBUG 1
@@ -85,16 +84,6 @@ public:
 			.set_takes_single_value()
 			.set_is_required() ;
 
-		options[ "-annotate-homopolymers" ]
-			.set_description( "Load short repeat repeat tracts from the reference file." )
-		;
-		options[ "-min-homopolymer-length" ]
-			.set_description( "minimum length of repeat repeat tract to report." )
-			.set_default_value( 2 )
-		;
-
-		options.option_implies_option( "-min-homopolymer-length", "-annotate-homopolymers" ) ;
-		
 		options.declare_group( "Model options" ) ;
 		options[ "-mq" ]
 			.set_description( "Ignore alignments below this mapping quality threshold" )
@@ -307,7 +296,8 @@ namespace {
 			std::string const& read_sequence,
 			std::string const& left_flank,
 			std::string const& right_flank,
-			std::set< RepeatTractClass > const& repeat_classes
+			uint32_t const contig_bases_unmasked,
+			uint32_t const edit_bases_unmasked
 		):
 			m_contig_id( contig_id ),
 			m_position( position ),
@@ -316,7 +306,8 @@ namespace {
 			m_read_sequence( read_sequence ),
 			m_left_flank( left_flank ),
 			m_right_flank( right_flank ),
-			m_repeat_classes( repeat_classes )
+			m_contig_bases_unmasked( contig_bases_unmasked ),
+			m_edit_bases_unmasked( edit_bases_unmasked )
 		{}
 
 		MismatchClass(
@@ -329,7 +320,8 @@ namespace {
 			m_read_sequence( other.m_read_sequence ),
 			m_left_flank( other.m_left_flank ),
 			m_right_flank( other.m_right_flank ),
-			m_repeat_classes( other.m_repeat_classes )
+			m_contig_bases_unmasked( other.m_contig_bases_unmasked ),
+			m_edit_bases_unmasked( other.m_edit_bases_unmasked )
 		{}
 
 		MismatchClass& operator=(
@@ -342,7 +334,8 @@ namespace {
 			m_read_sequence = other.m_read_sequence ;
 			m_left_flank = other.m_left_flank ;
 			m_right_flank = other.m_right_flank ;
-			m_repeat_classes = other.m_repeat_classes ;
+			m_contig_bases_unmasked = other.m_contig_bases_unmasked ;
+			m_edit_bases_unmasked = other.m_edit_bases_unmasked ;
 			return *this ;
 		}
 
@@ -353,7 +346,8 @@ namespace {
 		std::string const& read_sequence() const { return m_read_sequence ; }
 		std::string const& left_flank() const { return m_left_flank ; }
 		std::string const& right_flank() const { return m_right_flank ; }
-		std::set< RepeatTractClass > const& repeat_tract_classes() const { return m_repeat_classes ; }
+		uint32_t const contig_bases_unmasked() const { return m_contig_bases_unmasked ; }
+		uint32_t const edit_bases_unmasked() const { return m_edit_bases_unmasked ; }
 		
 		friend bool operator<( MismatchClass const& left, MismatchClass const& right ) ;
 		friend bool operator==( MismatchClass const& left, MismatchClass const& right ) ;
@@ -366,7 +360,8 @@ namespace {
 		std::string m_read_sequence ;
 		std::string m_left_flank ;
 		std::string m_right_flank ;
-		std::set< RepeatTractClass > m_repeat_classes ;
+		uint32_t m_contig_bases_unmasked ;
+		uint32_t m_edit_bases_unmasked ;
 	} ;
 	
 	bool operator<( MismatchClass const& left, MismatchClass const& right ) {
@@ -405,9 +400,14 @@ namespace {
 		} else if( left.m_right_flank > right.m_right_flank ) {
 			return false ;
 		}
-		if( left.m_repeat_classes < right.m_repeat_classes ) {
+		if( left.m_contig_bases_unmasked < right.m_contig_bases_unmasked ) {
 			return true ;
-		} else if( left.m_repeat_classes > right.m_repeat_classes ) {
+		} else if( left.m_contig_bases_unmasked > right.m_contig_bases_unmasked ) {
+			return false ;
+		}
+		if( left.m_edit_bases_unmasked < right.m_edit_bases_unmasked ) {
+			return true ;
+		} else if( left.m_edit_bases_unmasked > right.m_edit_bases_unmasked ) {
 			return false ;
 		}
 		return false ;
@@ -422,7 +422,8 @@ namespace {
 			&&( left.m_read_sequence == right.m_read_sequence )
 			&&( left.m_left_flank == right.m_left_flank )
 			&&( left.m_right_flank == right.m_right_flank )
-			&&( left.m_repeat_classes == right.m_repeat_classes )
+			&&( left.m_contig_bases_unmasked == right.m_contig_bases_unmasked )
+			&&( left.m_edit_bases_unmasked == right.m_edit_bases_unmasked )
 		;
 	}
 
@@ -445,8 +446,7 @@ namespace {
 				std::size_t end_in_contig,
 				std::string const& read,
 				std::size_t begin_in_read,
-				std::size_t end_in_read,
-				genfile::repeats::HomopolymerTractWalker< genfile::Fasta::ConstSequenceIterator > walker
+				std::size_t end_in_read
 			)
 		> callback,
 		uint32_t const flank = 3
@@ -482,11 +482,6 @@ namespace {
 
 		uint32_t read_position = 0;
 		uint32_t aligned_position = alignment.Position() ; // 0-based
-		genfile::repeats::HomopolymerTractWalker< genfile::Fasta::ConstSequenceIterator > walker(
-			contig.sequence().begin(),
-			contig.sequence().end(),
-			contig.sequence().begin() + aligned_position
-		) ;
 #if DEBUG
 		std::cerr << "\n++ Inspecting read: " << alignment.Qname() << ", CIGAR = \"" << cigar << "\".\n" ;
 #endif
@@ -514,17 +509,13 @@ namespace {
 			// as mismatches.
 
 			// sanity check
-#if DEBUG
-			std::cerr << std::string( 1, type ) << ":" << std::distance( contig.sequence().begin(), walker.position() ) << " - " << aligned_position << ".\n" ;
-#endif
-			assert( walker.position() == contig.sequence().begin() + aligned_position ) ;
 
 			switch( type ) {
 				case 'M':
 				case 'X':
 				case '=':
 					// matching or mismatching bases. Iterate bases and test for mismatch.
-					for( int k = 0; k < i->Length(); ++k, ++aligned_position, ++read_position, ++walker ) {
+					for( int k = 0; k < i->Length(); ++k, ++aligned_position, ++read_position ) {
 						MismatchType mismatch_type = eMatch ;
 						if( std::toupper(*(contig.sequence().begin() + aligned_position)) != std::toupper( read_sequence[read_position] )) {
 							mismatch_type = eMismatch ;
@@ -537,8 +528,7 @@ namespace {
 							aligned_position + 1,
 							read_sequence,
 							read_position,
-							read_position+1,
-							walker
+							read_position+1
 						) ;
 					}
 					break ;
@@ -551,11 +541,9 @@ namespace {
 						aligned_position + i->Length(),
 						read_sequence,
 						read_position,
-						read_position,
-						walker
+						read_position
 					) ;
 					aligned_position += i->Length() ;
-					walker += i->Length() ;
 					// purely deleted bases so no change to read position
 					break ;
 				case 'I':
@@ -567,8 +555,7 @@ namespace {
 						aligned_position,
 						read_sequence,
 						read_position,
-						read_position + i->Length(),
-						walker
+						read_position + i->Length()
 					) ;
 					read_position += i->Length() ;
 					// purely inserted bases so no change to aligned position
@@ -577,7 +564,6 @@ namespace {
 					// no coverage but need to skip over part of reference.
 					read_position += i->Length() ;
 					aligned_position += i->Length() ;
-					walker += i->Length() ;
 					break ;
 				case 'S':
 					// soft-clipped bases; skip this part of the read.
@@ -650,6 +636,8 @@ private:
 				filename,
 				progress_context
 			) ;
+		} else {
+			m_mask = genfile::FastaMask::create( *m_fasta ) ;
 		}
 
 		unsafe_process(
@@ -665,15 +653,11 @@ private:
 			+ "Coordinates are 1-based, closed."
 		) ;
 		bool const by_position = options().check( "-by-position" ) ;
-		bool const with_annotations = options().check( "-annotate-homopolymers" ) ;
 		(*result) | "count" ;
 		if( by_position ) {
 			(*result) | "contig_id" | "position" ;
 		}
-		(*result) | "type" | "contig_sequence" | "read_sequence" | "left_flank" | "right_flank" ;
-		if( with_annotations ) {
-			(*result) | "tract1" | "tract1_length" | "tract2" | "tract2_length" ;
-		}
+		(*result) | "type" | "contig_sequence" | "read_sequence" | "left_flank" | "right_flank" | "contig_bases_unmasked" | "edit_bases_unmasked" ;
 		return result ;
 	}
 
@@ -698,25 +682,18 @@ private:
 		MismatchClass const& m,
 		int count,
 		statfile::BuiltInTypeStatSink& sink,
-		bool by_position,
-		bool include_annotations
+		bool by_position
 	) const {
 		sink << count ; // count
 		if( by_position ) {
 			sink << m.contig_id() << (m.position()+1) ; // convert back to 1-based coords
 		}
-		sink << std::string( 1, m.type() ) << m.contig_sequence() << m.read_sequence() << m.left_flank() << m.right_flank() ;
-
-		if( include_annotations ) {
-			std::set< RepeatTractClass >::const_iterator i = m.repeat_tract_classes().begin() ;
-			std::size_t tract_count = 0 ;
-			for( ; tract_count < 2 && i != m.repeat_tract_classes().end(); ++tract_count, ++i ) {
-				sink << i->repeat_unit() << i->length() ;
-			}
-			for( ; tract_count < 2; ++tract_count ) {
-				sink << genfile::MissingValue() << genfile::MissingValue() ;
-			}
-		}
+		sink
+			<< std::string( 1, m.type() )
+			<< m.contig_sequence() << m.read_sequence()
+			<< m.left_flank() << m.right_flank()
+			<< m.contig_bases_unmasked() << m.edit_bases_unmasked()
+		;
 
 		sink << statfile::end_row() ;
 	}
@@ -772,7 +749,6 @@ private:
 		bool const by_position = options().check( "-by-position" ) ;
 		
 		bool use_range = options().check( "-range" ) ;
-		bool annotate_repeats = options().check( "-annotate-homopolymers" ) ;
 		genfile::GenomePositionRange const range
 			= use_range
 			? genfile::GenomePositionRange::parse( options().get<std::string>( "-range" ))
@@ -804,8 +780,7 @@ private:
 						std::size_t end_in_contig,
 						std::string const& read_sequence,
 						std::size_t begin_in_read,
-						std::size_t end_in_read,
-						genfile::repeats::HomopolymerTractWalker< genfile::Fasta::ConstSequenceIterator > walker
+						std::size_t end_in_read
 					) {
 						// Ignore if out of specified range
 						if( use_range ) {
@@ -814,15 +789,6 @@ private:
 								|| (begin_in_contig > range.end().position() )
 							) {
 								return ;
-							}
-						}
-						// Ignore if any position covered is masked out
-						{
-							std::size_t pos = begin_in_contig ;
-							for( ; pos < end_in_contig; ++pos ) {
-								if( m_mask && m_mask->at_zero_based( contig_id, pos ) == genfile::FastaMask::eMasked ) {
-									return ;
-								}
 							}
 						}
 						// otherwise process...
@@ -835,9 +801,7 @@ private:
 							read_sequence,
 							begin_in_read,
 							end_in_read,
-							walker,
 							flank,
-							annotate_repeats,
 							by_position,
 							result
 						) ;
@@ -871,16 +835,13 @@ private:
 		std::string const& read_sequence,
 		std::size_t begin_in_read,
 		std::size_t end_in_read,
-		genfile::repeats::HomopolymerTractWalker< genfile::Fasta::ConstSequenceIterator > walker,
 		std::size_t const flank,
-		bool const annotate_repeats,
 		bool by_position,
 		Result* result
 	) const {
 #if DEBUG
 		std::cerr << "++ Mismatch: " << contig_id << ": " << begin_in_contig << "-" << end_in_contig << ".\n" ;
 #endif
-		assert( walker.position() == contig.begin() + begin_in_contig ) ;
 		
 		// find flanking sequence beginning and end
 		genfile::Fasta::ConstSequenceIterator const begin_in_contig_i = contig.begin() + begin_in_contig ;
@@ -910,41 +871,30 @@ private:
 			<< "++ type: " << std::string( 1, type ) << ".\n" ;
 #endif
 
-		std::set< RepeatTractClass > repeatTractClasses ;
-		if( annotate_repeats ) {
-			if( type == eInsertion ) {
-				// Extent in contig is zero length.
-				// Catch homopolymers before or after the insertion
-				if( walker.left_tract().size() > 1 ) {
-					repeatTractClasses.insert(
-						RepeatTractClass(
-							std::string( 1, *walker.left_tract().begin() ),
-							walker.left_tract().size()
-						)
-					) ;
+		std::size_t contig_bases_unmasked = 0 ;
+		std::size_t edit_bases_unmasked = 0 ;
+		switch( type ) {
+			case eMatch:
+			case eMismatch:
+				contig_bases_unmasked = (m_mask->at_zero_based( contig_id, begin_in_contig ) == genfile::FastaMask::eUnmasked) ? 1 : 0 ;
+				edit_bases_unmasked = contig_bases_unmasked * ( (type == eMismatch) ? 1 : 0 ) ;
+				break ;
+			case eInsertion:
+				contig_bases_unmasked = 0 ;
+				if(
+					(m_mask->at_zero_based( contig_id, begin_in_contig ) == genfile::FastaMask::eUnmasked)
+					|| ((begin_in_contig > 0) && (m_mask->at_zero_based( contig_id, begin_in_contig-1 ) == genfile::FastaMask::eUnmasked))
+				) {
+					edit_bases_unmasked = (end_in_read - begin_in_read) ;
 				}
-				if( walker.right_tract().size() > 1 ) {
-					repeatTractClasses.insert(
-						RepeatTractClass(
-							std::string( 1, *walker.right_tract().begin() ),
-							walker.right_tract().size()
-						)
-					) ;
+				break ;
+			case eDeletion:
+				contig_bases_unmasked = 0 ;
+				for( std::size_t pos = begin_in_contig; pos < end_in_contig; ++pos ) {
+					contig_bases_unmasked += (m_mask->at_zero_based( contig_id, begin_in_contig-1 ) == genfile::FastaMask::eUnmasked) ;
 				}
-			} else {
-				// catch homopolymers containing the deleted or mismatched bases.
-				for( std::size_t i = begin_in_contig; i < end_in_contig; ++i, ++walker ) {
-					if( walker.right_tract().size() > 1 ) {
-						repeatTractClasses.insert(
-							RepeatTractClass(
-								std::string( 1, *walker.right_tract().begin() ),
-								walker.right_tract().size()
-							)
-						) ;
-					}
-				}
-			}
-		}
+				edit_bases_unmasked = contig_bases_unmasked ;
+		} ;
 
 		MismatchClass e(
 			by_position ? contig_id  : "",
@@ -954,7 +904,8 @@ private:
 			sequence_in_read,
 			left_flank,
 			right_flank,
-			repeatTractClasses
+			contig_bases_unmasked,
+			edit_bases_unmasked
 		) ;
 		++(*result)[e] ;		
 	}
@@ -966,7 +917,6 @@ private:
 		std::size_t until_position
 	) {
 		bool const by_position = options().check( "-by-position" ) ;
-		bool const include_annotations = options().check( "-annotate-homopolymers" ) ;
 		std::size_t count = 0 ;
 		Result::iterator i = result.begin() ;
 		Result::const_iterator end_i = result.end() ;
@@ -976,8 +926,7 @@ private:
 					i->first,
 					i->second,
 					sink,
-					by_position,
-					include_annotations
+					by_position
 				) ;
 				// Now delete the result as already output.
 				Result::iterator j = i++ ;
@@ -993,7 +942,6 @@ private:
 		statfile::BuiltInTypeStatSink& sink
 	) {
 		bool const by_position = options().check( "-by-position" ) ;
-		bool const include_annotations = options().check( "-annotate-homopolymers" ) ;
 		auto progress_context = ui().get_progress_context( "Storing remaining results" ) ;
 		std::size_t count = 0 ;
 		for( auto& kv: result ) {
@@ -1001,8 +949,7 @@ private:
 				kv.first,
 				kv.second,
 				sink,
-				by_position,
-				include_annotations
+				by_position
 			) ;
 			progress_context( ++count, result.size() ) ;
 		}
