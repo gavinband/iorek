@@ -28,16 +28,14 @@ namespace genfile {
 	void Fasta::add_sequences_from_file(
 		std::string const& fasta_filename,
 		ProgressCallback progress_callback
-	)
-	{
+	) {
 		load_sequence( std::vector< std::string >( 1, fasta_filename ), progress_callback ) ;
 	}
 
 	void Fasta::add_sequences_from_files(
 		std::vector< std::string > const& fasta_filenames,
 		ProgressCallback callback
-	)
-	{
+	) {
 		load_sequence( fasta_filenames, callback ) ;
 	}
 
@@ -61,6 +59,9 @@ namespace genfile {
 		std::vector< std::string > const& filenames,
 		ProgressCallback progress_callback
 	) {
+		if( progress_callback ) {
+			progress_callback( 0, filenames.size() ) ;
+		}
 		for( std::size_t i = 0; i < filenames.size(); ++i ) {
 			std::vector< std::string > elts = genfile::string_utils::split( filenames[i], "=" ) ;
 			if( elts.size() == 1 ) {
