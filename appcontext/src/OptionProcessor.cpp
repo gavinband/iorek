@@ -105,7 +105,6 @@ namespace appcontext {
 		m_option_implications[option].insert( implied_option ) ;
 	}
 
-
 	void OptionProcessor::option_excludes_group( std::string const& excluding_option, std::string const& excluded_option_group ) {
 		assert( m_option_definitions.find( excluding_option ) != m_option_definitions.end() ) ;
 		std::map< std::string, std::set< std::string > >::const_iterator
