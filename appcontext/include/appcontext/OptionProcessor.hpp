@@ -103,19 +103,31 @@ namespace appcontext {
 			OptionProcessor( OptionProcessor const& other ) ;
 			virtual ~OptionProcessor() ;
 		
+			// Return the current option definitions
 			OptionDefinitions const& get_option_definitions() const ;
+			// Operator [] provides the main way to create new option definitions.
+			// It has specific semantics: can only be called once (to create a new option)
+			// and returns an OptionDefinition object whose methods can be used to set properties
+			// of the option. 
 			OptionDefinition& operator[]( std::string const& arg ) ;
+			// Return the current option definition for the given option (which must be already defined.)
 			OptionDefinition const& operator[] ( std::string const& arg ) const ;
 
+			// Declare an current option 'group'.
+			// All options defined henceforth are treated as in this option group, until
+			// another group is declared.
 			void declare_group( std::string const& ) ;
+
+			// Declare the name of the 'help' option.
 			void set_help_option( std::string const& help_option_name ) { m_help_option_name = help_option_name ; }
 
+			// Set logic for mutual exclusion / implicatio between options and groups
 			void option_excludes_option( std::string const& excluding_option, std::string const& excluded_option ) ;
 			void option_excludes_group( std::string const& excluding_option, std::string const& excluded_option_group ) ;
-
 			void option_implies_option( std::string const& option, std::string const& implied_option ) ;
 
-			// Parse the options from argv, performing all needed checks.
+			// Parse the defined options from argc/argv.
+			// If any errors arise, an OptionProcessingException will be raised.
 			virtual void process( int argc, char** argv ) ;
 
 			// check if an option has been defined.
@@ -123,16 +135,19 @@ namespace appcontext {
 			// check if the given option (which must be valid) has a value supplied by the user.
 			bool check_if_option_was_supplied( std::string const& arg ) const ;
 			bool check( std::string const& arg ) const { return check_if_option_was_supplied( arg ) ; }
-			// check if the given option (which must be valid_) has a value (either supplied or default).
+			// check if the given option (which must be valid) has a value (either supplied or default).
 			bool check_if_option_has_value( std::string const& arg ) const ;
 			bool has_value( std::string const& arg ) const { return check_if_option_has_value( arg ) ; }
 			// check if any option in the given group was supplied.
 			bool check_if_option_was_supplied_in_group( std::string const& group ) const ;
 
+			// get the value of an option (which must be valid) as a string
+			// The option must have exactly one value.
 			std::string get_value( std::string const& arg ) const ;
+			// get the values of an option (which must be valid) as a vector of strings
 			std::vector< std::string > get_values( std::string const& arg ) const ;
 
-			// get the value of the given option as the given type.
+			// get the value of the given option, coerced to the given type.
 			template< typename T >
 			T get_value( std::string const& arg ) const {
 				std::istringstream s( get_value( arg )) ;
@@ -151,7 +166,7 @@ namespace appcontext {
 				return get_value< T >( arg ) ;
 			}
 
-			// get the value of the given option as the given type.
+			// get all values of the given option, as a vector of the given type.
 			template< typename T >
 			std::vector< T > get_values( std::string const& arg ) const {
 				std::vector< std::string > values = get_values( arg ) ;
@@ -166,11 +181,14 @@ namespace appcontext {
 				return result ;
 			}
 
+			// Output a human-readable version of these options to the stream.
 			friend std::ostream& operator<<( std::ostream& aStream, OptionProcessor::OptionDefinitions const& option_definitions ) ;
 			friend std::ostream& operator<<( std::ostream& aStream, OptionProcessor const& options ) ;
 
+			// Get the 'help' option name.
 			std::string const& get_help_option_name() const { return m_help_option_name ; }
 
+			// Return a structure reflecting the current set of options and values.
 			enum { eUserSupplied = 0x1, eDefaulted = 0x2, eNotSet = 0x4 } ;
 			OptionValueMap get_values_as_map(
 				int const value_types = eUserSupplied
@@ -180,7 +198,6 @@ namespace appcontext {
 			// checks
 			typedef std::function< void ( OptionProcessor& ) > Check ;
 			void add_check( Check check ) ;
-
 			void check_equal_multiplicity( std::string const& option1, std::string const& option2 ) ;
 
 		private:
