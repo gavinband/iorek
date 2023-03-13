@@ -1,16 +1,12 @@
 # tabulate-mismatches
 
-`tabulate-mismatches` is a tool to help with context-specific error rate estimation for next generation sequencing datasets.
-
-It:
+`tabulate-mismatches` traverses a set of read alignments and counts matched, mismatched, inserted and deleted bases, according to the bases involved and the sequence context.  The main use case is estimating sequencing accuracy.  Specifically it:
 
 * reads in read alignments from a BAM or CRAM file;
 * reads the reference FASTA file to which the reads are aligned;
-* then it walks the reads to find all mismatches, insertions and deletions, and tabulates them along with the bases involved, and the flanking sequence.
+* then it walks the reads to find all matches, mismatches, insertions and deletions, and tabulates them according to sequence context.
 
-`tabulate-mismatches` can also keep track of genomic region annotations supplied from a seperate
-annotation file, such as homopolymer and short repeat tracts computed using
-[`find-homopolymers`](find-homopolymers.md).
+The output is a large table with counts of each 'event' (match, mismatch, insertion or deletion relative to the reference) separated by the read and contig bases involved and the flanking sequence.  Additionally `tabulate-mismatches` is able to mask out parts of the genome to ignore in this analysis.
 
 ## Synopsis
 
@@ -20,43 +16,43 @@ Get program options:
 $ tabulate-mismatches -help
 
 Welcome to tabulate-mismatches
-(version: 0.7, revision f5d9393)
+(version: 0.9, revision 317ef9b)
 
-(C) 2009-2022 University of Oxford
+(C) 2009-2023 University of Oxford
 
 Usage: tabulate-mismatches <options>
 
 OPTIONS:
 Input / output file options:
+         -fasta <a>: Specify reference sequence
+          -mask <a>: Specify a BED file of regions to mask out of the analysis. The file should have no column names and
+                     should have contig, start and end columns,  expressed in 0-based right-closed form.
              -o <a>: Path of output file.  Defaults to "-".
-         -range <a>: Genomic regions (expressed in the form <chromosome>:<start>-<end>) to process.  Regions are expres-
-                     sed in 1-based, right-closed coordinates. (These regions should have few copy number variants) Alte-
-                     rnatively this can be the name of a file containing a list of regions.
+         -range <a>: Genomic regions (expressed in the form <chromosome>:<start>-<end>) to process.  Regions are express-
+                     ed in 1-based, right-closed coordinates. (These regions should have few copy number variants) Alter-
+                     natively this can be the name of a file containing a list of regions.
   -reads <a> <b>...: Path of bam/cram files to operate on.
-     -reference <a>: Specify reference sequence
-    -annotation <a>: Specify a BED file or text file of annotations (for example, of homopolymer tracts.) If a .txt file,
-                     it must have columns "contig_id", "start", "end", "repeat", "length" using a 1-based, closed interv-
-                     al coordinate system. If a BED file, it must have 4 columns with no headers, representing sequence 
-                     ID, start, end, and annotation, using a 0-based, right-open coordinate system.
 
 Model options:
        -by-position: Specify that errors should be tabulated by position, not aggregated.
-            -mq <a>: Ignore alignments below this mapping quality threshold  Defaults to "0".
+         -flank <a>: Specify how much flanking sequence to classify by.  Defaults to "3".
+            -mq <a>: Ignore alignments below this mapping quality threshold  Defaults to "20".
+
 ```
 
 ### Basic usage
 
-This command assess all mismatches, deletions and insertions in the input reads compared to a
-reference genome, and outputs them along with information about local homopolymer, di- and
-tri-nucleotide repeat tracts.  Assume we are in the `examples/mismatches` folder:
-
+The basic use is:
 ```
-tabulate-alignments -reads conting2_reads.bam -reference example.fa -annotate-repeat-tracts -o mismatches.tsv.gz
+$ tabulate-mismatch -reads <path to one or more .bam or .cram files> -fasta <path to reference FASTA file> [-o <path to output file>]
 ```
 
-Additionally y
+Note that the FASTA and bam/cram files MUST be matched, i.e. all contig IDs in the reads must be present in the FASTA
+file, otherwise the program will halt with an error.
 
 ## Example
+
+### Example data
 
 Some example data can be found in the `example/mismatches/` folder.
 
@@ -64,10 +60,12 @@ Some example data can be found in the `example/mismatches/` folder.
 $ cat example.fa
 >contig1
 ATCGATCGATCGATCGATCGATCGATCGATCGATCGATCGATCGATCGATCGATCGATCGATCG
+>contig2
+ACTGAACTGAAACTGAAAACTGACACTGAGACACTGACGACTGACTGGACACTACT
 ```
 
 ```
-$ cat contig1_reads.sam
+% cat contig1_reads.sam 
 @HD	VN:1.6	SO:coordinate
 @SQ	SN:contig1	LN:64
 read1	0	contig1	1	60	4M	*	0	4	ATCG	*	XC:Z:four base match
@@ -88,129 +86,152 @@ read15	0	contig1	25	60	3M2D3M	*	0	8	ATGTCG	*	XC:Z:adjacent mismatch and deletion
 read16	0	contig1	30	60	4M	*	0	4	TCGT	*	XC:Z:4th base mismatch, position 33
 read17	0	contig1	31	60	4M	*	0	4	CGTT	*	XC:Z:3rd base mismatch, position 33
 read18	0	contig1	32	60	4M	*	0	4	GTTC	*	XC:Z:2nd base mismatch, position 33
-read19	0	contig1	33	60	4M	*	0	4	TTCG	*	XC:Z:another 1st base mismatch, position 33
+read19	0	contig1	33	60	4M	*	0	4	TTCG	*	XC:Z:another 1st base mismatch, position 33%
 ```
 
-```
-$ tabulate-mismatches -reads contig1_reads.bam -reference example.fa
+### Running the program
 
-count	type	contig_sequence	read_sequence	left_flank	right_flank
-1	D	C		GAT	GAT
-1	D	GA		ATC	TCG
-1	I		AA	ATC	GAT
-1	I		G	GAT	CGA
-7	X	A	T	TCG	TCG
-2	X	C	G	GAT	GAT
-1	X	C	T	GAT	GAT
-1	X	G	T	ATC	ATC
-1	X	T	A	CGA	CGA
-```
-
-Here (X = mismatch, I = insertion, D = deletion.
-
-`tabulate-mismatches` can also tabulate by aligned position - this is in particular helpful for debugging:
+`tabulate-mismatches` can now be run like this:
 
 ```
-$ tabulate-mismatches -reads contig1_reads.bam -reference example.fa -by-position
-
-count	contig_id	position	type	contig_sequence	read_sequence	left_flank	right_flank
-1	contig1	5	X	A	T	TCG	TCG
-1	contig1	6	X	T	A	CGA	CGA
-1	contig1	7	X	C	T	GAT	GAT
-1	contig1	8	X	G	T	ATC	ATC
-2	contig1	13	X	A	T	TCG	TCG
-1	contig1	19	D	C		GAT	GAT
-1	contig1	23	I		G	GAT	CGA
-2	contig1	27	X	C	G	GAT	GAT
-1	contig1	28	D	GA		ATC	TCG
-1	contig1	28	I		AA	ATC	GAT
-4	contig1	33	X	A	T	TCG	TCG
+$ tabulate-mismatches -reads contig1_reads.bam -fasta example.fa
 ```
 
-## Example 2: tracking repeat tracts
-
-`tabulate-mismatches` can keep track of mismatches with respect to tracts of homopolymers and short
-repeats (or, optionally, other externally-supplied genomic region annotations). It correctly
-captures all tracts that intersect any base of mismatches and deletions, and captures tracts where
-the read contains an insertion (either internally to the tract or at the boundaries.
-
-**Insertion example**. For example, if the contig sequence is: `CAAG`, and the read sequence is
-`CAAAG`, then `tabulate-mismatches` will treat the insertion as within the homopolymer for all the
-possible CIGAR strings (e.g. `1M1I3M`, `2M1I2M`, `3M1I1M`).
-
-Here's an example:
-
+which produces:
 ```
-$ cat contig2_reads.sam
-@HD	VN:1.6	SO:coordinate
-@SQ	SN:contig2	LN:57
-read20	0	contig2	3	60	3M1I5M	*	0	8	TGAAACTGA	*	XC:Z:insertion in homopolymer, position 6
-read21	0	contig2	9	60	2M1D5M	*	0	7	GAACTGA	*	XC:Z:deletion in homopolymer, position 11
-read21i	0	contig2	9	60	4M1I4M	*	0	7	GAAAACTGA	*	XC:Z:insertion at end of homopolymer, position 13
-read22	0	contig2	15	60	8M	*	0	7	GACAACTG	*	XC:Z:SNP in homopolymer, position 17
-read23	0	contig2	22	60	3M2D3M	*	0	7	GACTGA	*	XC:Z:deletion in dinucleotide repeat, position 25
-read24	0	contig2	22	60	8M	*	0	7	GACAGTGA	*	XC:Z:SNP in dinucleotide repeat, position 26
-read25	0	contig2	22	60	5M2I3M	*	0	7	GACACACTGA	*	XC:Z:insertion in dinucleotide repeat, position 27
-read26	0	contig2	35	60	4M3D1M	*	0	7	TGACT	*	XC:Z:deletion in trinucleotide repeat, position 39
-read27	0	contig2	35	60	7M3I1M	*	0	7	TGACGACGACT	*	XC:Z:insertion in trinucleotide repeat, position 42
-read28	0	contig2	35	60	8M	*	0	7	TGACGAGT	*	XC:Z:SNP in trinucleotide repeat, position 41
-read29	0	contig2	48	60	9M	*	0	7	GAGACTACT	*	XC:Z:SNP in repeat, position 50
-read30	0	contig2	48	60	9M	*	0	7	GACGCTACT	*	XC:Z:SNP in two repeats, position 51
-read31	0	contig2	48	60	9M	*	0	7	GACAGTACT	*	XC:Z:SNP in two repeats, position 52
-read32	0	contig2	48	60	9M	*	0	7	GACACGACT	*	XC:Z:SNP in repeat, position 53
-read33	0	contig2	47	60	1M6D3M	*	0	7	GACT	*	XC:Z:deletion of entire repeat, start position 48
+count	type	contig_sequence	read_sequence	left_flank	right_flank	contig_bases_unmasked	edit_bases_unmasked
+1	=	A	A		TCG	1	0
+12	=	A	A	TCG	TCG	1	0
+1	=	C	C	AT	GAT	1	0
+16	=	C	C	GAT	GAT	1	0
+17	=	G	G	ATC	ATC	1	0
+1	=	T	T	A	CGA	1	0
+17	=	T	T	CGA	CGA	1	0
+1	D	C		GAT	GAT	1	1
+1	D	GA		ATC	TCG	2	2
+1	I		AA	ATC	GAT	0	2
+1	I		G	GAT	CGA	0	1
+7	X	A	T	TCG	TCG	1	1
+2	X	C	G	GAT	GAT	1	1
+1	X	C	T	GAT	GAT	1	1
+1	X	G	T	ATC	ATC	1	1
+1	X	T	A	CGA	CGA	1	1
 ```
 
-To use `tabulate-mismatches` to track the position of mismatches within these tracts, use the `-annotate-repeat-tracts` option:
+In total this shows: 12 mismatches, 2 deletions, and 2 insertions; a total of 80 contig bases and 18 edit bases,
+consistent with what is shown in the read alignment file.
+
+### Understanding the output
+
+The output columns are:
+
+1. the `count`, that is, the number of times this event was seen in the alignments.
+2. the `type` of the event.  It is either `=` (match), `X` (mismatch), `I` (insertion) or `D` (deletion).
+3. the `contig_sequence` i.e. the sequence of bases on the reference FASTA file that were affected/covered by this event
+4. the `read_sequence` i.e. the sequence of bases on the read that were affected/involved by this event
+5. the `left_flank`, i.e. the bases in the contig sequence immediately to the left of those affected/covered by the event
+6. the `right_flank`, i.e. the bases in the contig sequence immediately to the right of those affected/covered by the event
+7. `contig_bases_unmasked`, the number of reference contig bases affected
+8. `edit_bases_unmasked`, the edit distance from the reference contig to the read sequence for this event
+
+### Computing error rates
+
+A natural measure of error rate is the average number of error bases, per base sequenced:
+
+EPB = (mismatching bases + inserted bases + deleted bases) / (total bases sequenced)
+
+If the input read alignments represent accurate aligments between some reads and the true underlying genome, the EPB can be estimated as:
+
+EPB ~ sum( edit_bases_unmasked * count ) / sum(contig_bases_unmasked * count)
+
+Here, `contig_bases_unmasked` represents the total number of bases actually sequenced for each event, while `edit_bases_unmasked` represents the total number of error bases.  
+
+### Masking the genome
+
+In many situations the true genome won't be known beforehand.  To handle this situation, `tabulate-mismatches` has a `-mask` option which allows to only focus the analysis on a specific part of the genome.  The argument is a BED file containing intervals that should be masked out.  The BED file should contain three (unnamed) columns representing the contig id, start and end coordinates of each masked region.  Coordinates in the file are in 0-based, half-closed coordinate system.
+
+If `-mask` is specified, `tabulate-mismatches` still behaves the same way, except that for each event in the CIGAR string, it additionally computes the number of unmasked reference bases involved and the number of unmasked edit bases involved.  For example, consider these alignments:
 
 ```
-$ tabulate-mismatches -reads contig2_reads.bam -reference example.fa -annotate-repeat-tracts -by-position
-
-count	contig_id	position	type	contig_sequence	read_sequence	left_flank	right_flank	annotation1	annotation1_length	annotation2	annotation2_length
-1	contig2	6	I		A	TGA	ACT	NA	NA	NA	NA
-1	contig2	11	D	A		TGA	ACT	A	3	NA	NA
-1	contig2	13	I		A	AAA	CTG	A	3	NA	NA
-1	contig2	17	X	A	C	TGA	AAC	A	4	NA	NA
-1	contig2	25	D	AC		GAC	TGA	AC	4	NA	NA
-1	contig2	26	X	C	G	ACA	TGA	AC	4	NA	NA
-1	contig2	27	I		AC	CAC	TGA	AC	4	NA	NA
-1	contig2	39	D	GAC		GAC	TGA	GAC	6	NA	NA
-1	contig2	41	X	C	G	CGA	TGA	GAC	6	NA	NA
-1	contig2	42	I		GAC	GAC	TGA	GAC	6	NA	NA
-1	contig2	48	D	GACACT		CTG	ACT	ACT	6	AC	4
-1	contig2	50	X	C	G	GGA	ACT	AC	4	NA	NA
-1	contig2	51	X	A	G	GAC	CTA	ACT	6	AC	4
-1	contig2	52	X	C	G	ACA	TAC	ACT	6	AC	4
-1	contig2	53	X	T	G	CAC	ACT	ACT	6	NA	NA
-
-```
-##Using external annotations
-
-Instead of `-annotate-repeat-tracts`, an externally computed set of annotations can be supplied
-using the `-annotate` option. Annotations can be passed in [BED4
-format](https://en.wikipedia.org/wiki/BED_%28file_format%29) (i.e. four columns specifying contig,
-start, end and annotation detail, using a 0-based, right-open coordinate system.)
-
-Alternatively they can be listed in the `find-homopolymers` output format as follows:
-
-```
-$ cat homopolymers.tsv
-# Computed by find-homopolymers 2022-05-22 23:04:49
-# Coordinates are 1-based, closed.
-sequence_id	start	end	repeat	length
-contig2	5	6	A	2
-contig2	10	12	A	3
-contig2	16	19	A	4
-contig2	23	26	AC	4
-contig2	28	31	GA	4
-contig2	31	34	AC	4
-contig2	36	41	GAC	6
-contig2	49	52	AC	4
-contig2	51	56	ACT	6
+REFERENCE:  ...ACGTACGTACGTACG---TACG...    
+     MASK:     *****              ***
+    READS: 1:   TGT--GTACG                
+           2:          A--TGCGGGGTA       
+           3:            G-ACG---TGCG...     
 ```
 
-**Note.** This format uses a 1-based, closed coordinate system.
+The table should look like this:
 
-**Note.** The `-annotate` functionality has probably been superceded by `-annotate-repeat-tracts`
-but I've left it for now in case it proves useful.
+| read  | contig sequence | read sequence | contig bases unmasked | edit bases unmasked |
+-----------------------------------------------------------------------------------------
+| 1     | C               | T             | 0                     | 0                   |
+| 1     | AC              | --            | 1                     | 1                   |
+| 2     | A               | G             | 1                     | 1                   |
+| 2     | CG              | --            | 2                     | 2                   |
+| 2     | ---             | GGG           | 0                     | 3                   |
+| 3     | T               | -             | 1                     | 1                   |
+| 3     | A               | G             | 0                     | 0                   |
 
+Since:
+
+- read 1 contains one mismatch and one deletion, which overlaps the unmasked region by one base.
+- read 2 contains one deletion, one mismatch, and one insertion, none of which overlap the mask
+- read 3 contains one unmasked deletion, and one mismatch that overlaps the mask.
+
+### Tracking mismatches by position
+
+`tabulate-mismatches` can also tabulate by aligned position - this is in particular helpful for debugging.
+For example the full list of matches, mismatches, insertions and deletions in the above data can be output like this:
+
+```
+$ tabulate-mismatches -reads contig1_reads.bam -fasta example.fa -by-position
+```
+
+...which produces:
+```
+count   contig_id       position        type    contig_sequence read_sequence   left_flank      right_flank     contig_bases_unmasked   edit_bases_unmasked
+1       contig1 1       =       A       A               TCG     1       0
+1       contig1 2       =       T       T       A       CGA     1       0
+1       contig1 3       =       C       C       AT      GAT     1       0
+1       contig1 4       =       G       G       ATC     ATC     1       0
+5       contig1 5       =       A       A       TCG     TCG     1       0
+1       contig1 5       X       A       T       TCG     TCG     1       1
+5       contig1 6       =       T       T       CGA     CGA     1       0
+1       contig1 6       X       T       A       CGA     CGA     1       1
+5       contig1 7       =       C       C       GAT     GAT     1       0
+1       contig1 7       X       C       T       GAT     GAT     1       1
+5       contig1 8       =       G       G       ATC     ATC     1       0
+1       contig1 8       X       G       T       ATC     ATC     1       1
+2       contig1 11      =       C       C       GAT     GAT     1       0
+2       contig1 12      =       G       G       ATC     ATC     1       0
+2       contig1 13      =       A       A       TCG     TCG     1       0
+2       contig1 13      X       A       T       TCG     TCG     1       1
+2       contig1 14      =       T       T       CGA     CGA     1       0
+2       contig1 15      =       C       C       GAT     GAT     1       0
+1       contig1 17      =       A       A       TCG     TCG     1       0
+1       contig1 18      =       T       T       CGA     CGA     1       0
+1       contig1 19      D       C               GAT     GAT     1       1
+1       contig1 20      =       G       G       ATC     ATC     1       0
+1       contig1 21      =       A       A       TCG     TCG     1       0
+1       contig1 22      =       T       T       CGA     CGA     1       0
+1       contig1 23      =       C       C       GAT     GAT     1       0
+1       contig1 23      I               G       GAT     CGA     0       1
+1       contig1 24      =       G       G       ATC     ATC     1       0
+2       contig1 25      =       A       A       TCG     TCG     1       0
+2       contig1 26      =       T       T       CGA     CGA     1       0
+2       contig1 27      X       C       G       GAT     GAT     1       1
+1       contig1 28      =       G       G       ATC     ATC     1       0
+1       contig1 28      D       GA              ATC     TCG     2       2
+1       contig1 28      I               AA      ATC     GAT     0       2
+1       contig1 29      =       A       A       TCG     TCG     1       0
+3       contig1 30      =       T       T       CGA     CGA     1       0
+4       contig1 31      =       C       C       GAT     GAT     1       0
+5       contig1 32      =       G       G       ATC     ATC     1       0
+4       contig1 33      X       A       T       TCG     TCG     1       1
+3       contig1 34      =       T       T       CGA     CGA     1       0
+2       contig1 35      =       C       C       GAT     GAT     1       0
+1       contig1 36      =       G       G       ATC     ATC     1       0
+```
+
+This again shows: 12 mismatches, 2 deletions, and 2 insertions; a total of 80 contig bases and 18 edit bases,
+consistent with what is shown in the read alignment file.

@@ -88,7 +88,7 @@ public:
 		options[ "-mq" ]
 			.set_description( "Ignore alignments below this mapping quality threshold" )
 			.set_takes_single_value()
-			.set_default_value( 20 ) ;
+			.set_default_value( 0 ) ;
 
 		options[ "-by-position" ]
 			.set_description( "Specify that errors should be tabulated by position, not aggregated." ) ;
