@@ -44,11 +44,14 @@ Model options:
 
 The basic use is:
 ```
-$ tabulate-mismatch -reads <path to one or more .bam or .cram files> -fasta <path to reference FASTA file> [-o <path to output file>]
+$ tabulate-mismatch -reads <path to one or more .bam/.cram files> -fasta <path to reference FASTA file> [-o <path to output file>]
 ```
 
-Note that the FASTA and bam/cram files MUST be matched, i.e. all contig IDs in the reads must be present in the FASTA
+**Note**. The reference FASTA file and the bam/cram files must match each other.  In particular all contig IDs in the read files must be present in the FASTA
 file, otherwise the program will halt with an error.
+
+The program prints output to stdout, or (if `-o` is given) to the specified output file.
+The output file format depends on the filename - if it ends in `.csv` or `.tsv` a comma- or tab-delimited file will be output, if `.txt` a space-delimited file will be output.  The default is tab-delimited.  An output file with the `.gz` extension will be gzip-compressed.
 
 ## Example
 
@@ -88,6 +91,9 @@ read17	0	contig1	31	60	4M	*	0	4	CGTT	*	XC:Z:3rd base mismatch, position 33
 read18	0	contig1	32	60	4M	*	0	4	GTTC	*	XC:Z:2nd base mismatch, position 33
 read19	0	contig1	33	60	4M	*	0	4	TTCG	*	XC:Z:another 1st base mismatch, position 33%
 ```
+
+The total number of reference bases sequenced here is 80, and the total number of 'error' bases is 18
+(12 mismatches, 3 deleted bases, and 3 inserted bases) as counted from the comments.
 
 ### Running the program
 
