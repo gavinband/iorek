@@ -123,9 +123,10 @@ namespace iorek {
 			}
 
 			// Check threads are a sensible power of 2.
+			std::cerr << "THREADS: " << number_of_threads << ".\n" ;
 			assert( number_of_threads >= 1 ) ;
 			assert( number_of_threads <= 32 ) ;
-			assert( (number_of_threads == 1) || (number_of_threads & (number_of_threads - 1) ) != 0 ) ;
+			assert( (number_of_threads & (number_of_threads - 1) ) == 0 ) ;
 			
 			jellyfish::mer_dna::k( k ) ;
 			binary_reader reader(ifs, &header);
