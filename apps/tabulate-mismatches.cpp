@@ -876,8 +876,11 @@ private:
 		switch( type ) {
 			case eMatch:
 			case eMismatch:
-				contig_bases_unmasked = (m_mask->at_zero_based( contig_id, begin_in_contig ) == genfile::FastaMask::eUnmasked) ? 1 : 0 ;
-				edit_bases_unmasked = contig_bases_unmasked * ( (type == eMismatch) ? 1 : 0 ) ;
+			case eDeletion:
+				for( std::size_t pos = begin_in_contig; pos < end_in_contig; ++pos ) {
+					contig_bases_unmasked += (m_mask->at_zero_based( contig_id, pos ) == genfile::FastaMask::eUnmasked) ;
+				}
+				edit_bases_unmasked = contig_bases_unmasked * ( (type == eMatch) ? 0 : 1 ) ;
 				break ;
 			case eInsertion:
 				contig_bases_unmasked = 0 ;
@@ -888,12 +891,6 @@ private:
 					edit_bases_unmasked = (end_in_read - begin_in_read) ;
 				}
 				break ;
-			case eDeletion:
-				contig_bases_unmasked = 0 ;
-				for( std::size_t pos = begin_in_contig; pos < end_in_contig; ++pos ) {
-					contig_bases_unmasked += (m_mask->at_zero_based( contig_id, begin_in_contig-1 ) == genfile::FastaMask::eUnmasked) ;
-				}
-				edit_bases_unmasked = contig_bases_unmasked ;
 		} ;
 
 		MismatchClass e(
