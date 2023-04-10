@@ -15,6 +15,7 @@ def build( bld ):
 		source = (
 			bld.path.ant_glob( 'src/*.cpp')
 			+ bld.path.ant_glob( 'src/string_utils/*.cpp')
+			+ bld.path.ant_glob( 'src/annotation/*.cpp')
 			+ bld.path.ant_glob( 'src/db/*.cpp')
 		),
 		includes = [ './include' ],
