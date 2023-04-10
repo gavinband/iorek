@@ -12,10 +12,15 @@
 #include <memory>
 #include <mutex>
 #include <algorithm>
+#include <optional>
+
 //#include <boost/ptr_container/ptr_vector.hpp>
 #include <boost/filesystem.hpp>
 #include <boost/noncopyable.hpp>
 #include <boost/timer.hpp>
+#include <boost/optional.hpp>
+#include <boost/format.hpp>
+
 //#include <boost/lockfree/queue.hpp>
 #include <chrono>
 #include <thread>
@@ -26,6 +31,9 @@
 #include "SeqLib/GenomicRegionCollection.h"
 #include "SeqLib/GenomicRegion.h"
 //#include "SeqLib/BWAWrapper.h"
+
+// Wavefront aligner
+#include "bindings/cpp/WFAligner.hpp"
 
 namespace seqlib = SeqLib;
 // namespace bt = BamTools ;
@@ -73,7 +81,6 @@ public:
 		options[ "-jf" ]
 			.set_description( "Path of jellyfish file to load kmers from." )
 			.set_takes_values_until_next_option()
-			.set_is_required()
 		;
 
 		options[ "-min-kmer-count" ]
@@ -125,6 +132,14 @@ public:
 			.set_description( "Length at end of each read to track errors in" )
 			.set_takes_single_value()
 			.set_default_value( 1000 )
+		;
+
+		options.declare_group( "Adapter options" ) ;
+		options[ "-adapters" ]
+			.set_description( "Set adapter sequences - forward and reverse" )
+			.set_takes_values( 2 )
+			.set_default_value( "TTTTTTTTCCTGTACTTCGTTCAGTTACGTATTGCT" )
+			.set_default_value( "GCAATACGTAACTGAACGAAGTACAGG" )
 		;
 
 		options.declare_group( "Other options" ) ;
@@ -179,6 +194,115 @@ namespace {
 		std::string qualities ;
 	} ;
 
+	struct AdapterAlignment {
+		uint32_t start ;
+		uint32_t end ;
+		std::string cigar ;
+		double score ;
+	} ;
+
+	struct AdapterAligner {
+		virtual ~AdapterAligner() {} ;
+		virtual bool find_best_forward_alignment( std::string query, std::string sequence, AdapterAlignment* result ) = 0 ;
+		virtual bool find_best_reverse_alignment( std::string query, std::string sequence, AdapterAlignment* result ) = 0 ;
+	} ;
+	
+	struct WFAAdapterAligner: public AdapterAligner {
+	public:
+		WFAAdapterAligner():
+			// porechop defaults are: match = 3, mismatch = -6, gap open = -5, gap extend = -2
+			// we use the same scheme but WFA requires non-positive scores, and is most efficient
+			// for match = 0, so:
+			m_aligner(
+				0, // match
+				9, 	// mismatch
+				5, 	// gap open
+				5,	// gap extend
+				wfa::WFAligner::Alignment,
+				wfa::WFAligner::MemoryHigh
+			)
+		{}
+
+		bool find_best_forward_alignment( std::string query, std::string sequence, AdapterAlignment* result ) {
+			if(
+				// ends-free alignment
+				// we allow insertions at the start/end of the read sequence for free.
+				m_aligner.alignEndsFree(
+					query,
+					0, 0,
+					sequence,
+					std::min( sequence.size(), 50ul ), std::min( sequence.size(), 100ul )
+//					3, 0
+				) == wfa::WFAligner::StatusSuccessful
+			) {
+				// find start and end from cigar string.
+				std::string cigar = m_aligner.getAlignmentCigar() ;
+				result->start = cigar.find_first_of( "MXD" ) ;
+				result->end = cigar.find_last_of( "MXD" ) ;
+				result->cigar = compress_cigar( m_aligner.getAlignmentCigar(), result->start, result->end ) ;
+				result->score = m_aligner.getAlignmentScore() ;
+
+				return true ;
+			} else {
+				return false ;
+			}
+		}
+
+		bool find_best_reverse_alignment( std::string query, std::string sequence, AdapterAlignment* result ) {
+			std::reverse( sequence.begin(), sequence.end() ) ;
+			std::reverse( query.begin(),query.end() ) ;
+			if(
+				// ends-free alignment
+				// we allow insertions at the start/end of the read sequence for free.
+				m_aligner.alignEndsFree(
+					query,
+					0, 0,
+					sequence,
+					std::min( sequence.size(), 100ul ), std::min( sequence.size(), 100ul )
+//					3, 0
+				) == wfa::WFAligner::StatusSuccessful
+			) {
+				// find start and end from cigar string.
+				std::string cigar = m_aligner.getAlignmentCigar() ;
+				std::reverse( cigar.begin(), cigar.end() ) ;
+				result->start = cigar.find_first_of( "MXD" ) ;
+				result->end = cigar.find_last_of( "MXD" ) ;
+				result->cigar = compress_cigar( cigar, result->start, result->end ) ;
+				result->score = m_aligner.getAlignmentScore() ;
+				return true ;
+			} else {
+				return false ;
+			}
+		}
+
+	private:
+
+		wfa::WFAlignerGapAffine m_aligner ;
+
+	private:
+		std::string compress_cigar( std::string cigar, std::size_t start, std::size_t end ) const {
+			assert( end >= start ) ;
+			std::string result ;
+			result.reserve( end - start ) ;
+			boost::format f( "%d%s" ) ;
+			{
+				char x = '\0' ;
+				std::size_t count = 0 ;
+				for( std::size_t i = start; i < end; ++i, ++count ) {
+					if( x != cigar[i] ) {
+						if( i > start ) {
+							result.append( str(f % count % x) ) ;
+						}
+						x = cigar[i] ;
+						count = 1 ;
+					}
+				}
+				result.append( str(f % count % x) ) ;
+			}
+			return result ;
+		}
+	} ;
+
 	struct ReadResult {
 	public:
 		ReadResult():
@@ -208,7 +332,9 @@ namespace {
 			mean_base_quality2( other.mean_base_quality2 ),
 			number_of_bases_ge_q( other.number_of_bases_ge_q ),
 			error_positions( other.error_positions ),
-			bases_at_q( other.bases_at_q )
+			bases_at_q( other.bases_at_q ),
+			forward_adapter_alignment( other.forward_adapter_alignment ),
+			reverse_adapter_alignment( other.reverse_adapter_alignment )
 		{}
 
 		ReadResult& operator=( ReadResult const& other ) {
@@ -224,6 +350,9 @@ namespace {
 			number_of_bases_ge_q = other.number_of_bases_ge_q ;
 			error_positions = other.error_positions ;
 			bases_at_q = other.bases_at_q ;
+			forward_adapter_alignment = other.forward_adapter_alignment ;
+			reverse_adapter_alignment = other.reverse_adapter_alignment ;
+
 			return *this ;
 		}
 	
@@ -242,6 +371,8 @@ namespace {
 		std::vector< uint64_t > number_of_bases_ge_q ;
 		std::vector< std::size_t > error_positions ;
 		std::vector< uint64_t > bases_at_q ;
+		boost::optional< AdapterAlignment > forward_adapter_alignment ;
+		boost::optional< AdapterAlignment > reverse_adapter_alignment ;
 	} ;
 	
 	struct ReadEndMetrics {
@@ -325,6 +456,7 @@ private:
 	ReadTags m_read_tags ;
 	std::size_t m_k ;
 	HashSet m_kmers ;
+	std::vector< std::string > m_adapters ;
 
 private:
 	void unsafe_process() {
@@ -339,6 +471,18 @@ private:
 		}
 
 		{
+			std::vector< std::string > const adapters = options().get_values< std::string >( "-adapters" ) ;
+			if( adapters.size() != 2 ) {
+				throw genfile::BadArgumentError(
+					"ClassifyKmerApplication::unsafe_process()",
+					"-adapters",
+					"Expected two adapters (forward and reverse), found " + genfile::string_utils::to_string( adapters.size() )
+				) ;
+			}
+			m_adapters = adapters ;
+		}
+
+		if( options().check( "-jf" )) {
 			boost::timer timer ;
 			double start_time = timer.elapsed() ;
 
@@ -358,6 +502,9 @@ private:
 				<< m_k << "-mers loaded in "
 				<< (end_time-start_time)
 				<< " seconds:\n" ;
+		} else {
+			// Just use a dummy value for k.
+			m_k = 31 ;
 		}
 
 		ui().logger() << "++ Total memory usage is:\n" ;
@@ -597,7 +744,21 @@ private:
 		Read const& read,
 		HashSet const& kmers,
 		std::size_t k,
-		int const base_quality_threshold
+		int const base_quality_threshold,
+		AdapterAligner& aligner
+	) {
+		ReadResult result ;
+		analyse_read_for_kmers( read, kmers, k, base_quality_threshold, &result ) ;
+		analyse_read_for_adapters( read, aligner, &result ) ;
+		return result ;
+	}
+
+	void analyse_read_for_kmers(
+		Read const& read,
+		HashSet const& kmers,
+		std::size_t k,
+		int const base_quality_threshold,
+		ReadResult* result
 	) {
 #if DEBUG
 		std::cerr << "analyse_read(): " << read.id << ".\n" ;
@@ -605,11 +766,10 @@ private:
 		assert( read.qualities.size() == read.sequence.size() ) ;
 		assert( k <= 31 ) ;
 		typedef genfile::kmer::KmerHashIterator< std::string::const_iterator > KmerIterator ;
-
-		ReadResult result ;
-		result.read = read ;
-		result.tag = get_read_tag( read.id ) ;
-		result.k = k ;
+		assert( result != 0 ) ;
+		result->read = read ;
+		result->tag = get_read_tag( read.id ) ;
+		result->k = k ;
 		KmerIterator kmer_iterator( read.sequence.begin(), read.sequence.end(), k ) ;
 
 		int kmer_min_base_quality = 0 ;
@@ -629,7 +789,7 @@ private:
 			// Base quality metrics
 			int base_quality = get_quality_from_char(read.qualities[i]) ;
 			assert( base_quality <= 93 ) ;
-			++result.bases_at_q[std::size_t(base_quality)] ;
+			++(result->bases_at_q[std::size_t(base_quality)]) ;
 			sum_of_base_qualities += double(base_quality) ;
 			// bq = -10 log10 (error probability) so use 
 			// inverse is 10^(-bq/10)
@@ -659,18 +819,18 @@ private:
 				--kmer_min_base_quality_at ;
 			}
 			if( kmer_min_base_quality >= base_quality_threshold ) {
-				++(result.number_of_kmers_at_threshold) ;
+				++(result->number_of_kmers_at_threshold) ;
 				uint64_t const hash = kmer_iterator.hash() ;
 				uint64_t const reverse_complement_hash = genfile::kmer::reverse_complement( kmer_iterator.hash(), k ) ;
 				if( kmers.contains( hash ) || kmers.contains( reverse_complement_hash ) ) {
 					if( !have_first ) {
-						result.first_solid_kmer_start = i ;  // 0-based, half-closed
+						result->first_solid_kmer_start = i ;  // 0-based, half-closed
 						have_first = true ;
 					}
-					++(result.number_of_solid_kmers_at_threshold) ;
-					result.last_solid_kmer_end = i+k ; // 0-based, half-closed
+					++(result->number_of_solid_kmers_at_threshold) ;
+					result->last_solid_kmer_end = i+k ; // 0-based, half-closed
 				} else {
-					result.error_positions.push_back(i) ;
+					result->error_positions.push_back(i) ;
 #if DEBUG
 					std::cerr << "!! kmer not in hash:" << kmer_iterator.to_string() << ":\n"
 						<< "    (fwd): " << genfile::kmer::decode_hash( hash, k ) << ": " << hash << "\n"
@@ -692,7 +852,7 @@ private:
 		) {
 			int base_quality = get_quality_from_char(read.qualities[i]) ;
 			assert( base_quality <= 93 ) ;
-			++result.bases_at_q[std::size_t(base_quality)] ;
+			++(result->bases_at_q[std::size_t(base_quality)] );
 			sum_of_base_qualities += double(base_quality) ;
 			sum_of_predicted_errors += double(pow( 10, -base_quality/10.0 )) ;
 			for( std::size_t b = 0; b < 9; ++b ) {
@@ -703,15 +863,42 @@ private:
 #endif
 		}
 		
-		result.mean_base_quality = sum_of_base_qualities / result.read.length() ;
-		result.mean_base_quality2 = -10 * log10( sum_of_predicted_errors / result.read.length()) ;
+		result->mean_base_quality = sum_of_base_qualities / result->read.length() ;
+		result->mean_base_quality2 = -10 * log10( sum_of_predicted_errors / result->read.length()) ;
 		for( std::size_t b = 0; b < 9; ++b ) {
-			result.number_of_bases_ge_q[b] = number_of_bases_ge_q[b] ;
+			result->number_of_bases_ge_q[b] = number_of_bases_ge_q[b] ;
 		}
 #if DEBUG
 		std::cerr << "analyse_read(): " << read.id << ": finished.\n" ;
 #endif
-		return result ;
+	}
+
+	void analyse_read_for_adapters(
+		Read const& read,
+		AdapterAligner& aligner,
+		ReadResult* result
+	) {
+		AdapterAlignment forward_adapter_alignment ;
+		AdapterAlignment reverse_adapter_alignment ;
+		if(
+			aligner.find_best_forward_alignment(
+				m_adapters[0],
+				read.sequence,
+				&forward_adapter_alignment
+			)
+		) {
+			result->forward_adapter_alignment = forward_adapter_alignment ;
+		}
+
+		if(
+			aligner.find_best_reverse_alignment(
+				m_adapters[1],
+				read.sequence,
+				&reverse_adapter_alignment
+			)
+		) {
+			result->reverse_adapter_alignment = reverse_adapter_alignment ;
+		}
 	}
 
 	std::string get_read_tag( std::string const& read_id ) const {
@@ -723,7 +910,8 @@ private:
 		}
 		return result ;
 	}
-	
+
+
 	void analyse_reads_threaded(
 		ReadQueue* read_queue,
 		ReadResultQueue* result_queue,
@@ -736,11 +924,13 @@ private:
 #if DEBUG
 		std::cerr << "(thread " << thread_index << "): Starting...\n" ;
 #endif	
+		WFAAdapterAligner aligner ;
+
 		Read read ;
 		while( !(*quit) ) {
 			bool popped = read_queue->try_dequeue( read ) ;
 			if( popped ) {
-				ReadResult const result = analyse_read( read, *kmers, k, base_quality_threshold ) ;
+				ReadResult const result = analyse_read( read, *kmers, k, base_quality_threshold, aligner ) ;
 				while( !result_queue->try_enqueue( result )) {
 					std::this_thread::sleep_for( std::chrono::microseconds(10) ) ;
 				}
@@ -760,7 +950,8 @@ private:
 		std::atomic< int >* quit
 	) {
 		bool const include_tags = options().check( "-read-tags" ) ;
-		write_per_read_result_header( read_sink, include_tags ) ;
+		bool const include_kmer_metrics = options().check( "-jf" ) ;
+		write_per_read_result_header( read_sink, include_tags, include_kmer_metrics ) ;
 		
 		std::map< std::string, ReadEndMetrics > read_start_metrics ;
 		std::map< std::string, ReadEndMetrics > read_end_metrics ;
@@ -772,7 +963,7 @@ private:
 		while( !(*quit) ) {
 			bool popped = result_queue->try_dequeue( result ) ;
 			if( popped ) {
-				process_read_result( result, read_sink, include_tags ) ;
+				process_read_result( result, read_sink, include_tags, include_kmer_metrics ) ;
 				if( result.read.length() >= 2 * length_to_track_at_read_ends ) {
 					accumulate_read_end_metrics(
 						result,
@@ -809,18 +1000,22 @@ private:
 	void process_read_result(
 		ReadResult const& read_result,
 		statfile::BuiltInTypeStatSink* output,
-		bool const include_tags
+		bool const include_tags,
+		bool include_kmer_metrics
+
 	) {
 		write_per_read_result(
 			read_result,
 			output,
-			include_tags
+			include_tags,
+			include_kmer_metrics
 		) ;
 	}
 	
 	void write_per_read_result_header(
 		statfile::BuiltInTypeStatSink* output,
-		bool const include_tags
+		bool const include_tags,
+		bool include_kmer_metrics
 	) {
 		(*output)
 			| "read_id" ;
@@ -831,11 +1026,6 @@ private:
 			| "read_length"
 			| "mean_base_quality"
 			| "mean_base_quality2"
-			| "kmer_k"
-			| "number_of_kmers_at_threshold"
-			| "number_of_solid_kmers_at_threshold"
-			| "first_solid_kmer_start"
-			| "last_solid_kmer_end"
 			| "n_bases_at_q10"
 			| "n_bases_at_q20"
 			| "n_bases_at_q30"
@@ -845,13 +1035,31 @@ private:
 			| "n_bases_at_q70"
 			| "n_bases_at_q80"
 			| "n_bases_at_q90"
+			| "forward_adapter_start"
+			| "forward_adapter_end"
+			| "forward_adapter_score"
+			| "forward_adapter_cigar"
+			| "reverse_adapter_start"
+			| "reverse_adapter_end"
+			| "reverse_adapter_score"
+			| "reverse_adapter_cigar"
 		;
+		if( include_kmer_metrics ) {
+			(*output)
+				| "kmer_k"
+				| "number_of_kmers_at_threshold"
+				| "number_of_solid_kmers_at_threshold"
+				| "first_solid_kmer_start"
+				| "last_solid_kmer_end"
+			;
+		}
 	}
 
 	void write_per_read_result(
 		ReadResult const& read_result,
 		statfile::BuiltInTypeStatSink* output,
-		bool include_tags
+		bool include_tags,
+		bool include_kmer_metrics
 	) {
 #if DEBUG
 		std::cerr << "++ write_per_read_result(): " << result.id << ".\n" ;
@@ -865,11 +1073,6 @@ private:
 			<< uint64_t(read_result.read.length())
 			<< read_result.mean_base_quality
 			<< read_result.mean_base_quality2
-			<< read_result.k
-			<< read_result.number_of_kmers_at_threshold
-			<< read_result.number_of_solid_kmers_at_threshold
-			<< (read_result.first_solid_kmer_start+1) 			// convert to 1-based, closed
-			<< (read_result.last_solid_kmer_end) 				// 1-based, closed.
 			<< read_result.number_of_bases_ge_q[1] 				// q10
 			<< read_result.number_of_bases_ge_q[2] 				// q20
 			<< read_result.number_of_bases_ge_q[3] 				// q30
@@ -879,7 +1082,37 @@ private:
 			<< read_result.number_of_bases_ge_q[7] 				// q70
 			<< read_result.number_of_bases_ge_q[8] 				// q80
 			<< read_result.number_of_bases_ge_q[9] 				// q90
-			<< statfile::end_row() ;
+		;
+		if( read_result.forward_adapter_alignment ) {
+			(*output)
+				<< read_result.forward_adapter_alignment->start+1	// convert to 1-based
+				<< read_result.forward_adapter_alignment->end+1 	// convert to 1-based
+				<< read_result.forward_adapter_alignment->score
+				<< read_result.forward_adapter_alignment->cigar
+			;
+		} else {
+			(*output) << "NA" << "NA" << "NA" << "NA" ;
+		}
+		if( read_result.reverse_adapter_alignment ) {
+			(*output)
+				<< read_result.reverse_adapter_alignment->start+1	// convert to 1-based
+				<< read_result.reverse_adapter_alignment->end+1 	// convert to 1-based
+				<< read_result.reverse_adapter_alignment->score
+				<< read_result.reverse_adapter_alignment->cigar
+			;
+		} else {
+			(*output) << "NA" << "NA" << "NA" << "NA" ;
+		}
+		if( include_kmer_metrics ) {
+			(*output)
+				<< read_result.k
+				<< read_result.number_of_kmers_at_threshold
+				<< read_result.number_of_solid_kmers_at_threshold
+				<< (read_result.first_solid_kmer_start+1) 			// convert to 1-based, closed
+				<< (read_result.last_solid_kmer_end) 				// 1-based, closed.
+			;
+		}
+		(*output) << statfile::end_row() ;
 	}
 
 	void accumulate_read_end_metrics(

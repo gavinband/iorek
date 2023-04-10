@@ -10,6 +10,8 @@ def build( bld ):
 		source = (
 			bld.path.ant_glob( "alignment/*.c" )
 			+ bld.path.ant_glob( "wavefront/*.c" )
+			+ bld.path.ant_glob( "utils/*.c" )
+			+ bld.path.ant_glob( "system/*.c" )
 		),
 		includes = './include',
 		export_includes = './include',

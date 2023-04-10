@@ -15,12 +15,6 @@ def build( bld ):
 		includes = "./"
 	)
 	bld.program(
-		source = "parse-cigar.cpp",
-		target = 'parse-cigar',
-		use = 'seqan bamtools seqlib package_revision appcontext genfile qcdb pthread zlib',
-		includes = "./"
-	)
-	bld.program(
 		source = "tabulate-alignments.cpp",
 		target = 'tabulate-alignments',
 		use = 'seqan bamtools seqlib package_revision appcontext genfile qcdb pthread zlib',
@@ -53,7 +47,7 @@ def build( bld ):
 	bld.program(
 		source = "classify-kmers.cpp",
 		target = 'classify-kmers',
-		use = 'seqan bamtools seqlib package_revision appcontext genfile qcdb iorek pthread parallel_hashmap concurrentqueue zlib',
+		use = 'seqan bamtools seqlib package_revision appcontext genfile qcdb iorek pthread parallel_hashmap concurrentqueue wfa2cpp wfa2 zlib',
 		includes = "./"
 	)
 	bld.program(
