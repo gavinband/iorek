@@ -143,8 +143,8 @@ public:
 				"kit LSK114 (Kit 14 chemistry)"
 			)
 			.set_takes_values( 2 )
-			.set_default_value( "TTCAGTTACGTATTGCT" )
-			.set_default_value( "GCAATACGTAACTGAAC" )
+//			.set_default_value( "TTCAGTTACGTATTGCT" )
+//			.set_default_value( "GCAATACGTAACTGAAC" )
 		;
 
 		options.declare_group( "Other options" ) ;
@@ -564,7 +564,7 @@ private:
 			m_read_tags = load_read_tags( options().get< std::string >( "-read-tags" )) ;
 		}
 
-		{
+		if( options().check( "-adapters" )) {
 			std::vector< std::string > const adapters = options().get_values< std::string >( "-adapters" ) ;
 			if( adapters.size() != 2 ) {
 				throw genfile::BadArgumentError(
@@ -843,7 +843,9 @@ private:
 	) {
 		ReadResult result ;
 		analyse_read_for_kmers( read, kmers, k, base_quality_threshold, &result ) ;
-		analyse_read_for_adapters( read, aligner, &result ) ;
+		if( m_adapters.size() > 0 ) {
+			analyse_read_for_adapters( read, aligner, &result ) ;
+		}
 		return result ;
 	}
 
@@ -1133,17 +1135,21 @@ private:
 			| "n_bases_at_q70"
 			| "n_bases_at_q80"
 			| "n_bases_at_q90"
-			| "forward_adapter_start"
-			| "forward_adapter_end"
-			| "forward_adapter_score"
-			| "forward_adapter_cigar"
-			| "forward_adapter_identity"
-			| "reverse_adapter_start"
-			| "reverse_adapter_end"
-			| "reverse_adapter_score"
-			| "reverse_adapter_cigar"
-			| "reverse_adapter_identity"
 		;
+		if( m_adapters.size() > 0 ) {
+			(*output)
+				| "forward_adapter_start"
+				| "forward_adapter_end"
+				| "forward_adapter_score"
+				| "forward_adapter_cigar"
+				| "forward_adapter_identity"
+				| "reverse_adapter_start"
+				| "reverse_adapter_end"
+				| "reverse_adapter_score"
+				| "reverse_adapter_cigar"
+				| "reverse_adapter_identity"
+			;
+		}
 		if( include_kmer_metrics ) {
 			(*output)
 				| "kmer_k"
@@ -1169,6 +1175,7 @@ private:
 		if( include_tags ) {
 			(*output) << read_result.tag ;
 		}
+
 		(*output)
 			<< uint64_t(read_result.read.length())
 			<< read_result.mean_base_quality
@@ -1183,28 +1190,32 @@ private:
 			<< read_result.number_of_bases_ge_q[8] 				// q80
 			<< read_result.number_of_bases_ge_q[9] 				// q90
 		;
-		if( read_result.forward_adapter_alignment ) {
-			(*output)
-				<< read_result.forward_adapter_alignment->start+1	// convert to 1-based
-				<< read_result.forward_adapter_alignment->end+1 	// convert to 1-based
-				<< read_result.forward_adapter_alignment->score
-				<< read_result.forward_adapter_alignment->cigar
-				<< read_result.forward_adapter_alignment->identity
-			;
-		} else {
-			(*output) << "NA" << "NA" << "NA" << "NA" ;
+
+		if( m_adapters.size() > 0 ) {
+			if( read_result.forward_adapter_alignment ) {
+				(*output)
+					<< read_result.forward_adapter_alignment->start+1	// convert to 1-based
+					<< read_result.forward_adapter_alignment->end+1 	// convert to 1-based
+					<< read_result.forward_adapter_alignment->score
+					<< read_result.forward_adapter_alignment->cigar
+					<< read_result.forward_adapter_alignment->identity
+				;
+			} else {
+				(*output) << "NA" << "NA" << "NA" << "NA" ;
+			}
+			if( read_result.reverse_adapter_alignment ) {
+				(*output)
+					<< read_result.reverse_adapter_alignment->start+1	// convert to 1-based
+					<< read_result.reverse_adapter_alignment->end+1 	// convert to 1-based
+					<< read_result.reverse_adapter_alignment->score
+					<< read_result.reverse_adapter_alignment->cigar
+					<< read_result.reverse_adapter_alignment->identity
+				;
+			} else {
+				(*output) << "NA" << "NA" << "NA" << "NA" ;
+			}
 		}
-		if( read_result.reverse_adapter_alignment ) {
-			(*output)
-				<< read_result.reverse_adapter_alignment->start+1	// convert to 1-based
-				<< read_result.reverse_adapter_alignment->end+1 	// convert to 1-based
-				<< read_result.reverse_adapter_alignment->score
-				<< read_result.reverse_adapter_alignment->cigar
-				<< read_result.reverse_adapter_alignment->identity
-			;
-		} else {
-			(*output) << "NA" << "NA" << "NA" << "NA" ;
-		}
+
 		if( include_kmer_metrics ) {
 			(*output)
 				<< read_result.k
@@ -1473,7 +1484,7 @@ private:
 	}
 } ;
 
-namesoace {
+namespace {
 	void alignment_test() {
 		wfa::WFAlignerGapAffine aligner(
 			-3, // match
@@ -1511,6 +1522,7 @@ namesoace {
 		std::cerr << "\n-------------------------\n" ;
 	}
 }
+
 
 int main( int argc, char** argv )
 {
