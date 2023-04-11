@@ -34,6 +34,7 @@
 
 // Wavefront aligner
 #include "bindings/cpp/WFAligner.hpp"
+#include "ssw_cpp.h"
 
 namespace seqlib = SeqLib;
 // namespace bt = BamTools ;
@@ -136,10 +137,14 @@ public:
 
 		options.declare_group( "Adapter options" ) ;
 		options[ "-adapters" ]
-			.set_description( "Set adapter sequences - forward and reverse" )
+			.set_description(
+				"Set 5' and 3' adapter sequences.  These should be specified in the same orientation as the read strand, "
+				" i.e 5'->3' on the strand being sequenced.  The defaults are from Nanonpore Chemistry Document for Ligation Adapter "
+				"kit LSK114 (Kit 14 chemistry)"
+			)
 			.set_takes_values( 2 )
-			.set_default_value( "TTTTTTTTCCTGTACTTCGTTCAGTTACGTATTGCT" )
-			.set_default_value( "GCAATACGTAACTGAACGAAGTACAGG" )
+			.set_default_value( "TTCAGTTACGTATTGCT" )
+			.set_default_value( "GCAATACGTAACTGAAC" )
 		;
 
 		options.declare_group( "Other options" ) ;
@@ -199,6 +204,7 @@ namespace {
 		uint32_t end ;
 		std::string cigar ;
 		double score ;
+		double identity ;
 	} ;
 
 	struct AdapterAligner {
@@ -231,8 +237,8 @@ namespace {
 					query,
 					0, 0,
 					sequence,
-					std::min( sequence.size(), 50ul ), std::min( sequence.size(), 100ul )
-//					3, 0
+					sequence.size(), sequence.size()
+//					0, 0
 				) == wfa::WFAligner::StatusSuccessful
 			) {
 				// find start and end from cigar string.
@@ -250,7 +256,7 @@ namespace {
 
 		bool find_best_reverse_alignment( std::string query, std::string sequence, AdapterAlignment* result ) {
 			std::reverse( sequence.begin(), sequence.end() ) ;
-			std::reverse( query.begin(),query.end() ) ;
+			std::reverse( query.begin(), query.end() ) ;
 			if(
 				// ends-free alignment
 				// we allow insertions at the start/end of the read sequence for free.
@@ -258,13 +264,14 @@ namespace {
 					query,
 					0, 0,
 					sequence,
-					std::min( sequence.size(), 100ul ), std::min( sequence.size(), 100ul )
-//					3, 0
+					sequence.size(), sequence.size()
 				) == wfa::WFAligner::StatusSuccessful
 			) {
 				// find start and end from cigar string.
 				std::string cigar = m_aligner.getAlignmentCigar() ;
+				// e.g. IIIIIMXMMMMIIIIIIIIII
 				std::reverse( cigar.begin(), cigar.end() ) ;
+				// now IIIIIIIIIIMMMMXMIIIII
 				result->start = cigar.find_first_of( "MXD" ) ;
 				result->end = cigar.find_last_of( "MXD" ) ;
 				result->cigar = compress_cigar( cigar, result->start, result->end ) ;
@@ -300,6 +307,93 @@ namespace {
 				result.append( str(f % count % x) ) ;
 			}
 			return result ;
+		}
+	} ;
+
+	struct SSWAdapterAligner: public AdapterAligner {
+	public:
+		SSWAdapterAligner():
+			// porechop defaults are: match = 3, mismatch = -6, gap open = -5, gap extend = -2
+			// we use the same scheme but WFA requires non-positive scores, and is most efficient
+			// for match = 0, so:
+			m_ssw(
+				3,  // match
+				6,  // mismatch
+				5,  // gap open
+				2   // gap extension
+			)
+		{}
+
+		bool find_best_forward_alignment( std::string query, std::string sequence, AdapterAlignment* result ) {
+			StripedSmithWaterman::Alignment alignment ;
+			// bool Align(const char* query, const char* ref, const int& ref_len,
+			//         const Filter& filter, Alignment* alignment, const int32_t maskLen) const;
+
+			if(
+				m_ssw.Align(
+					query.c_str(), sequence.c_str(), sequence.size(), 
+					m_filter, &alignment, 50
+				)
+			) {
+				// find start and end from cigar string.
+				// results are 1-based, convert back to 0-based here.
+				result->start = alignment.ref_begin-1 ;
+				result->end = alignment.ref_end ;
+				result->cigar = alignment.cigar_string ;
+				result->score = alignment.sw_score ;
+				result->identity = compute_identity( alignment.cigar_string, query.size() ) ;
+				return true ;
+			} else {
+				return false ;
+			}
+		}
+
+		bool find_best_reverse_alignment( std::string query, std::string sequence, AdapterAlignment* result ) {
+			// ssw works well so just search in forward sequence
+			return find_best_forward_alignment( query, sequence, result ) ;
+		}
+
+	private:
+		StripedSmithWaterman::Aligner m_ssw ;
+		StripedSmithWaterman::Filter m_filter ;
+
+	private:
+
+		double compute_identity(
+			std::string const& cigar,
+			std::size_t query_length
+		) const {
+			std::size_t n = 0 ;
+			std::size_t matches = 0 ;
+			for( std::size_t i = 0; i < cigar.size(); ++i ) {
+				char const c = cigar[i] ;
+				switch(c) {
+					case '0':
+					case '1':
+					case '2':
+					case '3':
+					case '4':
+					case '5':
+					case '6':
+					case '7':
+					case '8':
+					case '9':
+						n *= 10 ;
+						n += (std::size_t(c) - 48) ;
+						break ;
+					case 'X':
+					case 'S':
+					case 'I':
+					case 'D':
+						n = 0 ;
+						break ;
+					case '=':
+						matches += n ;
+						n = 0 ;
+						break ;
+				} ;
+			}
+			return double(matches) / double(query_length) ;
 		}
 	} ;
 
@@ -880,10 +974,11 @@ private:
 	) {
 		AdapterAlignment forward_adapter_alignment ;
 		AdapterAlignment reverse_adapter_alignment ;
+		std::size_t const L = read.sequence.size() ;
 		if(
 			aligner.find_best_forward_alignment(
 				m_adapters[0],
-				read.sequence,
+				read.sequence.substr( 0, std::min( L, 500ul )),
 				&forward_adapter_alignment
 			)
 		) {
@@ -892,11 +987,15 @@ private:
 
 		if(
 			aligner.find_best_reverse_alignment(
+				// adapter should be specified in same orientation as read
 				m_adapters[1],
-				read.sequence,
+				read.sequence.substr( L - std::min( L, 500ul ), L ),
 				&reverse_adapter_alignment
 			)
 		) {
+			// adjust position because we only looked at last 500 bases
+			reverse_adapter_alignment.start += (L - std::min( L, 500ul )) ;
+			reverse_adapter_alignment.end += (L - std::min( L, 500ul )) ;
 			result->reverse_adapter_alignment = reverse_adapter_alignment ;
 		}
 	}
@@ -911,7 +1010,6 @@ private:
 		return result ;
 	}
 
-
 	void analyse_reads_threaded(
 		ReadQueue* read_queue,
 		ReadResultQueue* result_queue,
@@ -924,8 +1022,8 @@ private:
 #if DEBUG
 		std::cerr << "(thread " << thread_index << "): Starting...\n" ;
 #endif	
-		WFAAdapterAligner aligner ;
-
+		// WFAAdapterAligner aligner ;
+		SSWAdapterAligner aligner ;
 		Read read ;
 		while( !(*quit) ) {
 			bool popped = read_queue->try_dequeue( read ) ;
@@ -1039,10 +1137,12 @@ private:
 			| "forward_adapter_end"
 			| "forward_adapter_score"
 			| "forward_adapter_cigar"
+			| "forward_adapter_identity"
 			| "reverse_adapter_start"
 			| "reverse_adapter_end"
 			| "reverse_adapter_score"
 			| "reverse_adapter_cigar"
+			| "reverse_adapter_identity"
 		;
 		if( include_kmer_metrics ) {
 			(*output)
@@ -1089,6 +1189,7 @@ private:
 				<< read_result.forward_adapter_alignment->end+1 	// convert to 1-based
 				<< read_result.forward_adapter_alignment->score
 				<< read_result.forward_adapter_alignment->cigar
+				<< read_result.forward_adapter_alignment->identity
 			;
 		} else {
 			(*output) << "NA" << "NA" << "NA" << "NA" ;
@@ -1099,6 +1200,7 @@ private:
 				<< read_result.reverse_adapter_alignment->end+1 	// convert to 1-based
 				<< read_result.reverse_adapter_alignment->score
 				<< read_result.reverse_adapter_alignment->cigar
+				<< read_result.reverse_adapter_alignment->identity
 			;
 		} else {
 			(*output) << "NA" << "NA" << "NA" << "NA" ;
@@ -1371,6 +1473,44 @@ private:
 	}
 } ;
 
+namesoace {
+	void alignment_test() {
+		wfa::WFAlignerGapAffine aligner(
+			-3, // match
+			9, 	// mismatch
+			5, 	// gap open
+			5,	// gap extend
+			wfa::WFAligner::Alignment,
+			wfa::WFAligner::MemoryHigh
+		) ;
+
+		std::string pattern = "TTCAGTTACGTATTGCT" ;
+		std::string sequence = "AGTGGTGACTCAGTCTATGCTGGTTCTGAGCAGGCCACACAAGCAATACAGAAAATAGGAAGAAAGATTTGTGTGATTAATACAGTAGGAATCAGCATAT" ;
+
+		aligner.alignEndsFree( pattern, 0, 0, sequence, 0, 0 ) ;
+		std::cerr << "0, 0: cigar is: " << aligner.getAlignmentCigar() << ", score: " << aligner.getAlignmentScore() << ".\n" ;
+
+		aligner.alignEndsFree( pattern, 0, 0, sequence, sequence.size(), sequence.size() ) ;
+		std::cerr << "L, L: cigar is: " << aligner.getAlignmentCigar() << ", score: " << aligner.getAlignmentScore() << ".\n" ;
+
+		std::cerr << "\n-------------------------\n" ;
+
+		StripedSmithWaterman::Aligner ssw( 3, 6, 5, 2 ) ;
+		StripedSmithWaterman::Alignment a ;
+		StripedSmithWaterman::Filter f ;
+		// bool Align(const char* query, const char* ref, const int& ref_len,
+		//         const Filter& filter, Alignment* alignment, const int32_t maskLen) const;
+
+		bool ssw_aligned = ssw.Align(
+			pattern.c_str(), sequence.c_str(), sequence.size(), 
+			f, &a, 0
+		) ;
+		std::cerr << "ssw: " << (ssw_aligned ? "yes, " : "no, " )
+		<< a.ref_begin << " - " << a.ref_end << ", cigar: " << a.cigar_string << "; score: " << a.sw_score << ".\n" ;
+
+		std::cerr << "\n-------------------------\n" ;
+	}
+}
 
 int main( int argc, char** argv )
 {
