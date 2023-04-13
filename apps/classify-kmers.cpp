@@ -977,10 +977,11 @@ private:
 		AdapterAlignment forward_adapter_alignment ;
 		AdapterAlignment reverse_adapter_alignment ;
 		std::size_t const L = read.sequence.size() ;
+		std::size_t const length_to_search = 1000 ;
 		if(
 			aligner.find_best_forward_alignment(
 				m_adapters[0],
-				read.sequence.substr( 0, std::min( L, 500ul )),
+				read.sequence.substr( 0, std::min( L, length_to_search )),
 				&forward_adapter_alignment
 			)
 		) {
@@ -991,13 +992,13 @@ private:
 			aligner.find_best_reverse_alignment(
 				// adapter should be specified in same orientation as read
 				m_adapters[1],
-				read.sequence.substr( L - std::min( L, 500ul ), L ),
+				read.sequence.substr( L - std::min( L, length_to_search ), L ),
 				&reverse_adapter_alignment
 			)
 		) {
-			// adjust position because we only looked at last 500 bases
-			reverse_adapter_alignment.start += (L - std::min( L, 500ul )) ;
-			reverse_adapter_alignment.end += (L - std::min( L, 500ul )) ;
+			// adjust position because we only looked at last length_to_search bases
+			reverse_adapter_alignment.start += (L - std::min( L, length_to_search )) ;
+			reverse_adapter_alignment.end += (L - std::min( L, length_to_search )) ;
 			result->reverse_adapter_alignment = reverse_adapter_alignment ;
 		}
 	}
