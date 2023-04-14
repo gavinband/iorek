@@ -200,6 +200,13 @@ namespace {
 	} ;
 
 	struct AdapterAlignment {
+		AdapterAlignment():
+			start(0),
+			end(0),
+			cigar(""),
+			identity(0.0)
+		{}
+
 		uint32_t start ;
 		uint32_t end ;
 		std::string cigar ;
@@ -365,6 +372,22 @@ namespace {
 		) const {
 			std::size_t n = 0 ;
 			std::size_t matches = 0 ;
+			std::size_t alignment_length = 0 ;
+
+			// We compute the identity as the number of matches divided by the total alignment length.
+			// The default expectation is not to have clipping, so we count clipped bases as part of the alignment length.
+			//
+			// Example alignment:
+			//
+			// REFERENCE: ACGTACGTACGTACGT-ACGTACGTACGT
+			//     QUERY:       CGACTTA-GTAACAA
+			//     CIGAR:       SS==X==D==I==SS
+
+			// The CIGAR is run length encoded in practice, i.e.: 2S2=1X2=1D2=1I2=2S
+			// Here:
+			// alignment length = total sum of clipped, inserted, matched, mismatch
+			//
+
 			for( std::size_t i = 0; i < cigar.size(); ++i ) {
 				char const c = cigar[i] ;
 				switch(c) {
@@ -381,19 +404,21 @@ namespace {
 						n *= 10 ;
 						n += (std::size_t(c) - 48) ;
 						break ;
-					case 'X':
 					case 'S':
+					case 'X':
 					case 'I':
 					case 'D':
+						alignment_length += n;
 						n = 0 ;
 						break ;
 					case '=':
 						matches += n ;
+						alignment_length += n;
 						n = 0 ;
 						break ;
 				} ;
 			}
-			return double(matches) / double(query_length) ;
+			return double(matches) / double(alignment_length) ;
 		}
 	} ;
 
