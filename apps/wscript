@@ -69,8 +69,8 @@ def build( bld ):
 		includes = "./"
 	)
 	bld.program(
-		source = "find-recombinants.cpp",
-		target = 'find-recombinants',
+		source = "find-vj-reads.cpp",
+		target = 'find-vj-reads',
 		use = 'seqlib package_revision appcontext genfile qcdb pthread',
 		includes = "./"
 	)
