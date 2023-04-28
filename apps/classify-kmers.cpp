@@ -155,6 +155,9 @@ public:
 			.set_takes_single_value()
 			.set_default_value( 1 )
 		;
+		options[ "-debug" ]
+			.set_description( "Print out debug information" )
+		;
 	}
 } ;
 
@@ -792,14 +795,22 @@ private:
 
 			auto progress = ui().get_progress_context( "Examining reads" ) ;
 
+			bool const debug = options().check( "-debug" ) ;
 			Read read ;
 			std::string line ;
 			std::size_t l = 0 ;
+			std::size_t pos = 0 ;
 			while( std::getline( input, line )) {
 				switch(l) {
-					case 0:
+					case 0: {
 						read.id = line.substr(1,line.size() ) ;
+						// fastq lines sometimes have tags in, strip them here
+						std::size_t pos = line.find_first_of( "\t" ) ;
+						if( pos != std::string::npos ) {
+							read.id.resize( pos ) ;
+						}
 						break ;
+					}
 					case 1:
 						read.sequence = line ;
 						break ;
@@ -818,9 +829,10 @@ private:
 						std::this_thread::sleep_for( std::chrono::microseconds(10) ) ;
 					}
 					
-#if DEBUG
-					std::cerr << "queued: " << read.id << ".\n" ;
-#endif
+					if( debug ) {
+						std::cerr << "ClassifyKmerApplication::process_read_results(): queued: " << read.id << " (" << read.sequence.size() << ", " << read.qualities.size() << ".\n" ;
+					}
+
 					++count ;
 					progress( count ) ;
 					l = 0 ;
