@@ -12,7 +12,6 @@
 #include <memory>
 #include <mutex>
 #include <algorithm>
-#include <optional>
 
 //#include <boost/ptr_container/ptr_vector.hpp>
 #include <boost/filesystem.hpp>
@@ -439,7 +438,8 @@ namespace {
 			mean_base_quality2(0.0), // accumulated on the error probability scale
 			number_of_bases_ge_q(10, 0ul ),
 			error_positions(),
-			bases_at_q(94,0)
+			bases_at_q(94,0),
+			unique_solid_kmers(0)
 		{}
 
 		ReadResult( ReadResult const& other ):
@@ -456,7 +456,8 @@ namespace {
 			error_positions( other.error_positions ),
 			bases_at_q( other.bases_at_q ),
 			forward_adapter_alignment( other.forward_adapter_alignment ),
-			reverse_adapter_alignment( other.reverse_adapter_alignment )
+			reverse_adapter_alignment( other.reverse_adapter_alignment ),
+			unique_solid_kmers( other.unique_solid_kmers )
 		{}
 
 		ReadResult& operator=( ReadResult const& other ) {
@@ -474,12 +475,14 @@ namespace {
 			bases_at_q = other.bases_at_q ;
 			forward_adapter_alignment = other.forward_adapter_alignment ;
 			reverse_adapter_alignment = other.reverse_adapter_alignment ;
+			unique_solid_kmers = other.unique_solid_kmers ;
 
 			return *this ;
 		}
 	
 		std::string const& id() const { return read.id ; }
 		std::size_t length() const { return read.sequence.size() ; }
+
 	public:
 		Read read ;
 		std::string tag ;
@@ -495,6 +498,7 @@ namespace {
 		std::vector< uint64_t > bases_at_q ;
 		boost::optional< AdapterAlignment > forward_adapter_alignment ;
 		boost::optional< AdapterAlignment > reverse_adapter_alignment ;
+		std::size_t unique_solid_kmers ;
 	} ;
 	
 	struct ReadEndMetrics {
@@ -904,6 +908,7 @@ private:
 		result->tag = get_read_tag( read.id ) ;
 		result->k = k ;
 		KmerIterator kmer_iterator( read.sequence.begin(), read.sequence.end(), k ) ;
+		std::unordered_set< uint64_t > unique_solid_kmers ;
 
 		int kmer_min_base_quality = 0 ;
 		std::size_t kmer_min_base_quality_at = 0 ;
@@ -962,6 +967,7 @@ private:
 					}
 					++(result->number_of_solid_kmers_at_threshold) ;
 					result->last_solid_kmer_end = i+k ; // 0-based, half-closed
+					unique_solid_kmers.insert( hash ) ;
 				} else {
 					result->error_positions.push_back(i) ;
 #if DEBUG
@@ -1001,6 +1007,8 @@ private:
 		for( std::size_t b = 0; b < 9; ++b ) {
 			result->number_of_bases_ge_q[b] = number_of_bases_ge_q[b] ;
 		}
+		result->unique_solid_kmers = unique_solid_kmers.size() ;
+
 #if DEBUG
 		std::cerr << "analyse_read(): " << read.id << ": finished.\n" ;
 #endif
@@ -1195,6 +1203,7 @@ private:
 				| "number_of_solid_kmers_at_threshold"
 				| "first_solid_kmer_start"
 				| "last_solid_kmer_end"
+				| "number_of_unique_solid_kmers"
 			;
 		}
 	}
@@ -1261,6 +1270,7 @@ private:
 				<< read_result.number_of_solid_kmers_at_threshold
 				<< (read_result.first_solid_kmer_start+1) 			// convert to 1-based, closed
 				<< (read_result.last_solid_kmer_end) 				// 1-based, closed.
+				<< (read_result.unique_solid_kmers)
 			;
 		}
 		(*output) << statfile::end_row() ;
