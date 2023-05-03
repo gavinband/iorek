@@ -805,7 +805,7 @@ private:
 					case 0: {
 						read.id = line.substr(1,line.size() ) ;
 						// fastq lines sometimes have tags in, strip them here
-						std::size_t pos = line.find_first_of( "\t" ) ;
+						std::size_t pos = read.id.find_first_of( "\t" ) ;
 						if( pos != std::string::npos ) {
 							read.id.resize( pos ) ;
 						}
