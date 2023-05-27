@@ -44,7 +44,7 @@ namespace genfile {
 	}
 
 	void FastaMask::set( Value value ) {
-		for( auto kv: m_mask ) {
+		for( auto& kv: m_mask ) {
 			kv.second.set( value ) ;
 		}
 	}
@@ -89,7 +89,7 @@ namespace genfile {
 				}
 				uint32_t start = std::max( to_repr< int32_t >( elts[1] ), int32_t(0) ) ;
 				uint32_t end = std::max( to_repr< int32_t >( elts[2] ), int32_t(0) ) ;
-				this->set_zero_based( elts[0], start, end, genfile::FastaMask::eMasked ) ;
+				this->set_zero_based( elts[0], start, end, value ) ;
 				if( progress_callback ) {
 					progress_callback( count ) ;
 				}
@@ -134,14 +134,17 @@ namespace genfile {
 	}
 
 	void FastaMask::ContigMask::set_zero_based( uint32_t lower, uint32_t upper, Value value ) {
+		std::cerr << "FastaMask::ContigMask::set_zero_based(" << lower << ", " << upper << ", " << value << ")\n" ;
 		assert( lower <= upper ) ;
 		lower = std::min( lower, m_length ) ;
 		upper = std::min( upper, m_length ) ;
 		for( std::size_t pos = lower; pos < upper; ++pos ) {
 			std::size_t const word = pos/64 ;
 			std::size_t const bit = pos % 64 ;
-			uint64_t const bitmask = (value << bit) ;
-			m_data[word] |= bitmask ;
+			uint64_t const bitmask = (1ul << bit) ;
+			uint64_t const bitvalue = (value << bit) ;
+			m_data[word] &= ~bitmask ;
+			m_data[word] |= bitvalue ;
 		}
 	}
 
