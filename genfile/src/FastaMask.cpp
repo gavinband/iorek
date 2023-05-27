@@ -17,17 +17,53 @@
 
 namespace genfile {
 	FastaMask::UniquePtr FastaMask::create(
-		Fasta const& fasta
+		Fasta const& fasta,
+		FastaMask::Value const value
 	) {
-		return FastaMask::UniquePtr( new FastaMask( fasta )) ;
+		return FastaMask::UniquePtr( new FastaMask( fasta, value )) ;
 	}
 
-	FastaMask::UniquePtr FastaMask::load_from_bed3_file(
+	FastaMask::FastaMask(
 		Fasta const& fasta,
+		FastaMask::Value const value
+	) {
+		initialise( fasta, value ) ;
+	}
+
+	void FastaMask::initialise(
+		Fasta const& fasta,
+		Value const value
+	) {
+		std::vector< std::string > sequence_ids = fasta.sequence_ids() ;
+		for( auto id: sequence_ids ) {
+			Fasta::ContigRange range = fasta.get_sequence( id ) ;
+			Mask::iterator where = m_mask.find( id ) ;
+			assert( where == m_mask.end() ) ;
+			m_mask[ id ] = ContigMask( range.length(), value ) ;
+		}
+	}
+
+	void FastaMask::set( Value value ) {
+		for( auto kv: m_mask ) {
+			kv.second.set( value ) ;
+		}
+	}
+
+	void FastaMask::set_one_based( std::string id, uint32_t lower, uint32_t upper, Value value ) {
+		set_zero_based( id, lower-1, upper, value ) ;
+	}
+
+	void FastaMask::set_zero_based( std::string id, uint32_t lower, uint32_t upper, Value value ) {
+		Mask::iterator where = m_mask.find( id ) ;
+		assert( where != m_mask.end() ) ;
+		where->second.set_zero_based( lower, upper, value ) ;
+	} ;
+
+	void FastaMask::set_from_bed3_file(
 		std::string const& filename,
+		Value const value,
 		std::function< void( std::size_t ) > progress_callback
 	) {
-		FastaMask::UniquePtr result = FastaMask::create( fasta ) ;
 		std::auto_ptr< std::istream >
 			in = genfile::open_text_file_for_input( filename ) ;
 
@@ -53,39 +89,13 @@ namespace genfile {
 				}
 				uint32_t start = std::max( to_repr< int32_t >( elts[1] ), int32_t(0) ) ;
 				uint32_t end = std::max( to_repr< int32_t >( elts[2] ), int32_t(0) ) ;
-				result->set_zero_based( elts[0], start, end, genfile::FastaMask::eMasked ) ;
+				this->set_zero_based( elts[0], start, end, genfile::FastaMask::eMasked ) ;
 				if( progress_callback ) {
 					progress_callback( count ) ;
 				}
 			}
 		}
-		return result ;
 	}
-
-	FastaMask::FastaMask( Fasta const& fasta ) {
-		initialise( fasta ) ;
-	}
-
-	void FastaMask::initialise( Fasta const& fasta ) {
-		std::vector< std::string > sequence_ids = fasta.sequence_ids() ;
-		for( auto id: sequence_ids ) {
-			Fasta::ContigRange range = fasta.get_sequence( id ) ;
-			Mask::iterator where = m_mask.find( id ) ;
-			assert( where == m_mask.end() ) ;
-			m_mask[ id ] = ContigMask( range.length() ) ;
-		}
-	}
-
-
-	void FastaMask::set_one_based( std::string id, uint32_t lower, uint32_t upper, Value value ) {
-		set_zero_based( id, lower-1, upper, value ) ;
-	}
-
-	void FastaMask::set_zero_based( std::string id, uint32_t lower, uint32_t upper, Value value ) {
-		Mask::iterator where = m_mask.find( id ) ;
-		assert( where != m_mask.end() ) ;
-		where->second.set_zero_based( lower, upper, value ) ;
-	} ;
 
 	FastaMask::Value FastaMask::at_one_based( std::string id, uint32_t position ) const {
 		return at_zero_based( id, position-1 ) ;
@@ -97,9 +107,12 @@ namespace genfile {
 		return where->second.at_zero_based( position ) ;
 	}
 
-	FastaMask::ContigMask::ContigMask( uint32_t length ):
+	FastaMask::ContigMask::ContigMask(
+		uint32_t length,
+		FastaMask::Value const value
+	):
 		m_length( length ),
-		m_data( (length+63) / 64, 0ul )
+		m_data( (length+63) / 64, value )
 	{}
 
 	FastaMask::ContigMask::ContigMask( FastaMask::ContigMask const& other ):
@@ -111,6 +124,13 @@ namespace genfile {
 		m_length = other.m_length ;
 		m_data = other.m_data ;
 		return *this ;
+	}
+
+	void FastaMask::ContigMask::set( Value value ) {
+		uint64_t const v = ((value == 0) ? 0ul : 0xFFFFFFFFFFFFFFFFul) ;
+		for( std::size_t i = 0; i < m_data.size(); ++i ) {
+			m_data[i] = v ;
+		}
 	}
 
 	void FastaMask::ContigMask::set_zero_based( uint32_t lower, uint32_t upper, Value value ) {

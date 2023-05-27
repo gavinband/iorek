@@ -68,8 +68,16 @@ public:
 			)
 			.set_takes_single_value()
 		;
-		options[ "-mask" ]
+		options[ "-include-mask" ]
+			.set_description( "Specify a BED file of regions to include in the analysis."
+			" If specified, only alignment locations within the given regions are analysed."
+			" The file should have no column names and should have contig, start and end columns, "
+			" expressed in 0-based right-closed form." )
+			.set_takes_single_value()
+		;
+		options[ "-exclude-mask" ]
 			.set_description( "Specify a BED file of regions to mask out of the analysis."
+			" If specified, alignment locations within the given regions are omitted from the analysis."
 			" The file should have no column names and should have contig, start and end columns, "
 			" expressed in 0-based right-closed form." )
 			.set_takes_single_value()
@@ -135,17 +143,19 @@ private:
 			m_fasta->add_sequences_from_file( fasta_filename, progress_context ) ;
 		}
 
-		if( options().check( "-mask" )) {
-			std::string const filename = options().get< std::string >( "-mask" ) ;
+		m_mask = genfile::FastaMask::create( *m_fasta, genfile::FastaMask::eUnmasked ) ;
+		if( options().check( "-include-mask" )) {
+			std::string const filename = options().get< std::string >( "-include-mask" ) ;
 			auto progress_context = ui().get_progress_context( "Loading mask from \"" + filename + "\"" ) ;
-			m_mask = genfile::FastaMask::load_from_bed3_file(
-				*m_fasta,
-				filename,
-				progress_context
-			) ;
-		} else {
-			m_mask = genfile::FastaMask::create( *m_fasta ) ;
-		}
+			m_mask->set( genfile::FastaMask::eMasked ) ;
+			m_mask->set_from_bed3_file( filename, genfile::FastaMask::eUnmasked, progress_context ) ;
+		} 
+
+		if( options().check( "-exclude-mask" )) {
+			std::string const filename = options().get< std::string >( "-exclude-mask" ) ;
+			auto progress_context = ui().get_progress_context( "Loading mask from \"" + filename + "\"" ) ;
+			m_mask->set_from_bed3_file( filename, genfile::FastaMask::eMasked, progress_context ) ;
+		} 
 
 		// Open output sink
 		statfile::BuiltInTypeStatSink::UniquePtr sink = statfile::BuiltInTypeStatSink::open(
