@@ -43,6 +43,9 @@ public:
 			.set_takes_values_until_next_option()
 			.set_is_required()
 		;
+		options[ "-no-reverse-complement" ]
+			.set_description( "Don't automatically look for the reverse complement of specified motifs." )
+		;
 
 		options[ "-o" ]
 			.set_description( "Path of output file." )
