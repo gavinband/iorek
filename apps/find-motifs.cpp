@@ -134,7 +134,7 @@ private:
 		statfile::BuiltInTypeStatSink& sink
 	) {
 		std::vector< std::string > const& sequence_ids = fasta.sequence_ids() ;
-		sink | "sequence" | "length" | "motif" | "start" | "end" ;
+		sink | "sequence" | "length" | "motif" | "zero_based_start" | "zero_based_end" ;
 		for( auto sequence_id: sequence_ids ) {
 			auto progress_context = ui().get_progress_context( "Processing \"" + sequence_id + "\"" ) ;
 			genfile::Fasta::ContigRange contig = fasta.get_sequence( sequence_id ) ;
