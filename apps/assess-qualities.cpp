@@ -194,7 +194,7 @@ private:
 	}
 
 	void output_results(
-		std::vector< int64_t > matches,
+		std::vector< int64_t > const& matches,
 		std::vector< int64_t > const& mismatches,
 		statfile::BuiltInTypeStatSink& sink
 	) {
@@ -202,6 +202,7 @@ private:
 		// column-based text file formats like csv, tab-separated and so on.
 		// Here is an example of how it works.
 		sink | "base_quality" | "matches" | "mismatches" ;
+		assert( matches.size() == mismatches.size() ) ;
 		for( std::size_t bq = 0; bq < matches.size(); ++bq ) {
 			sink
 				<< int64_t(bq)
