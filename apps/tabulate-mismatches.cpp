@@ -649,10 +649,11 @@ private:
 			auto progress_context = ui().get_progress_context( "Loading mask from \"" + filename + "\"" ) ;
 			m_mask->set_from_bed3_file( filename, genfile::FastaMask::eMasked, progress_context ) ;
 		} 
-		
+	
+		statfile::BuiltInTypeStatSink::UniquePtr sink = open_results_sink( options().get< std::string >( "-o" )) ;	
 		unsafe_process(
 			options().get_values< std::string >( "-reads" ),
-			open_results_sink( options().get< std::string >( "-o" ) )
+			*sink
 		) ;
 	}
 
@@ -673,7 +674,7 @@ private:
 
 	void unsafe_process(
 		std::vector< std::string > const& filenames,
-		statfile::BuiltInTypeStatSink::UniquePtr sink
+		statfile::BuiltInTypeStatSink& sink
 	) {
 		Result result ;
 		
@@ -681,11 +682,11 @@ private:
 			process_reads(
 				filenames[file_i],
 				&result,
-				*sink
+				sink
 			) ;
 		}
 		
-		output_all_results( result, *sink ) ;
+		output_all_results( result, sink ) ;
 	}
 
 	void output_one_result(
