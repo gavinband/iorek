@@ -197,7 +197,12 @@ BamReader::BamReader() {}
     set_pool(t);
 
     // open cram reference
-    if (!m_cram_reference.empty()) {
+    // GB 30/05/2023: add test that this is a CRAM file.
+    // Without this test, there is a memory error because the the fp->fp field is allocated
+    // as a BGZF (in hts_hopen(), hts.c), but in this call is accessed as a cram_fd (cram_load_reference, cram_io.c).
+    // The cram_fd is defined in cram_structs.h and is larger than BGZF leading to an invalid write.
+    // On the other hand, a BAM file doesn't need a reference.
+    if (!m_cram_reference.empty() && fp->format.format == cram) {
       char * m_cram_reference_cstr = strdup(m_cram_reference.c_str());
       int ret = cram_load_reference(fp->fp.cram, m_cram_reference_cstr);
       free(m_cram_reference_cstr);
