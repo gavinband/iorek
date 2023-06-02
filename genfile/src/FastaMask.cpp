@@ -134,7 +134,6 @@ namespace genfile {
 	}
 
 	void FastaMask::ContigMask::set_zero_based( uint32_t lower, uint32_t upper, Value value ) {
-		std::cerr << "FastaMask::ContigMask::set_zero_based(" << lower << ", " << upper << ", " << value << ")\n" ;
 		assert( lower <= upper ) ;
 		lower = std::min( lower, m_length ) ;
 		upper = std::min( upper, m_length ) ;
