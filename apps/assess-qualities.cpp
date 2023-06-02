@@ -82,7 +82,7 @@ public:
 			" expressed in 0-based right-closed form." )
 			.set_takes_single_value()
 		;
-		options[ "-reference" ]
+		options[ "-fasta" ]
 			.set_description( "Specify reference sequence" )
 			.set_takes_single_value()
 			.set_is_required() ;
@@ -138,7 +138,7 @@ private:
 		// Load fasta records
 		m_fasta = genfile::Fasta::create() ;
 		{
-			std::string const& fasta_filename = options().get< std::string >( "-reference" ) ;
+			std::string const& fasta_filename = options().get< std::string >( "-fasta" ) ;
 			auto progress_context = ui().get_progress_context( "Loading sequences from \"" + fasta_filename + "\"" ) ;
 			m_fasta->add_sequences_from_file( fasta_filename, progress_context ) ;
 		}
@@ -219,8 +219,8 @@ private:
 		std::function< void( std::size_t ) > progress_callback
 	) {
 		seqlib::BamReader reader;
-		if( options().check( "-reference" )) {
-			reader.SetCramReference( options().get< std::string >( "-reference" )) ;
+		if( options().check( "-fasta" )) {
+			reader.SetCramReference( options().get< std::string >( "-fasta" )) ;
 		}
 		if( !reader.Open( filename )) {
 			assert( "Failed to open file" ) ;
