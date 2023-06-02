@@ -133,6 +133,7 @@ private:
 	genfile::FastaMask::UniquePtr m_mask ;
 
 private:
+	typedef std::map< char, std::vector< int64_t > > Result ;
 
 	void unsafe_process() {
 		// Load fasta records
@@ -165,9 +166,17 @@ private:
 		// Create place to store results 
 		// We store the results in two vectors each containin 100 zeros
 		// I think of these as bins for bq = 0, bq = 1, etc. 
-		// Note: base qualities can generally only go up to 96(ASCII character ~).
-		std::vector< int64_t > mismatches( 100, 0 ) ;
-		std::vector< int64_t > matches( 100, 0 ) ;
+		// Note: base qualities can generally only go up to 93(ASCII character ~).
+		Result mismatches ;
+		Result matches ;
+		matches['A'] = std::vector< int64_t >( 100, 0 ) ;
+		matches['C'] = std::vector< int64_t >( 100, 0 ) ;
+		matches['G'] = std::vector< int64_t >( 100, 0 ) ;
+		matches['T'] = std::vector< int64_t >( 100, 0 ) ;
+		mismatches['A'] = std::vector< int64_t >( 100, 0 ) ;
+		mismatches['C'] = std::vector< int64_t >( 100, 0 ) ;
+		mismatches['G'] = std::vector< int64_t >( 100, 0 ) ;
+		mismatches['T'] = std::vector< int64_t >( 100, 0 ) ;
 
 		process_reads(
 			options().get_value< std::string >( "-reads" ),
@@ -180,8 +189,8 @@ private:
 
 	void process_reads(
 		std::string const& filename,
-		std::vector< int64_t >* matches,
-		std::vector< int64_t >* mismatches
+		Result* matches,
+		Result* mismatches
 	) {
 		auto progress_context = ui().get_progress_context( "Processing \"" + filename + "\"" ) ;
 
@@ -194,28 +203,31 @@ private:
 	}
 
 	void output_results(
-		std::vector< int64_t > const& matches,
-		std::vector< int64_t > const& mismatches,
+		Result const& matches,
+		Result const& mismatches,
 		statfile::BuiltInTypeStatSink& sink
 	) {
-		// 'sink' is using a class I wrote (BuiltInTypeStatSink) which helps to output
-		// column-based text file formats like csv, tab-separated and so on.
-		// Here is an example of how it works.
-		sink | "base_quality" | "matches" | "mismatches" ;
-		assert( matches.size() == mismatches.size() ) ;
-		for( std::size_t bq = 0; bq < matches.size(); ++bq ) {
-			sink
-				<< int64_t(bq)
-				<< int64_t(matches[bq])
-				<< int64_t(mismatches[bq])
-				<< statfile::end_row() ;
+		sink | "reference_base" | "base_quality" | "matches" | "mismatches" ;
+		std::vector< char > bases{'A', 'C', 'G', 'T'} ;
+		for( auto reference_base: bases ) {
+			std::vector< int64_t > const& hit = matches.at(reference_base) ;
+			std::vector< int64_t > const& miss = mismatches.at(reference_base) ;
+			assert( hit.size() == miss.size() ) ;
+			for( std::size_t bq = 0; bq < hit.size(); ++bq ) {
+				sink
+					<< std::string( 1, reference_base )
+					<< int64_t(bq)
+					<< int64_t(hit[bq])
+					<< int64_t(miss[bq])
+					<< statfile::end_row() ;
+			}
 		}
 	}
 
 	void process_reads(
 		std::string const& filename,
-		std::vector< int64_t >* matches,
-		std::vector< int64_t >* mismatches,
+		Result* matches,
+		Result* mismatches,
 		std::function< void( std::size_t ) > progress_callback
 	) {
 		seqlib::BamReader reader;
@@ -274,8 +286,8 @@ private:
 	void process_reads(
 		seqlib::BamReader reader,
 		seqlib::BamHeader header,
-		std::vector< int64_t >* matches,
-		std::vector< int64_t >*  mismatches,
+		Result* matches,
+		Result* mismatches,
 		std::function< void( std::size_t ) > progress_callback
 	) {
 		int32_t const mq_threshold = options().get< int32_t >( "-mq" ) ;
@@ -306,6 +318,7 @@ private:
 					[&](
 						genfile::Chromosome const chromosome,
 						uint32_t const one_based_position,
+						char const reference_base,
 						MismatchType const& type,
 						int base_quality
 					) {
@@ -318,9 +331,11 @@ private:
 							&& (!use_range || range.contains( chromosome, one_based_position ))
 						) {
 							if( type == eMismatch ) { // 'X'
-								++(*mismatches)[base_quality] ;
+								std::vector< int64_t >& v = (*mismatches)[reference_base] ;
+								++v[base_quality] ;
 							} else if( type == eMatch ) { // '='
-								++(*matches)[base_quality] ;
+								std::vector< int64_t >& v = (*matches)[reference_base] ;
+								++v[base_quality] ;
 							}
 						}
 					}
@@ -342,6 +357,7 @@ private:
 			void(
 				std::string const& aligned_chromosome,
 				uint32_t const aligned_position,
+				char const reference_base,
 				MismatchType const& type,
 				int base_quality
 			)
@@ -436,6 +452,7 @@ private:
 							callback(
 								contig_id,
 								aligned_position+1, // convert back to 1-based
+								reference_base,
 								eMatch, // '='
 								base_quality
 							) ;
@@ -445,6 +462,7 @@ private:
 							callback(
 								contig_id,
 								aligned_position+1, // convert back to 1-based
+								reference_base,
 								eMismatch, // 'X'
 								base_quality
 							) ;
