@@ -642,15 +642,15 @@ private:
 			auto progress_context = ui().get_progress_context( "Loading mask from \"" + filename + "\"" ) ;
 			m_mask->set( genfile::FastaMask::eMasked ) ;
 			m_mask->set_from_bed3_file( filename, genfile::FastaMask::eUnmasked, progress_context ) ;
-		} 
+		}
 
 		if( options().check( "-exclude-mask" )) {
 			std::string const filename = options().get< std::string >( "-exclude-mask" ) ;
 			auto progress_context = ui().get_progress_context( "Loading mask from \"" + filename + "\"" ) ;
 			m_mask->set_from_bed3_file( filename, genfile::FastaMask::eMasked, progress_context ) ;
-		} 
-	
-		statfile::BuiltInTypeStatSink::UniquePtr sink = open_results_sink( options().get< std::string >( "-o" )) ;	
+		}
+
+		statfile::BuiltInTypeStatSink::UniquePtr sink = open_results_sink( options().get< std::string >( "-o" )) ;
 		unsafe_process(
 			options().get_values< std::string >( "-reads" ),
 			*sink
