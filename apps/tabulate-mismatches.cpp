@@ -106,6 +106,13 @@ public:
 			.set_takes_single_value()
 			.set_default_value( 3 ) ;
 
+		options[ "-split-deletions" ]
+			.set_description(
+				"Split deletions into individual bases. "
+				"This makes it easier to count the number of times component bases are sequenced, "
+				" but means you can't assess the length distribution."
+			) ;
+
 		options.declare_group( "Miscellaneous options" ) ;
 		options[ "-threads" ]
 			.set_description( "Use this many extra threads for file reading" )
@@ -457,7 +464,8 @@ namespace {
 				std::size_t end_in_read
 			)
 		> callback,
-		uint32_t const flank = 3
+		uint32_t const flank = 3,
+		bool const split_deletions = false
 	) {
 		// Note: this function classifies read-reference mismatches by parsing the
 		// CIGAR string and comparing to the reference bases.
@@ -467,7 +475,7 @@ namespace {
 		// sequence at the same time.
 	
 		// Although CIGAR supports 'X' (mismatch) and '=' (identical match), many
-		// aligners (such as bwa or minimap2) just output 'M' for mismatches by
+		// aligners (such as bwa or minimap2) just output 'M' for matches/mismatches by
 		// default.	(Minimap2 does outputs X/= when given the -eqx flag; pbmm2 also
 		// seems to do this by default.)
 
@@ -541,17 +549,32 @@ namespace {
 					}
 					break ;
 				case 'D':
-					callback(
-						eDeletion,
-						contig_id,
-						contig.sequence(),
-						aligned_position,
-						aligned_position + i->Length(),
-						read_sequence,
-						read_position,
-						read_position
-					) ;
-					aligned_position += i->Length() ;
+					if( split_deletions ) {
+						for( int k = 0; k < i->Length(); ++k, ++aligned_position ) {
+							callback(
+								eDeletion,
+								contig_id,
+								contig.sequence(),
+								aligned_position,
+								aligned_position + 1,
+								read_sequence,
+								read_position,
+								read_position
+							) ;
+						}
+					} else {
+						callback(
+							eDeletion,
+							contig_id,
+							contig.sequence(),
+							aligned_position,
+							aligned_position + i->Length(),
+							read_sequence,
+							read_position,
+							read_position
+						) ;
+						aligned_position += i->Length() ;
+					}
 					// purely deleted bases so no change to read position
 					break ;
 				case 'I':
@@ -823,7 +846,8 @@ private:
 							result
 						) ;
 					},
-					flank
+					flank,
+					options().check( "-split-deletions" )
 				) ; 
 			}
 
