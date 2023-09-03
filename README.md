@@ -8,7 +8,7 @@ This repository contains a collection of programs for analysing sequence data.
 - `tabulate-alignments` reports the count of reads split by read base (or insertion/deletion) and mapping quality at each position in a given range or ranges.
 - `find-homopolymers` finds homopolymer tracts, as well as di- and tri-nucleotide repeats, in sequences from a FASTA file.  See the [documentation](doc/trunk/doc/find-homopolymers.md)
 - `tabulate-mismatches` walks all reads and reports all mismatches / insertions / deletions stratified by their type and flanking sequence.  See the [documentation](doc/trunk/doc/tabulate-mismatches.md)
-- `classify-kmers` quantifies the presence of 'true' and 'error' kmers in a set of sequence reads (from a FASTQ file), based on a database of true kmers in [jellyfish2](https://github.com/zippav/Jellyfish-2) format.
+- `iorek-qc` quantifies the presence of 'true' and 'error' kmers in a set of sequence reads (from a FASTQ file), based on a database of true kmers in [jellyfish2](https://github.com/zippav/Jellyfish-2) format.
 - `assess-qualities` quantifies the error rate predicted by base qualities, against the observed error rate, in a set of read alignments.
 
 ## License ##
