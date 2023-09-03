@@ -63,12 +63,12 @@ namespace seqlib = SeqLib;
 #define DEBUG 0
 
 namespace globals {
-	std::string const program_name = "classify-kmers" ;
+	std::string const program_name = "iorek-qc" ;
 	std::string const program_version = package_version ;
 	std::string const program_revision = std::string( package_revision ).substr( 0, 7 ) ;
 }
 
-struct ClassifyKmersOptionProcessor: public appcontext::CmdLineOptionProcessor
+struct IorekQCsOptionProcessor: public appcontext::CmdLineOptionProcessor
 {
 public:
 	std::string get_program_name() const { return globals::program_name ; }
@@ -557,14 +557,14 @@ namespace {
 	}
 }
 
-struct ClassifyKmerApplication: public appcontext::ApplicationContext
+struct IorekQCApplication: public appcontext::ApplicationContext
 {
 public:
-	ClassifyKmerApplication( int argc, char** argv ):
+	IorekQCApplication( int argc, char** argv ):
 		appcontext::ApplicationContext(
 			globals::program_name,
 			globals::program_version + ", revision " + globals::program_revision,
-			std::auto_ptr< appcontext::OptionProcessor >( new ClassifyKmersOptionProcessor ),
+			std::auto_ptr< appcontext::OptionProcessor >( new IorekQCsOptionProcessor ),
 			argc,
 			argv,
 			"-log"
@@ -605,7 +605,7 @@ private:
 			std::vector< std::string > const adapters = options().get_values< std::string >( "-adapters" ) ;
 			if( adapters.size() != 2 ) {
 				throw genfile::BadArgumentError(
-					"ClassifyKmerApplication::unsafe_process()",
+					"IorekQCApplication::unsafe_process()",
 					"-adapters",
 					"Expected two adapters (forward and reverse), found " + genfile::string_utils::to_string( adapters.size() )
 				) ;
@@ -684,7 +684,7 @@ private:
 			if( where != result.end() ) {
 				if( read_class != where->second ) {
 					throw genfile::BadArgumentError(
-						"ClassifyKmerApplication::load_read_tags()",
+						"IorekQCApplication::load_read_tags()",
 						"filename=\"" + filename + "\"",
 						(
 							"Read id \""
@@ -696,7 +696,7 @@ private:
 			} else {
 				if( !result.insert( std::make_pair( read_id, read_class )).second ) {
 					throw genfile::BadArgumentError(
-						"ClassifyKmerApplication::load_read_tags()",
+						"IorekQCApplication::load_read_tags()",
 						"filename=\"" + filename + "\"",
 						(
 							"Could not insert read id \""
@@ -773,7 +773,7 @@ private:
 			for( std::size_t i = 0; i < number_of_threads; ++i ) {
 				threads.push_back(
 					std::thread(
-						&ClassifyKmerApplication::analyse_reads_threaded,
+						&IorekQCApplication::analyse_reads_threaded,
 						this,
 						&read_queue,
 						&read_result_queue,
@@ -789,7 +789,7 @@ private:
 
 			threads.push_back(
 				std::thread(
-					&ClassifyKmerApplication::process_read_results,
+					&IorekQCApplication::process_read_results,
 					this,
 					&read_result_queue,
 					&read_sink,
@@ -840,7 +840,7 @@ private:
 					}
 					
 					if( debug ) {
-						std::cerr << "ClassifyKmerApplication::process_read_results(): queued: " << read.id << " (" << read.sequence.size() << ", " << read.qualities.size() << ".\n" ;
+						std::cerr << "IorekQCApplication::process_read_results(): queued: " << read.id << " (" << read.sequence.size() << ", " << read.qualities.size() << ".\n" ;
 					}
 
 					++count ;
@@ -1588,7 +1588,7 @@ int main( int argc, char** argv )
 {
 	std::ios_base::sync_with_stdio( false ) ;
 	try {
-		ClassifyKmerApplication app( argc, argv ) ;
+		IorekQCApplication app( argc, argv ) ;
 		app.run() ;
 	}
 	catch( appcontext::HaltProgramWithReturnCode const& e ) {
