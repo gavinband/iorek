@@ -13,6 +13,7 @@
 #include "genfile/GenomePositionRange.hpp"
 #include "genfile/Fasta.hpp"
 #include "genfile/Error.hpp"
+#include "genfile/reverse_complement.hpp"
 #include "statfile/BuiltInTypeStatSink.hpp"
 
 #define DEBUG 0
@@ -98,7 +99,7 @@ private:
 			if( !options().check( "-no-reverse-complement" )) {
 				std::size_t const n = motifs.size() ;
 				for( std::size_t i = 0; i < n; ++ i ) {
-					motifs.push_back( reverse_complement( motifs[i] )) ;
+					motifs.push_back( genfile::reverse_complement( motifs[i] )) ;
 				}
 			}
 			std::sort( motifs.begin(), motifs.end() ) ;
@@ -110,24 +111,6 @@ private:
 		process( *fasta, motifs, *sink ) ;
 	}
 
-	std::string reverse_complement( std::string const& sequence ) const {
-		std::vector< char > map( 256, 'N' ) ;
-		map['A'] = 'T' ;
-		map['T'] = 'A' ;
-		map['a'] = 'T' ;
-		map['t'] = 'A' ;
-		map['C'] = 'G' ;
-		map['G'] = 'c' ;
-		map['c'] = 'G' ;
-		map['g'] = 'C' ;
-		std::string result = sequence ;
-		for( std::size_t i = 0; i < result.size(); ++i ) {
-			result[i] = map[ result[i] ] ;
-		}
-		std::reverse( result.begin(), result.end() ) ;
-		return result ;
-	}
-	
 	void process(
 		genfile::Fasta const& fasta,
 		std::vector< std::string > const& motifs,

@@ -21,8 +21,8 @@ def build( bld ):
 		includes = "./"
 	)
 	bld.program(
-		source = "tabulate-mismatches.cpp",
-		target = 'tabulate-mismatches',
+		source = "tabulate-alignment-ops.cpp",
+		target = 'tabulate-alignment-ops',
 		use = 'seqan bamtools seqlib package_revision appcontext genfile qcdb pthread zlib',
 		includes = "./"
 	)
@@ -45,8 +45,8 @@ def build( bld ):
 		includes = "./"
 	)
 	bld.program(
-		source = "classify-kmers.cpp",
-		target = 'classify-kmers',
+		source = "iorek-qc.cpp",
+		target = 'iorek-qc',
 		use = 'seqan bamtools seqlib package_revision appcontext genfile qcdb iorek pthread parallel_hashmap concurrentqueue wfa2cpp wfa2 ssw zlib',
 		includes = "./"
 	)
@@ -71,6 +71,12 @@ def build( bld ):
 	bld.program(
 		source = "find-vj-reads.cpp",
 		target = 'find-vj-reads',
+		use = 'seqlib package_revision appcontext genfile qcdb pthread',
+		includes = "./"
+	)
+	bld.program(
+		source = "order-orient.cpp",
+		target = 'order-orient',
 		use = 'seqlib package_revision appcontext genfile qcdb pthread',
 		includes = "./"
 	)
