@@ -63,15 +63,14 @@ namespace genfile {
 			progress_callback( 0, filenames.size() ) ;
 		}
 		for( std::size_t i = 0; i < filenames.size(); ++i ) {
-			std::vector< std::string > elts = genfile::string_utils::split( filenames[i], "=" ) ;
-			if( elts.size() == 1 ) {
-				elts.insert( elts.begin(), "" ) ;
-			} else if( elts.size() > 2 ) {
-				throw genfile::BadArgumentError(
-					"Fasta::load_sequence()",
-					"filenames[" + genfile::string_utils::to_string(i) + "]=\"" + filenames[i] + "\"",
-					"Filespec should be in the form: name=<path> or just <path>"
-				) ;
+			std::size_t pos = filenames[i].find( "//" ) ;
+			std::vector< std::string > elts ;
+			if( pos == -1 ) {
+				elts.push_back( "" ) ;
+				elts.push_back( filenames[i] ) ;
+			} else {
+				elts.push_back( filenames[i].substr( 0, pos )) ;
+				elts.push_back( filenames[i].substr( pos+2, filenames[i].size() )) ;
 			}
 			load_sequence( elts[0], elts[1] ) ;
 			if( progress_callback ) {
