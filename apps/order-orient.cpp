@@ -120,35 +120,32 @@ private:
 		ContigMap(
 			std::string name,
 			std::string target,
-			Orientation orientation
+			Orientation orientation,
+			int alignment_score,
+			int number_of_mismatches,
+			int aligned_length
 		):
 			m_name( name ),
 			m_target( target ),
-			m_orientation( orientation )
+			m_orientation( orientation ),
+			m_alignment_score( alignment_score ),
+			m_number_of_mismatches( number_of_mismatches ),
+			m_aligned_length( aligned_length )
 		{}
-
-		ContigMap( ContigMap const& other ):
-			m_name( other.m_name ),
-			m_target( other.m_target ),
-			m_orientation( other.m_orientation )
-		{}
-
-		ContigMap& operator=( ContigMap const& other ) {
-			m_name = other.m_name ;
-			m_target = other.m_target ;
-			m_orientation = other.m_orientation ;
-			return *this ;
-		}
 
 		std::string const& name() const { return m_name ; }
 		std::string const& target() const { return m_target ; }
 		Orientation const orientation() const { return m_orientation ; }
-
+		int const alignment_score() const { return m_alignment_score ; }
+		int const number_of_mismatches() const { return m_number_of_mismatches ; }
+		int const aligned_length() const { return m_aligned_length ; }
 	private:
-
 		std::string m_name ;
 		std::string m_target ;
 		Orientation m_orientation ;
+		int m_alignment_score ;
+		int m_number_of_mismatches ;
+		int m_aligned_length ;
 	} ;
 
 	typedef std::map< std::string, ContigMap > Map ;
@@ -181,15 +178,19 @@ private:
 				if( count > 1 ) {
 					result = result + "_" + genfile::string_utils::to_string(count) ;
 				}
+				boost::smatch match ;
 				bool matched = false ;
 				for( auto& s: substitutions ) {
-					if( boost::regex_match( result, s.first )) {
+					if( boost::regex_search( result, match, s.first )) {
+//						std::cerr << "++ " << original_contig_name << ", " << reference_name << " matched: " << s.first << ".\n" ;
 						result = boost::regex_replace(
 							result,
 							s.first,
 							s.second
 						) ;
 						matched = true ;
+					} else {
+//						std::cerr << "-- " << original_contig_name << ", " << reference_name << " did not match: " << s.first << ".\n" ;
 					}
 				}
 				if( !matched ) {
@@ -212,10 +213,13 @@ private:
 			) ;
 			(*output)
 				<< ">" << i->second.name()
-				<< "\tZL:i:" << sequence.size()
 				<< "\tZS:Z:" << i->first
-				<< "\tZR:Z:" << (should_reverse_complement ? "-" : "+")
-				<< "\tZO:A:" << i->second.target()
+				<< "\tZL:i:" << sequence.size()
+				<< "\tZA:i:" << i->second.aligned_length()
+				<< "\tZO:Z:" << (should_reverse_complement ? "-" : "+")
+				<< "\tZR:A:" << i->second.target()
+				<< "\tAS:i:" << i->second.alignment_score()
+				<< "\tNM:i:" << i->second.number_of_mismatches()
 				<< "\n"
 				<< (
 					should_reverse_complement
@@ -294,13 +298,20 @@ private:
 						"Alignment for this contig has already been seen, expected a single alignment."
 					) ;
 				} else {
+					int alignment_score = -1 ;
+					int number_of_mismatches = -1 ;
+					alignment.GetIntTag( "AS", alignment_score ) ;
+					alignment.GetIntTag( "NM", number_of_mismatches ) ;
 					Map.insert(
 						std::make_pair(
 							original_contig_name,
 							ContigMap(
 								new_name,
 								reference_name,
-								orientation
+								orientation,
+								alignment_score,
+								number_of_mismatches,
+								(alignment.PositionEnd() - alignment.Position())
 							)
 						)
 					) ;
