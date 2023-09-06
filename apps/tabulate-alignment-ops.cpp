@@ -102,7 +102,12 @@ public:
 			.set_description( "Specify that errors should be tabulated by position, not aggregated." ) ;
 
 		options[ "-flank" ]
-			.set_description( "Specify how much flanking sequence to classify by." )
+			.set_description( "Specify how much flanking sequence of the reference to classify by." )
+			.set_takes_single_value()
+			.set_default_value( 3 ) ;
+
+		options[ "-flank-in-reads" ]
+			.set_description( "Specify how much flanking sequence of each read to classify by." )
 			.set_takes_single_value()
 			.set_default_value( 3 ) ;
 
@@ -311,6 +316,8 @@ namespace {
 			std::string const& read_sequence,
 			std::string const& left_flank,
 			std::string const& right_flank,
+			std::string const& read_left_flank,
+			std::string const& read_right_flank,
 			uint32_t const contig_bases_unmasked,
 			uint32_t const edit_bases_unmasked
 		):
@@ -321,6 +328,8 @@ namespace {
 			m_read_sequence( read_sequence ),
 			m_left_flank( left_flank ),
 			m_right_flank( right_flank ),
+			m_read_left_flank( read_left_flank ),
+			m_read_right_flank( read_right_flank ),
 			m_contig_bases_unmasked( contig_bases_unmasked ),
 			m_edit_bases_unmasked( edit_bases_unmasked )
 		{}
@@ -335,6 +344,8 @@ namespace {
 			m_read_sequence( other.m_read_sequence ),
 			m_left_flank( other.m_left_flank ),
 			m_right_flank( other.m_right_flank ),
+			m_read_left_flank( other.m_read_left_flank ),
+			m_read_right_flank( other.m_read_right_flank ),
 			m_contig_bases_unmasked( other.m_contig_bases_unmasked ),
 			m_edit_bases_unmasked( other.m_edit_bases_unmasked )
 		{}
@@ -349,6 +360,8 @@ namespace {
 			m_read_sequence = other.m_read_sequence ;
 			m_left_flank = other.m_left_flank ;
 			m_right_flank = other.m_right_flank ;
+			m_read_left_flank = other.m_read_left_flank ;
+			m_read_right_flank = other.m_read_right_flank ;
 			m_contig_bases_unmasked = other.m_contig_bases_unmasked ;
 			m_edit_bases_unmasked = other.m_edit_bases_unmasked ;
 			return *this ;
@@ -361,6 +374,8 @@ namespace {
 		std::string const& read_sequence() const { return m_read_sequence ; }
 		std::string const& left_flank() const { return m_left_flank ; }
 		std::string const& right_flank() const { return m_right_flank ; }
+		std::string const& left_flank_in_read() const { return m_read_left_flank ; }
+		std::string const& right_flank_in_read() const { return m_read_right_flank ; }
 		uint32_t const contig_bases_unmasked() const { return m_contig_bases_unmasked ; }
 		uint32_t const edit_bases_unmasked() const { return m_edit_bases_unmasked ; }
 		
@@ -375,6 +390,8 @@ namespace {
 		std::string m_read_sequence ;
 		std::string m_left_flank ;
 		std::string m_right_flank ;
+		std::string m_read_left_flank ;
+		std::string m_read_right_flank ;
 		uint32_t m_contig_bases_unmasked ;
 		uint32_t m_edit_bases_unmasked ;
 	} ;
@@ -415,6 +432,16 @@ namespace {
 		} else if( left.m_right_flank > right.m_right_flank ) {
 			return false ;
 		}
+		if( left.m_read_left_flank < right.m_read_left_flank ) {
+			return true ;
+		} else if( left.m_read_left_flank > right.m_read_left_flank ) {
+			return false ;
+		}
+		if( left.m_read_right_flank < right.m_read_right_flank ) {
+			return true ;
+		} else if( left.m_read_right_flank > right.m_read_right_flank ) {
+			return false ;
+		}
 		if( left.m_contig_bases_unmasked < right.m_contig_bases_unmasked ) {
 			return true ;
 		} else if( left.m_contig_bases_unmasked > right.m_contig_bases_unmasked ) {
@@ -437,6 +464,8 @@ namespace {
 			&&( left.m_read_sequence == right.m_read_sequence )
 			&&( left.m_left_flank == right.m_left_flank )
 			&&( left.m_right_flank == right.m_right_flank )
+			&&( left.m_read_left_flank == right.m_read_left_flank )
+			&&( left.m_read_right_flank == right.m_read_right_flank )
 			&&( left.m_contig_bases_unmasked == right.m_contig_bases_unmasked )
 			&&( left.m_edit_bases_unmasked == right.m_edit_bases_unmasked )
 		;
@@ -444,7 +473,7 @@ namespace {
 
 	std::ostream& operator<<( std::ostream& out, MismatchClass const& m ) {
 		out << m.m_contig_id << ":" << m.m_position << ": " << char( m.m_type ) << " "
-			<< m.m_left_flank << "[" << m.m_contig_sequence << ">" << m.m_read_sequence << "]" << m.m_right_flank ;
+			<< m.m_left_flank << "," << m.m_read_left_flank << "[" << m.m_contig_sequence << ">" << m.m_read_sequence << "]" << m.m_right_flank << "," << m.m_read_right_flank ;
 		return out ;
 	}
 
@@ -796,6 +825,7 @@ private:
 		;
 		
 		std::size_t const flank = options().get< std::size_t >( "-flank" ) ;
+		std::size_t const read_flank = options().get< std::size_t >( "-flank-in-reads" ) ;
 		
 		seqlib::BamRecord alignment ;
 		std::size_t count = 0 ;
@@ -904,6 +934,7 @@ private:
 		std::transform( sequence_in_contig.begin(), sequence_in_contig.end(), sequence_in_contig.begin(), ::toupper ) ;
 		std::transform( right_flank.begin(), right_flank.end(), right_flank.begin(), ::toupper ) ;
 
+		std::string const read_left_flank, read_right_flank ; // TODO make correct
 #if DEBUG
 		std::cerr
 			<< "++ sequence in contig: " << sequence_in_contig << "; sequence in read: " << sequence_in_read << "\n"
@@ -942,6 +973,8 @@ private:
 			sequence_in_read,
 			left_flank,
 			right_flank,
+			read_left_flank,
+			read_right_flank,
 			contig_bases_unmasked,
 			edit_bases_unmasked
 		) ;
