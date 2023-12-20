@@ -42,11 +42,12 @@ let MSAView = function(
 	}
 ) {
 	this.elt = elt ;
+	this.elt.selectAll( '*' ).remove() ;
 	this.panels = {
-		controls: elt.select( "svg.controls" ),
-		names: elt.select( "svg.names" ),
-		sequences: elt.select( "canvas.sequences" ),
-		genes: elt.select( "svg.genes" )
+		controls: elt.append( 'svg' ).attr( 'width', 900 ).attr( 'height', 200 ).attr( 'class', 'controls' ),
+		names: elt.append( 'svg' ).attr( 'width', 900 ).attr( 'height', 600 ).attr( 'class', 'names' ),
+		sequences: elt.append( 'canvas' ).attr( 'width', 900 ).attr( 'height', 600 ).attr( 'class', 'sequences' ),
+		genes: elt.append( 'svg' ).attr( 'width', 900 ).attr( 'height', 200 ).attr( 'class', 'genes' )
 	} ;
 	this.msa = msa ;
 	this.reference = reference ;
@@ -198,8 +199,6 @@ MSAView.prototype.set_physical_domain = function( domain ) {
 }
 
 MSAView.prototype.updateLayout = function() {
-	
-	return ; 
 	let geom = this.geom ;
 	geom.layout.width.all = window.innerWidth - 40 ;
 	geom.layout.width.sequences = window.innerWidth - geom.layout.width.names - 40 ;
