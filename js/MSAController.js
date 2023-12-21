@@ -1,10 +1,14 @@
 'use strict' ;
 
-let MSAController = function( panels, view ) {
+let MSAController = function(
+	panels,
+	view,
+	url_params
+) {
 	this.panels = panels ;
 	this.view = view ;
 	this.drag = { start: 0 } ;
-	this.params = new URLSearchParams(window.location.search) ;
+	this.params = url_params ;
 	let self = this ;
 	let doDrag = function( x ) {
 		let here = self.view.scales.msaToX.invert( x ) ;
@@ -17,18 +21,25 @@ let MSAController = function( panels, view ) {
 	} ;
 	
 	panels.controls.on( "click", function( e ) {
-		let checkbox = d3.select( e.target ) ;
-		if( checkbox.attr( 'checked' ) == 'false' ) {
-			checkbox.attr( 'checked', 'true' ) ;
-			checkbox.attr( 'fill', '#dddddd' ) ;
-			self.view.target = "mismatches" ;
-		} else {
-			checkbox.attr( 'fill', '#111111' ) ;
-			checkbox.attr( 'checked', 'false' ) ;
-			self.view.target = "sequence" ;
+		let checkbox = document.getElementById( 'mismatch_mode_toggle' ) ;
+		let share = document.getElementById( 'share_button' ) ;
+		if( checkbox.contains( e.target )) {
+			console.log( checkbox ) ;
+			if( checkbox.getAttribute( 'checked' ) == 'false' ) {
+				checkbox.setAttribute( 'checked', 'true' ) ;
+				d3.select(checkbox).selectAll( 'rect' ).attr( 'fill', '#dddddd' ) ;
+				self.view.target = "mismatches" ;
+			} else {
+				d3.select(checkbox).selectAll( 'rect' ).attr( 'fill', '#111111' ) ;
+				checkbox.setAttribute( 'checked', 'false' ) ;
+				self.view.target = "sequence" ;
+			}
 		}
-		self.view.draw( true ) ;
+		else if( share.contains( e.target )) {
+			
+		}
 		self.updateParams() ;
+		self.view.draw( true ) ;
 	}) ;
 	
 	// set up dragging

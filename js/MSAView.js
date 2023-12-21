@@ -119,7 +119,20 @@ let MSAView = function(
 				'T': '#1A356C',
 				'C': '#941504',
 				'G': '#F44B1A',
-				'N': '#555555'
+				'N': '#555555',
+				// ASCII values, for Int8Array version
+				 45: 'lightgrey',  // '-'
+				109: '#333618',  // 'm'
+				 97: '#02AAE9',  // 'a'
+				116: '#1A356C',  // 't'
+				 99: '#941504',  // 'c'
+				103: '#F44B1A',  // 'g'
+				110: '#555555',  // 'n'
+				 65: '#02AAE9',  // 'A'
+				 84: '#1A356C',  // 'T'
+				 67: '#941504',  // 'C'
+				 71: '#F44B1A',  // 'G'
+				 78: '#555555'   // 'N'
 			},
 			geom: {
 				'-': { "offset": -5, "height": 2 },
@@ -134,6 +147,18 @@ let MSAView = function(
 				'C': { "offset": -8, "height": 8 },
 				'G': { "offset": -8, "height": 8 },
 				'N': { "offset": -6, "height": 6 },
+				 45: { "offset": -5, "height": 2 }, // '-'
+				109: { "offset": -8, "height": 8 }, // 'm'
+				 97: { "offset": -8, "height": 8 }, // 'a'
+				116: { "offset": -8, "height": 8 }, // 't'
+				 99: { "offset": -8, "height": 8 }, // 'c'
+				103: { "offset": -8, "height": 8 }, // 'g'
+				110: { "offset": -6, "height": 6 }, // 'n'
+				 65: { "offset": -8, "height": 8 }, // 'A'
+				 84: { "offset": -8, "height": 8 }, // 'T'
+				 67: { "offset": -8, "height": 8 }, // 'C'
+				 71: { "offset": -8, "height": 8 }, // 'G'
+				 78: { "offset": -6, "height": 6 }, // 'N'
 			}
 		},
 		colour: {
@@ -178,7 +203,6 @@ MSAView.prototype.setViewport = function( viewport ) {
 		rr.invert( Math.min( viewport[1], rr.range()[1] ))  // clip to right edge
 	] ;
 
-	console.log( "setViewport()", viewport ) ;
 	this.scales.msaToX.domain( viewport ) ;
 	let physicalRange = addRange( refViewport, this.reference.baseMargin ) ;
 	this.set_physical_domain( refViewport ) ;
@@ -194,8 +218,6 @@ MSAView.prototype.set_physical_domain = function( domain ) {
 	let concatenated_domain_closed = addRange( concatenated_domain, [0,-1] ) ;
 	let physical_domain = concatenated_domain_closed.map( s.physicalToConcatenated.invert ) ;
 	s.physicalToX.domain( physical_domain ).range( concatenated_domain_closed.map( s.concatenatedToX ) ) ;
-
-	console.log( "SPD", s.concatenatedToX.domain(), s.physicalToX.domain(), s.concatenatedToX.range(), s.physicalToX.range() ) ;
 }
 
 MSAView.prototype.updateLayout = function() {
@@ -210,6 +232,7 @@ MSAView.prototype.updateLayout = function() {
 		this.scales.physicalToConcatenated.range().map( this.scales.concatenatedToX )
 	) ;
 }
+
 
 MSAView.prototype.draw = function( force ) {
 	let viewport = this.scales.msaToX.domain() ;
@@ -278,95 +301,8 @@ MSAView.prototype.draw = function( force ) {
 		names.call( renderName ) ;
 	}
 
-	{
-		let guide = panels.controls.selectAll( 'g.guide' )
-			.data( ['guide'] )
-			.enter()
-			.append( 'g' )
-			.attr( 'class', 'guide' )
-			.attr( 'transform', (d,i) => ('translate(' + (geom.layout.width.reference/2) + ", 10)" ))
-			.append( 'text' ) ;
-		guide
-			.append( 'tspan' )
-			.attr( 'font-size', '10pt' )
-			.attr( 'font-family', 'Palatino' )
-			.attr( 'dominant-baseline', 'middle' )
-			.attr( 'text-anchor', 'middle' )
-			.text( "Use mouse to scroll and zoom" )
-		;
-	}
-	{
-		let logo = panels.controls.selectAll( 'g.logo' )
-			.data( ['seemsa'] )
-			.enter()
-			.append( 'g' )
-			.attr( 'class', 'logo' )
-			.attr( 'transform', (d,i) => ('translate(' + (geom.layout.width.reference - 100) + ", 10)" ))
-			.append( 'text' ) ;
-		logo
-			.append( 'tspan' )
-			.attr( 'font-size', '10pt' )
-			.attr( 'font-family', 'Helvetica' )
-			.attr( 'dominant-baseline', 'middle' )
-			.text( d => d ) ;
-		logo
-			.append( 'tspan' )
-			.attr( 'font-size', '6pt' )
-			.attr( 'font-family', 'Palatino' )
-			.attr( 'font-style', 'italic' )
-			.attr( 'dominant-baseline', 'middle' )
-			.attr( 'baseline-shift', 'super' )
-			.text( "beta" ) ;
+	this.drawControls( panels.controls, geom, aes ) ;
 
-		panels.controls.selectAll( 'g.base' )
-			.data( [ 'a', 'c', 'g', 't' ] )
-			.enter()
-			.append( 'g' )
-			.attr( 'class', 'base' )
-			.attr( 'transform', (d,i) => ('translate(' + (20 + i*40) + ", 10)" )) ;
-		panels.controls.selectAll( 'g.base' )
-			.append( 'rect' )
-			.attr( 'x', 0 )
-			.attr( 'y', -5 )
-			.attr( 'width', 6 )
-			.attr( 'height', 10 )
-			.attr( 'fill', d => this.aes.bases.colour[d] ) ;
-		panels.controls.selectAll( 'g.base' )
-			.append( 'text' )
-			.attr( 'x', 10 )
-			.attr( 'y', 0 )
-			.attr( 'font-size', '10pt' )
-			.attr( 'font-family', 'Palatino' )
-			.attr( 'dominant-baseline', 'middle' )
-			.text( d => d.toUpperCase() ) ;
-			
-		let switches = panels.controls.selectAll( 'g.control' )
-			.data( ['highlight mismatches?'] )
-			.enter()
-			.append( 'g' )
-			.attr( 'class', 'control' )
-			.attr( 'transform', "translate(180,5)") ;
-		switches
-			.append( 'rect' )
-			.attr( 'class', 'checkbox' )
-			.attr( 'checked', 'false' )
-			.attr( 'x', 0 )
-			.attr( 'y', 0 )
-			.attr( 'width', 8 )
-			.attr( 'height', 8 )
-			.attr( 'stroke', aes.colour.text )
-			.attr( 'fill', '#111111' ) ;
-		switches.append( 'path' )
-			.attr( 'd', 'M1 1 L7 7 M7 1 L1 7')
-			.attr( 'stroke', '#111111' ) ;
-		switches
-			.append( 'text' )
-			.attr( 'x', 12 )
-			.attr( 'y', 4 )
-			.attr( 'alignment-baseline', 'central' )
-			.attr( 'font-size', '8pt' )
-			.text( d => d ) ;
-	}
 	{
 		let genes = this.genes ;
 		//console.log( "GENES", this.genes ) ;
@@ -377,6 +313,7 @@ MSAView.prototype.draw = function( force ) {
 			}
 		) ;
 	}
+
 	{
 		let axis = panels.genes.selectAll( 'g.axis' ).data( ['axis'] ) ;
 		axis
@@ -459,10 +396,10 @@ MSAView.prototype.draw = function( force ) {
 			Math.min( Math.ceil( viewport[1] + 1 ), msa.alignment[0].sequence.length )
 		] ;
 		for( let i = 0; i < msa.alignment.length; ++i ) {
-			let sequence = msa.alignment[i].sequence ;
+			let sequence = msa.alignment[i][ this.target ] ;
 			drawSequence(
-				msa.alignment[i][ this.target ],
-				msa.alignment[i][ this.target ].levels,
+				sequence,
+				sequence.levels,
 				vs.y(vs.tracks.map(msa.alignment[i].name, "sequence").baseline),
 				baseWidth,
 				j => vs.msaToX( msa.scales.global(j)),
@@ -598,4 +535,106 @@ MSAView.prototype.draw = function( force ) {
 	
 	this.drawn_viewport[0] = viewport[0] ;
 	this.drawn_viewport[1] = viewport[1] ;
+}
+
+MSAView.prototype.drawControls = function( panel, geom, aes ) {
+	{
+		let guide = panel.selectAll( 'g.guide' )
+			.data( ['guide'] )
+			.enter()
+			.append( 'g' )
+			.attr( 'class', 'guide' )
+			.attr( 'transform', (d,i) => ('translate(' + (geom.layout.width.reference/2) + ", 10)" ))
+			.append( 'text' ) ;
+		guide
+			.append( 'tspan' )
+			.attr( 'font-size', '10pt' )
+			.attr( 'font-family', 'Palatino' )
+			.attr( 'dominant-baseline', 'middle' )
+			.attr( 'text-anchor', 'middle' )
+			.text( "Use mouse to scroll and zoom" )
+		;
+	}
+	{
+		let logo = panel.selectAll( 'g.logo' )
+			.data( ['seemsa'] )
+			.enter()
+			.append( 'g' )
+			.attr( 'class', 'logo' )
+			.attr( 'transform', (d,i) => ('translate(' + (geom.layout.width.reference - 100) + ", 10)" ))
+			.append( 'text' ) ;
+		logo
+			.append( 'tspan' )
+			.attr( 'font-size', '10pt' )
+			.attr( 'font-family', 'Helvetica' )
+			.attr( 'dominant-baseline', 'middle' )
+			.text( d => d ) ;
+		logo
+			.append( 'tspan' )
+			.attr( 'font-size', '6pt' )
+			.attr( 'font-family', 'Palatino' )
+			.attr( 'font-style', 'italic' )
+			.attr( 'dominant-baseline', 'middle' )
+			.attr( 'baseline-shift', 'super' )
+			.text( "beta" ) ;
+
+		panel.selectAll( 'g.base' )
+			.data( [ 'a', 'c', 'g', 't' ] )
+			.enter()
+			.append( 'g' )
+			.attr( 'class', 'base' )
+			.attr( 'transform', (d,i) => ('translate(' + (20 + i*40) + ", 10)" )) ;
+		panel.selectAll( 'g.base' )
+			.append( 'rect' )
+			.attr( 'x', 0 )
+			.attr( 'y', -5 )
+			.attr( 'width', 6 )
+			.attr( 'height', 10 )
+			.attr( 'fill', d => this.aes.bases.colour[d] ) ;
+		panel.selectAll( 'g.base' )
+			.append( 'text' )
+			.attr( 'x', 10 )
+			.attr( 'y', 0 )
+			.attr( 'font-size', '10pt' )
+			.attr( 'font-family', 'Palatino' )
+			.attr( 'dominant-baseline', 'middle' )
+			.text( d => d.toUpperCase() ) ;
+			
+		let switches = panel.selectAll( 'g.control' )
+			.data( ['highlight mismatches?'] )
+			.enter()
+			.append( 'g' )
+			.attr( 'class', 'control checkbox' )
+			.attr( 'checked', 'false' )
+			.attr( 'id', 'mismatch_mode_toggle' )
+			.attr( 'transform', "translate(180,5)") ;
+		switches
+			.append( 'rect' )
+			.attr( 'x', 0 )
+			.attr( 'y', 0 )
+			.attr( 'width', 10 )
+			.attr( 'height', 10 )
+			.attr( 'stroke', aes.colour.text )
+			.attr( 'fill', '#111111' ) ;
+		switches.append( 'path' )
+			.attr( 'd', 'M1 1 L9 9 M9 1 L1 9')
+			.attr( 'stroke-width', 2 )
+			.attr( 'stroke', '#111111' ) ;
+		switches
+			.append( 'text' )
+			.attr( 'x', 14 )
+			.attr( 'y', 4 )
+			.style( 'user-select', 'none' )
+			.attr( 'alignment-baseline', 'central' )
+			.attr( 'font-size', '10pt' )
+			.text( d => d ) ;
+
+		let share = panel.selectAll( 'g.share' )
+			.data( ['copy link'] )
+			.enter()
+			.append( 'g' )
+			.attr( 'class', 'share' )
+			.attr( 'transform', 'translate( 240,5 )') ;
+
+	}
 }

@@ -11,9 +11,10 @@ let computeUngappedSequence = function( name, gappedSequence, coordinateRange ) 
 	let inRange = false ;
 	let sequencePosition = 0 ;
 	let ungappedSequence = [] ;
+	let dash = 45 ; // '-'
 	let orientation = Math.sign( coordinateRange.end - coordinateRange.start ) ;
 	for( let i = 0; i < gappedSequence.length; ++i ) {
-		if( gappedSequence[i] == "-" && inRange ) {
+		if( gappedSequence[i] == dash && inRange ) {
 			range.inAlignment.end = i ;
 			range.inSequence.end = coordinateRange.start + orientation * ungappedSequence.length ;
 			// take care here to push a newly-built range object otherwise
@@ -30,7 +31,7 @@ let computeUngappedSequence = function( name, gappedSequence, coordinateRange ) 
 			} ) ;
 			inRange = false ;
 			lastAlignmentBase = i ;
-		} else if( gappedSequence[i] != "-" && !inRange ) {
+		} else if( gappedSequence[i] != dash && !inRange ) {
 			range.inAlignment.start = i ;
 			range.inSequence.start = coordinateRange.start + orientation * ungappedSequence.length ;
 			inRange = true ;
@@ -38,7 +39,7 @@ let computeUngappedSequence = function( name, gappedSequence, coordinateRange ) 
 				firstAlignmentBase = i ;
 			}
 		}
-		if( gappedSequence[i] != "-" ) {
+		if( gappedSequence[i] != dash ) {
 			ungappedSequence.push( gappedSequence[i] ) ;
 		}
 	}
@@ -60,7 +61,7 @@ let computeUngappedSequence = function( name, gappedSequence, coordinateRange ) 
 		} ) ;
 	}
 	
-	//console.log( "S", gappedSequence, ungappedSequence ) ;
+	console.log( "S", gappedSequence, ungappedSequence ) ;
 	// sanity check
 	assert(
 		ungappedSequence.length == Math.abs(coordinateRange.end - coordinateRange.start)+1,
@@ -74,7 +75,7 @@ let computeUngappedSequence = function( name, gappedSequence, coordinateRange ) 
 	) ;
 	
 	return {
-		sequence: ungappedSequence,
+		sequence: new Int8Array( ungappedSequence ),
 		ranges: ranges,
 		coordinateRange: coordinateRange
 	} ;
@@ -84,14 +85,14 @@ let preprocessAlignment = function( alignment ) {
 	// process the MSA to add additional detail tracks
 	// this includes mismatches track and variable level summaries.
 	for( let i = 0; i < alignment.length; ++i ) {
-		alignment[i].mismatches = [...alignment[i].sequence] ;
+		alignment[i].mismatches = new Int8Array( alignment[i].sequence ) ;
 	}
 	for( let j = 0; j < alignment[0].sequence.length; ++j ) {
 		let mismatch = false ;
 		let ref = -1 ;
 		for( let i = 0; i < alignment.length; ++i ) {
 			let base = alignment[i].sequence[j] ;
-			if( base != '-' ) {
+			if( base != 45 ) {
 				if( ref == -1 ) {
 					ref = i ;
 				} else if( base != alignment[ref].sequence[j] ) {
@@ -102,8 +103,8 @@ let preprocessAlignment = function( alignment ) {
 		}
 		if( !mismatch ) {
 			for( let i = 0; i < alignment.length; ++i ) {
-				if( alignment[i].mismatches[j] != "-" ) {
-					alignment[i].mismatches[j] = "m" ;
+				if( alignment[i].mismatches[j] != 45 ) {
+					alignment[i].mismatches[j] = 109 ;
 				}
 			}
 		}
@@ -112,14 +113,14 @@ let preprocessAlignment = function( alignment ) {
 	for( let i = 0; i < alignment.length; ++i ) {
 		alignment[i].sequence.levels = computeLevels(
 			alignment[i].sequence,
-			[ "-", "a", "c", "g", "t" ],
-			function( counts ) {
+			[ 45, 97, 99, 103, 116 ],
+			function( counts, what ) {
 				// Compute the most frequent base/char in each window,
 				// resolving ties based on the supplied order.
 				// This is ad hoc but makes visualisation simple.
 				let max = 0 ;
-				let max_base = '-' ;
-				[ "-", "a", "c", "g", "t" ].forEach( function(x) {
+				let max_base = what[0] ;
+				what.forEach( function(x) {
 					if( counts[x] >= max ) {
 						max = counts[x] ;
 						max_base = x ;
@@ -130,18 +131,18 @@ let preprocessAlignment = function( alignment ) {
 		) ;
 		alignment[i].mismatches.levels = computeLevels(
 			alignment[i].mismatches,
-			[ "-", "m", "a", "c", "g", "t" ],
+			[ 45, 109, 97, 99, 103, 116 ],
 			function( counts ) {
 				let max = 0 ;
 				let max_base = '-' ;
-				[ 'a', 'c', 'g', 't' ].forEach( function(x) {
+				[ 97, 99, 103, 116 ].forEach( function(x) {
 					if( counts[x] >= max ) {
 						max = counts[x] ;
 						max_base = x ;
 					}
 				}) ;
 				if( max == 0 ) {
-					[ '-', 'm' ].forEach( function(x) {
+					[ 45, 109 ].forEach( function(x) {
 						if( counts[x] >= max ) {
 							max = counts[x] ;
 							max_base = x ;
@@ -163,24 +164,24 @@ function computeLevels(
 	levels = [ 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024 ]
 ) {
 	let result = [] ;
-	result[1] = [[ ...sequence ]] ;
+	result[1] = sequence ;
 	let i = 0;
 	for( let level_i = 0; level_i < levels.length; ++level_i ) {
 		let level = levels[level_i] ;
-		result[level] = [] ;
+		result[level] = new Int8Array(Math.ceil(sequence.length / level)) ;
 		let counts = {} ;
 		what.forEach( x => counts[x] = 0 ) ;
 		for( i = 0; i < sequence.length; ++i ) {
 			if( i % level == 0 ) {
 				if( i > 0 ) {
-					result[level].push( summarise(counts) ) ;
+					result[level][(i/level)-1] = summarise(counts, what) ;
 				}
 				what.forEach( x => counts[x] = 0 ) ;
 			}
-			++counts[ sequence[i].toLowerCase() ] ;
+			++counts[ sequence[i] ] ;
 		}
 		if( i % level != 0 ) {
-			result[level].push( summarise(counts) ) ;
+			result[level][(i/level)] = summarise( counts, what ) ;
 		}
 	}
 	return result ;

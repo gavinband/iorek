@@ -1,8 +1,12 @@
 'use strict' ;
 function run_msa_viewer( data ) {
 	// Turn sequence strings into arrays.
+	let encoder = new TextEncoder() ;
 	for( let i = 0; i < data.alignment.length; ++i ) {
-		data.alignment[i].sequence = data.alignment[i].sequence.split( "" ) ;
+		console.log( data.alignment[i].sequence.slice(0,10), encoder.encode( data.alignment[i].sequence.toLowerCase() ).slice(0,10) ) ;
+		data.alignment[i].sequence = data.alignment[i].sequence.toLowerCase() ;
+		data.alignment[i].sequence = encoder.encode( data.alignment[i].sequence ) ;
+		//data.alignment[i].sequence = data.alignment[i].sequence.split( "" ) ;
 	}
 
 	if( !data.hasOwnProperty( 'genes' )) {
@@ -28,7 +32,11 @@ function run_msa_viewer( data ) {
 		new GeneView( data.genes, reference.coordinateRange ),
 		data.annotations
 	) ;
-	let controller = new MSAController( viewer.panels, viewer ) ;
+	let controller = new MSAController(
+		viewer.panels,
+		viewer,
+		new URLSearchParams(window.location.search)
+	) ;
 
 	let redraw = function() {
 		viewer.draw() ;
