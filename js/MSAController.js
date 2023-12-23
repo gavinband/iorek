@@ -36,7 +36,7 @@ let MSAController = function(
 			}
 		}
 		else if( share.contains( e.target )) {
-			
+
 		}
 		self.updateParams() ;
 		self.view.draw( true ) ;
@@ -113,7 +113,7 @@ let MSAController = function(
 
 	if( this.params.has( "viewport" )) {
 		let viewport = this.parseViewport( this.params.get( "viewport" ) ) ;
-		console.log( "VIEWPORT", viewport ) ;
+//		console.log( "VIEWPORT", viewport ) ;
 		self.view.setViewport( viewport ) ;
 	}
 	if( this.params.has( "target" )) {
@@ -134,7 +134,7 @@ MSAController.prototype.updateParams = function() {
 }
 
 MSAController.prototype.parseViewport = function( spec ) {
-	console.log( "VIEWPORT SPEC", spec ) ;
+//	console.log( "VIEWPORT SPEC", spec ) ;
 	let bits = spec.split( ":" ) ;
 	if( bits.length != 2 ) {
 		return null ;
@@ -146,6 +146,6 @@ MSAController.prototype.parseViewport = function( spec ) {
 }
 
 MSAController.prototype.encodeViewport = function( viewport ) {
-	console.log( "VIEWPORT", viewport ) ;
+//	console.log( "VIEWPORT", viewport ) ;
 	return Math.floor(viewport[0]) + ":" + Math.ceil( viewport[1] ) ;
 }

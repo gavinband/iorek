@@ -1,25 +1,77 @@
 'use strict' ;
-function run_msa_viewer( data ) {
-	// Turn sequence strings into arrays.
+
+// decompress_alignment takes in a reference sequence (encoded as Uint8Array) and
+// a compressed sequence (also Uint8Array).
+// The compressed sequence is assumed to be made up of sequences of bases, and sequences of numbers.
+// Currently these are encoded in ASCII i.e. values 48-57 indicate digits.
+// A number means 'copy this many bases from the reference sequence'.
+// A non-number means 'insert this base verbatim'.
+// This therefore implements a simple form of decompression that can help reduce file sizes.
+function decompress_alignment( reference, sequence ) {
+	let L = reference.length ;
+	let uncompressed_sequence = new Uint8Array( L ) ;
+	let state = {
+		type: null,
+		pos: 0,
+		length: 0
+	} ;
+	let j = 0 ;
+	let out_j = 0 ;
+	for( ; j < sequence.length; ++j ) {
+		// 48 is ASCII for 0
+		// 57 is ASCII for 9
+		let type = (sequence[j] >= 48 & sequence[j] < 58) ? 'number' : 'sequence' ;
+		if( type == 'number' ) {
+			if( !state.type || state.type == 'sequence' ) {
+				state.length = 0 ;
+			}
+			state.length *= 10 ;
+			state.length += ( sequence[j] - 48 ) ;
+			state.type = 'number' ;
+		} else if( type == 'sequence' ) {
+			if( state.type == 'number' ) {
+				for( let k = 0; k < state.length; ++k, ++state.pos ) {
+					uncompressed_sequence[state.pos] = reference[state.pos] ;
+				}
+			}
+			uncompressed_sequence[state.pos++] = sequence[j] ;
+			state.type = 'sequence' ;
+		}
+	}
+	if( state.type == 'number' ) {
+		for( let k = 0; k < state.length; ++k, ++state.pos ) {
+			uncompressed_sequence[state.pos] = reference[state.pos] ;
+		}
+	}
+	console.log( L, state.pos ) ;
+	assert( state.pos == L ) ;
+	return uncompressed_sequence ;
+}
+
+function unpack_alignments( alignment ) {
+	if( alignment.length == 0 ) {
+		return alignment ;
+	}
 	let encoder = new TextEncoder() ;
-	for( let i = 0; i < data.alignment.length; ++i ) {
-		console.log( data.alignment[i].sequence.slice(0,10), encoder.encode( data.alignment[i].sequence.toLowerCase() ).slice(0,10) ) ;
-		data.alignment[i].sequence = data.alignment[i].sequence.toLowerCase() ;
-		data.alignment[i].sequence = encoder.encode( data.alignment[i].sequence ) ;
-		//data.alignment[i].sequence = data.alignment[i].sequence.split( "" ) ;
+	alignment[0].sequence = alignment[0].sequence.toLowerCase() ;
+	alignment[0].sequence = encoder.encode( alignment[0].sequence ) ;
+	for( let i = 1; i < alignment.length; ++i ) {
+		alignment[i].sequence = encoder.encode( alignment[i].sequence ) ;
+		alignment[i].sequence = decompress_alignment(
+			alignment[0].sequence,
+			alignment[i].sequence
+		) ;
 	}
+	return alignment ;
+}
 
-	if( !data.hasOwnProperty( 'genes' )) {
-		data.genes = [] ;
-	}
+function run_msa_viewer( data ) {
+	// Sequences are unpacked and turned into 
+	data.alignment = unpack_alignments( data.alignment ) ;
 
-	if( !data.hasOwnProperty( 'annotations' )) {
-		data.annotations = {} ;
-	}
-
-	if( !data.hasOwnProperty( 'highlights' )) {
-		data.highlights = [] ;
-	}
+	data.genes = data.genes ? data.genes : [] ;
+	data.annotations = data.annotations ? data.annotations : {} ;
+	data.highlights = data.highlights ? data.highlights : [] ;
 
 	let reference_name = data.alignment[ 0 ].name ;
 	let msa = new MSA( data.alignment, data.ranges ) ;

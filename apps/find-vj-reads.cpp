@@ -31,7 +31,11 @@ namespace seqlib = SeqLib;
 #include "genfile/string_utils/slice.hpp"
 #include "genfile/Error.hpp"
 #include "genfile/Fasta.hpp"
+#include "genfile/db/Connection.hpp"
+#include "genfile/db/sqlite3.hpp"
 #include "genfile/annotation/GFFRecord.hpp"
+#include "genfile/ranges/union.hpp"
+#include "genfile/ranges/invert.hpp"
 #include "statfile/BuiltInTypeStatSink.hpp"
 
 // #define DEBUG 1
@@ -91,23 +95,51 @@ namespace impl {
 	struct ReadReferenceAlignment {
 		enum Orientation { eForward = 1, eReverse = -1 } ;
 		ReadReferenceAlignment():
+			start_in_read(0),
 			start(0),
+			end_in_read(0),
 			end(0),
 			orientation(eForward)
 		{}
 
-		ReadReferenceAlignment( seqlib::BamRecord const& alignment ):
+		ReadReferenceAlignment( seqlib::BamRecord const& alignment, seqlib::BamHeader const& header ):
+			contig( alignment.ChrName( header )),
+			start_in_read(0),
 			start( alignment.Position() ),
+			end_in_read(alignment.Sequence().size()),
 			end( alignment.PositionEnd() ),
 			orientation( alignment.ReverseFlag() ? eReverse : eForward ),
 			cigar( alignment.GetCigar() )
-		{}
+		{
+			if( cigar.front().Type() == 'S' || cigar.front().Type() == 'H' ) {
+				start_in_read = cigar.front().Length() ;
+			}
 
+			if( cigar.size() > 1 && (cigar.back().Type() == 'S' || cigar.front().Type() == 'H' )) {
+				end_in_read = end_in_read - cigar.back().Length() ;
+			}
+		}
+
+		std::string contig ;
+		uint32_t start_in_read ;
 		uint32_t start ;
+		uint32_t end_in_read ;
 		uint32_t end ;
 		Orientation orientation ;
 		seqlib::Cigar cigar ;
+
+		bool operator==( ReadReferenceAlignment const& other ) const {
+			return (contig == other.contig) && (start == other.start) && (end == other.end) && (orientation == other.orientation) && (cigar == other.cigar) ;
+		}
+
+		bool operator!=( ReadReferenceAlignment const& other ) const {
+			return (contig != other.contig) || (start != other.start )|| (end != other.end) || (orientation != other.orientation) || (cigar != other.cigar) ;
+		}
 	} ;
+
+	std::ostream& operator<<( std::ostream& out, ReadReferenceAlignment const& a ) {
+		return out << a.contig << ":" << a.start << "-" << a.end << " (" << ((a.orientation == ReadReferenceAlignment::eForward) ? "+" : "-") << "): " << a.cigar ;
+	}
 
 	struct SingleReadAlignments {
 		std::string id ;
@@ -115,7 +147,99 @@ namespace impl {
 		std::vector< ReadReferenceAlignment > alignments ;
 	} ;
 
+	std::ostream& operator<<( std::ostream& out, SingleReadAlignments const& a ) {
+		out << "id: " << a.id << ", length: " << a.sequence.size() << ":\n" ;
+		for( auto b: a.alignments ) {
+			out << "  - " << b << "\n" ;
+		}
+		return out ;
+	}
+
+
+	struct ReadOutput {
+		typedef std::unique_ptr< ReadOutput > UniquePtr ;
+
+		static UniquePtr create( std::string const& filename, std::string const& table_name ) {
+			return UniquePtr( new ReadOutput( filename, table_name )) ;
+		}
+
+		ReadOutput(
+			std::string const& filename,
+			std::string const& table_name
+		) {
+			initialise( filename, table_name ) ;
+		}
+
+		void write( SingleReadAlignments const& r ) const {
+			assert( r.alignments.size() < 5 ) ;
+			m_insert_sql
+				->bind( 1, r.id )
+				.bind( 2, int64_t(r.sequence.size()) )
+				.bind( 3, int64_t(r.alignments.size()) ) ;
+			std::size_t i = 0 ;
+			for( ; i < r.alignments.size(); ++i ) {
+				ReadReferenceAlignment const& a = r.alignments[i] ;
+				m_insert_sql
+					->bind( i*4 + 4, a.start )
+					.bind( i*4 + 5, a.end )
+					.bind( i*4 + 6, (a.orientation == ReadReferenceAlignment::eForward) ? "+" : "-" )
+					.bind( i*4 + 7, genfile::string_utils::to_string(a.cigar)) ;
+			}
+			for( ; i < 4; ++i ) {
+				m_insert_sql
+					->bind_NULL( i*4 + 4 )
+					.bind_NULL( i*4 + 5 )
+					.bind_NULL( i*4 + 6 )
+					.bind_NULL( i*4 + 7 ) ;
+			}
+			m_insert_sql
+				->bind( 20, r.sequence )
+				.step() ;
+			m_insert_sql->reset() ;
+		}
+
+	private:
+
+		genfile::db::Connection::UniquePtr m_connection ;
+		genfile::db::Connection::StatementPtr m_insert_sql ;
+
+		void initialise( std::string const& filename, std::string const& table_name ) {
+			m_connection = genfile::db::Connection::create( filename ) ;
+			m_connection->run_statement(
+				"CREATE TABLE IF NOT EXISTS `" + table_name + "`"
+				" ("
+				" `read_id` TEXT NOT NULL,"
+				" `length` INT NOT NULL,"
+				" `number_of_alignments` INT NOT NULL,"
+				" `alignment1_start` INT NOT NULL,"
+				" `alignment1_end` INT NOT NULL,"
+				" `alignment1_orientation` TEXT NOT NULL,"
+				" `alignment1_cigar` INT NOT NULL,"
+				" `alignment2_start` INT,"
+				" `alignment2_end` INT,"
+				" `alignment2_orientation` TEXT,"
+				" `alignment2_cigar` INT,"
+				" `alignment3_start` INT,"
+				" `alignment3_end` INT,"
+				" `alignment3_orientation` TEXT,"
+				" `alignment3_cigar` INT,"
+				" `alignment4_start` INT,"
+				" `alignment4_end` INT,"
+				" `alignment4_orientation` TEXT,"
+				" `alignment4_cigar` INT,"
+				" `sequence` TEXT NOT NULL"
+				");"
+			) ;
+
+			m_insert_sql = m_connection->get_statement(
+				"INSERT INTO `" + table_name + "` "
+				"VALUES( ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20 ) ;"
+			) ;
+		}
+	} ;
 }
+
+
 
 struct FindVJReadsApplication: public appcontext::ApplicationContext
 {
@@ -139,6 +263,11 @@ public:
 			ui().logger() << "\nError (" << e.what() <<"): " << e.format_message() << ".\n" ;
 			throw appcontext::HaltProgramWithReturnCode( -1 ) ;
 		}
+		catch( genfile::db::Error const& e ) {
+			ui().logger() << "\nError (" << e.what() <<"): " << e.description()
+			<< "\n-- in statement: " << e.sql() << ".\n" ;
+			throw appcontext::HaltProgramWithReturnCode( -1 ) ;
+		}
 	}
 
 private:
@@ -155,14 +284,19 @@ private:
 		//m_v_genes = load_genes( options().get< std::string >( "-V-genes" )) ;
 		//m_j_genes = load_genes( options().get< std::string >( "-J-genes" )) ;
 		auto analysis_range = genfile::GenomePositionRange::parse( options().get< std::string >( "-range" ) );
+		auto zero_based_analysis_range = genfile::GenomePositionRange::parse( options().get< std::string >( "-range" ) );
 		load_alignments(
 			options().get< std::string >( "-reads" ),
 			options().get< std::string >( "-fasta" ),
 			analysis_range,
 			&m_alignments
 		) ;
+//		output_alignments( m_alignments, options().get< std::string >( "-o" ), "all_reads" ) ;
 
-		{
+		AlignmentsByReadId gapped_alignments = find_gapped_alignments( m_alignments, analysis_range, 5000 ) ;
+		output_alignments( gapped_alignments, options().get< std::string >( "-o" ), "gapped_reads" ) ;
+
+		if( 0 ) {
 			std::string const& fasta_filename = options().get< std::string >( "-fasta" ) ;
 			auto progress_context = ui().get_progress_context( "Loading sequences from \"" + fasta_filename + "\"" ) ;
 			m_fasta.add_sequences_from_file( fasta_filename, progress_context ) ;
@@ -193,7 +327,6 @@ private:
 	) const {
 		assert( result != 0 ) ;
 
-
 		seqlib::BamReader reader;
 		reader.SetCramReference( fasta_filename ) ;
 		if( !reader.Open( read_filename )) {
@@ -210,7 +343,7 @@ private:
 				// htslib uses 0-based, half-open positions throughout.  See e.g. the hts_parse_reg function which SeqLib uses here under the hood.
 				// However, SeqLib changes this back into a 1-based, closed position internally.
 				// The upshot is we pass in 1-based coords and that's how SeqLib treats them.
-				// (But when we use this region below, the alignments come back 0-based).
+				// (But when we get alignments back, they come back 0-based).
 				reader.SetRegion( seqlib::GenomicRegion( range.toString(), header )) ;
 			} catch( std::invalid_argument const& e ) {
 				throw genfile::BadArgumentError(
@@ -232,7 +365,7 @@ private:
 					&& !alignment.QCFailFlag()
 					&& alignment.MappedFlag()
 				) {
-					load_alignment( alignment, result ) ;
+					load_alignment( alignment, result, header ) ;
 					progress( ++count ) ;
 				}
 			}
@@ -241,36 +374,115 @@ private:
 
 	void load_alignment(
 		seqlib::BamRecord const& alignment,
-		AlignmentsByReadId* alignments
+		AlignmentsByReadId* alignments,
+		seqlib::BamHeader const& bam_header
 	) const {
 		std::string const id = alignment.Qname() ;
 		AlignmentsByReadId::iterator where = alignments->find( id ) ;
-		impl::SingleReadAlignments result ;
-		if( where != alignments->end() ) {
-			result = where->second ;
-			assert( result.id == id ) ;
-		} else {
-			result.id = id ;
+		if( where == alignments->end() ) {
+			where = alignments->insert( std::make_pair( id, impl::SingleReadAlignments() ) ).first ;
 		}
+		impl::SingleReadAlignments& result = where->second ;
+		result.id = id ;
+		impl::ReadReferenceAlignment entry( alignment, bam_header ) ;
+
 		bool const primary = !alignment.SupplementaryFlag() ;
 		if( primary ) {
 			if( result.sequence.size() > 0 ) {
-				throw genfile::BadArgumentError(
-					"FindVJReadsApplication::load_alignment()",
-					"read \"" + id + "\"",
-					"Sequence already set, this read has more than one primary alignments!"
-				) ;
+				// It sometimes seems that a read appears twice with identical alignment.
+				// If that happens we check they are the same and ignore the extras.
+				assert( result.alignments.size() > 0 ) ;
+				if( (result.sequence != alignment.Sequence()) || ( entry != result.alignments[0] ))  {
+					std::cerr << "Old one: " << result.alignments[0] << ".\n" ;				
+					std::cerr << "This one: " << entry << ".\n" ;
+					throw genfile::BadArgumentError(
+						"FindVJReadsApplication::load_alignment()",
+						"read \"" + id + "\"",
+						"Sequence already has a mismatching primary alignment!"
+					) ;
+				}
+				// this alignment is already recorded, so nothing to do.
+				return ;
+			} else {
+				result.sequence = alignment.Sequence() ;
 			}
-			result.sequence = alignment.Sequence() ;
 		}
 		result.alignments.insert(
 			// put primary alignment first
 			primary ? result.alignments.begin() : result.alignments.end(),
-			impl::ReadReferenceAlignment( alignment )
+			entry
 		) ;
 	}
-} ;
 
+	void output_alignments(
+		AlignmentsByReadId const& alignments,
+		std::string const& filename,
+		std::string const& table_name
+	) {
+		auto progress = ui().get_progress_context( "Writing reads to \"" + filename + "\"" ) ;
+		auto o = impl::ReadOutput::create( filename, table_name ) ;
+		std::size_t count = 0 ;
+		for( auto kv: alignments ) {
+			if( kv.second.sequence.size() > 0 ) {
+				o->write( kv.second ) ;
+				progress( ++count ) ;
+			}
+		}
+	}
+
+
+	AlignmentsByReadId find_gapped_alignments(
+		AlignmentsByReadId const& alignments,
+		genfile::GenomePositionRange const& zero_based_range,
+		std::size_t minimum_gap_size
+	) const {
+		AlignmentsByReadId result ;
+		for( auto kv: alignments ) {
+			find_gapped_alignments(
+				kv.second,
+				zero_based_range,
+				minimum_gap_size,
+				&result
+			) ;
+		}
+		return result ;
+	}
+
+	void find_gapped_alignments(
+		impl::SingleReadAlignments const& a,
+		genfile::GenomePositionRange const& zero_based_range,
+		std::size_t minimum_gap_size,
+		AlignmentsByReadId* result
+	) const {
+#if DEBUG
+		std::cerr << "find_gapped_alignments( " << a.id << ")\n" ;
+#endif
+		std::vector< genfile::GenomePositionRange > ranges ;
+		for( auto alignment: a.alignments ) {
+			genfile::ranges::add_union(
+				&ranges,
+				genfile::GenomePositionRange( alignment.contig, alignment.start, alignment.end )
+			) ;
+		}
+		std::cerr << "find_gapped_alignments(): found " << a.alignments.size() << " alignments, with " << ranges.size() << "ranges.\n" ;
+		//std::cerr << "find_gapped_alignments(): inverting with respect to " << zero_based_range << "...\n" ;
+		std::vector< genfile::GenomePositionRange > const gaps = genfile::ranges::invert_within( ranges, zero_based_range ) ;
+		for( auto g: gaps ) {
+			//std::cerr << "id: " << a.id << ": gap: " << g << ".\n" ;
+			// ignore left-hand and right-hand gaps
+			if(
+				(g.start() > zero_based_range.start())
+				&& 
+				(g.end() < zero_based_range.end())
+				&&
+				(g.size() >= minimum_gap_size )
+			) {
+				(*result)[a.id] = a ;
+				break ;
+			}
+		}
+	}
+} ;
 
 int main( int argc, char** argv )
 {
