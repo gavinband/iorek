@@ -339,7 +339,7 @@ MSAView.prototype.draw = function( force ) {
 
 	let drawSequence = function( sequence, levels, y, baseWidth, xScale, range, ctx ) {
 		// calculate stride across sequence as follows.
-		// Fir, we aim to have every drawn rectangle of some minimum size below which
+		// First, we aim to have every drawn rectangle of some minimum size below which
 		// we aggregate.  
 		let visibleMarkWidth = 3.0 ;
 		// Our aggregation happens at power-of-2 sizes (c.f. MSA.js / computeLevels)
@@ -381,6 +381,33 @@ MSAView.prototype.draw = function( force ) {
 				visualBaseWidth,
 				geom.height
 			) ;
+		}
+		if( by == 1 && visualBaseWidth > 5 ) {
+			let interpolator = Math.min( visualBaseWidth - 5, 15 ) / 15.0 ;
+			ctx.font = "10px Helvetica sans-serif";
+			ctx.textAlign = "center" ;
+			ctx.textBaseline = "middle" ;
+			ctx.fillStyle = `rgb(255, 255, 255, ${interpolator})` ;
+			let baseMap = {
+				97: "A",
+				99: "C",
+			   103: "G",
+			   116: "T",
+				45: "",
+			   109: ""
+			} ;
+			console.log( "RANGE", range ) ;
+			for( let j = range[0]; j < range[1]; ++j ) {
+				let base = sequence[j] ;
+				let text = baseMap[ base ] ;
+				let geom ;
+				if( aes.bases.geom.hasOwnProperty( base )) {
+					geom = aes.bases.geom[base] ;
+				} else {
+					geom = aes.bases.geom['-'] ;
+				}
+				ctx.fillText( text, xScale( j ), y + geom.offset + geom.height/2 )
+			}
 		}
 	} ;
 
@@ -441,7 +468,6 @@ MSAView.prototype.draw = function( force ) {
 			let last_x00 = -100000000 ;
 			for( let i = 0; i < this.reference.ranges.length; ++i ) {
 				let range = this.reference.ranges[i] ;
-				console.log( "R", range ) ;
 				let x00 = vs.msaToX( gs( range.inAlignment.start )) - baseWidth / 2 ;
 				if( (x00 - last_x00) > 5 ) {
 					let x10 = vs.msaToX( gs( range.inAlignment.end )) - baseWidth / 2;
@@ -462,7 +488,7 @@ MSAView.prototype.draw = function( force ) {
 					// only take ticks in range, and not too close to the ends to avoid
 					// multiple similar-looking lines.
 					let rangeTicks = ticks.filter( t => (t >= (pr[0] + 2) && t < (pr[1]-2)) ) ;
-					console.log( range.inAlignment, range.inSequence, rangeTicks ) ;
+					//console.log( range.inAlignment, range.inSequence, rangeTicks ) ;
 					ctx.save() ;
 					ctx.strokeStyle = 'rgba(255, 255, 255, 0.2 )' ;
 					//ctx.strokeStyle = "#3b3f46" ;
