@@ -22,7 +22,7 @@ function decompress_alignment( reference, sequence ) {
 		// 57 is ASCII for 9
 		let type = (sequence[j] >= 48 & sequence[j] < 58) ? 'number' : 'sequence' ;
 		if( type == 'number' ) {
-			if( !state.type || state.type == 'sequence' ) {
+			if( (!state.type) || state.type == 'sequence' ) {
 				state.length = 0 ;
 			}
 			state.length *= 10 ;
@@ -43,7 +43,6 @@ function decompress_alignment( reference, sequence ) {
 			uncompressed_sequence[state.pos] = reference[state.pos] ;
 		}
 	}
-	console.log( L, state.pos ) ;
 	assert( state.pos == L ) ;
 	return uncompressed_sequence ;
 }
@@ -56,12 +55,13 @@ function unpack_alignments( alignment ) {
 	alignment[0].sequence = alignment[0].sequence.toLowerCase() ;
 	alignment[0].sequence = encoder.encode( alignment[0].sequence ) ;
 	for( let i = 1; i < alignment.length; ++i ) {
-		alignment[i].sequence = encoder.encode( alignment[i].sequence ) ;
+		alignment[i].sequence = encoder.encode( alignment[i].sequence.toLowerCase() ) ;
 		alignment[i].sequence = decompress_alignment(
 			alignment[0].sequence,
 			alignment[i].sequence
 		) ;
 	}
+	// console.log( alignment ) ;
 	return alignment ;
 }
 
@@ -76,7 +76,7 @@ function run_msa_viewer( data ) {
 	let reference_name = data.alignment[ 0 ].name ;
 	let msa = new MSA( data.alignment, data.ranges ) ;
 	let reference = msa.scales.ungappedSequences[reference_name] ;
-
+	console.log( "REFERENCE", reference ) ;
 	let viewer = new MSAView(
 		d3.select( ".figure" ),
 		msa,

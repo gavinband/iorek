@@ -603,13 +603,25 @@ private:
 		s << "[\n" ;
 		std::size_t count = 0 ;
 		std::deque< char > sequence ;
-		for( auto& sequence_id: sequence_ids ) {
+		for( std::size_t i = 0; i < sequence_ids.size(); ++i ) {
+			ContigSubsequenceSpec const& sequence_id = sequence_ids[i] ;
+			std::cerr << "!! " << sequence_id.spec() << "\n" ;
+			std::cerr << fasta.sequence_ids()[0] << "\n" ;
+			std::cerr << fasta.sequence_ids()[1] << "\n" ;
+
 			genfile::Fasta::ContigRange p = fasta.get_sequence( sequence_id.spec() ) ;
 			s << (count>0 ? ",\n" : "" )
 				<< "{ \"name\": \""
 				<< sequence_id.id()
 				<< "\", \"sequence\": \""
-				<< std::string( p.sequence().begin(), p.sequence().end() )
+				<< (
+					(i == 0)
+					? std::string( p.sequence().begin(), p.sequence().end() )
+					: compress_sequence_against_reference(
+						p,
+						fasta.get_sequence( sequence_ids[0].spec() )
+					)
+				)
 				<< "\" }" ;
 			++count ;
 		}
@@ -617,6 +629,36 @@ private:
 		return s.str() ;
 	}
 	
+	std::string compress_sequence_against_reference(
+		genfile::Fasta::ContigRange const& sequence,
+		genfile::Fasta::ContigRange const& reference
+	) const {
+		assert( sequence.length() == reference.length() ) ;
+		std::string result ;
+		result.reserve( sequence.length() ) ;
+		std::size_t copy_tract_start = sequence.length() ;
+		std::size_t copy_tract_end = sequence.length() ;
+		for( std::size_t i = 0; i < sequence.length(); ++i ) {
+			if( sequence[i] == reference[i] ) {
+				if( copy_tract_start == sequence.length() ) {
+					copy_tract_start = i ;
+				}
+				copy_tract_end = i+1 ;
+			} else {
+				if( copy_tract_start < sequence.length() ) {
+					result.append( genfile::string_utils::to_string( copy_tract_end - copy_tract_start )) ; 
+					copy_tract_start = sequence.length() ;
+					copy_tract_end = sequence.length() ;
+				}
+				result.push_back( sequence[i] ) ;
+			}
+		}
+		if( copy_tract_start < sequence.length() ) {
+			result.append( genfile::string_utils::to_string( copy_tract_end - copy_tract_start )) ; 
+		}
+		return result ;
+	}
+
 	std::string sequencesToJSON(
 		genfile::Fasta const& fasta
 	) const {

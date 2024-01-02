@@ -51,6 +51,7 @@ namespace genfile {
 			ConstSequenceIterator begin() const { return m_begin ; }
 			ConstSequenceIterator end() const { return m_end ; }
 			std::size_t size() const { return std::distance( m_begin, m_end ) ; }
+			char const operator[]( std::size_t where ) const { return *(m_begin+where) ; }
 			
 		private:
 			ConstSequenceIterator m_begin ;
@@ -81,6 +82,7 @@ namespace genfile {
 			std::size_t length() const { return m_length ; }
 			std::size_t size() const { return m_length ; }
 			ConstSequenceRange sequence() const { return m_sequence ; }
+			char operator[]( std::size_t where ) const { return *(m_sequence.begin() + where) ; }
 
 		private:
 			genfile::GenomePositionRange const m_range ;

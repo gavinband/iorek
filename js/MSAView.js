@@ -215,8 +215,9 @@ MSAView.prototype.set_physical_domain = function( domain ) {
 		Math.min( Math.ceil( s.physicalToConcatenated( domain[1] )), this.reference.sequence.length )
 	] ;
 	s.concatenatedToX.domain( addRange( concatenated_domain, [-0.5, 0.5 ] )) ;
-	let concatenated_domain_closed = addRange( concatenated_domain, [0,-1] ) ;
+	let concatenated_domain_closed = addRange( concatenated_domain, [0, -1] ) ;
 	let physical_domain = concatenated_domain_closed.map( s.physicalToConcatenated.invert ) ;
+//	console.log( "PHYS", domain, concatenated_domain_closed, physical_domain, concatenated_domain_closed.map( s.concatenatedToX ) ) ;
 	s.physicalToX.domain( physical_domain ).range( concatenated_domain_closed.map( s.concatenatedToX ) ) ;
 }
 
@@ -393,7 +394,7 @@ MSAView.prototype.draw = function( force ) {
 				45: "",
 			   109: ""
 			} ;
-			console.log( "RANGE", range ) ;
+//			console.log( "RANGE", range ) ;
 			for( let j = range[0]; j < range[1]; ++j ) {
 				let base = sequence[j] ;
 				let text = baseMap[ base ] ;
@@ -441,9 +442,10 @@ MSAView.prototype.draw = function( force ) {
 			- vs.concatenatedToX(this.reference.coordinateRange.start)
 		) ;
 		let contanated_visible_range = [
-			Math.floor( vs.concatenatedToX.invert( vs.msaToX( visible_range[0] ))),
-			Math.ceil( vs.concatenatedToX.invert( vs.msaToX( visible_range[1] )))
+			Math.max( Math.floor( vs.concatenatedToX.invert( vs.msaToX( visible_range[0] ))), 0 ),
+			Math.min( Math.ceil( vs.concatenatedToX.invert( vs.msaToX( visible_range[1] ))), this.reference.sequence.length )
 		] ;
+		//console.log( visible_range, contanated_visible_range ) ;
 		drawSequence(
 			this.reference.sequence,
 			null,
