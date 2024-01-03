@@ -49,7 +49,7 @@ function GeneView(
 			}
 			
 			let exonData = genes.filter(
-				elt => elt.feature == 'exon'
+				elt => (elt.feature == 'exon' || elt.feature == 'CDS')
 				&& elt.parent == gene.ID
 				&& elt.end >= region.start
 				&& elt.start <= region.end
@@ -61,9 +61,9 @@ function GeneView(
 	}( this.data, this.region, highlight ) ;
 
 	let layoutIntervals = function( genes, spacer = { start: 10, end: 20000 } ) {
-	// genes should be an array of objects with start and end properties
-	// This function modifies genes in-place to add 'level' property suitable
-	// for vertically separating genes on a plot.
+		// genes should be an array of objects with start and end properties
+		// This function modifies genes in-place to add 'level' property suitable
+		// for vertically separating genes on a plot.
 		if( genes.length == 0 ) {
 			return genes ;
 		}
@@ -110,6 +110,7 @@ function GeneView(
 	return this ;
 	//console.log( "GeneView()", this.data, region, this.genes ) ;
 }
+
 // get hierarchical structure representing regional genes
 
 // elt is a D3 selection
@@ -128,7 +129,10 @@ GeneView.prototype.draw = function(
 	}
 ) {
 	let aes = aesthetic ;
-	let e = 0.2 ;
+	let e = {
+		"exon": 0.175,
+		"CDS": 0.3
+	} ;
 	let h = 0.2 ;
 	let H = 0.4 ;
 	let a = {
@@ -227,9 +231,9 @@ GeneView.prototype.draw = function(
 		// The following formulation makes sure we plot rectangles
 		// in the right direction even when the scale is reversed.
 		.attr( axes.x, elt => min( scales.position( elt.start ), scales.position( elt.end )) )
-		.attr( axes.y, elt => min( scales.level( elt.level + e ), scales.level( elt.level - e ) ))
 		.attr( axes.width, elt => abs( scales.position( elt.end ) - scales.position( elt.start )) )
-		.attr( axes.height, elt => abs( scales.level( -2 * e ) - scales.level(0) ))
+		.attr( axes.y, elt => min( scales.level( elt.level + e[elt.feature] ), scales.level( elt.level - e[elt.feature] ) ))
+		.attr( axes.height, elt => abs( scales.level( -2 * e[elt.feature] ) - scales.level(0) ))
 		//.attr( 'stroke', 'black' )
 		.attr( 'fill', 'grey' )
 	;

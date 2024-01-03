@@ -101,7 +101,17 @@ let MSAView = function(
 		result.genes = new d3.scaleLinear()
 			.domain( [Math.max( genes.numberOfLevels, 1 ), 0] )
 			.range( [geom.margin.top, geom.layout.heights.genes - geom.margin.bottom - 10 ] ) ;
-		console.log( "RCR", result.concatenatedToX.domain(), result.concatenatedToX.range(), result.physicalToX.domain(), result.physicalToX.range(), result.concatenatedToX( 0 ), result.concatenatedToX( 39 ), result.physicalToX( 10 ), result.physicalToX( 49 ) ) ;
+		console.log(
+			"RCR",
+			result.concatenatedToX.domain(),
+			result.concatenatedToX.range(),
+			result.physicalToX.domain(),
+			result.physicalToX.range(),
+			result.concatenatedToX( 0 ),
+			result.concatenatedToX( 39 ),
+			result.physicalToX( 10 ),
+			result.physicalToX( 49 )
+			) ;
 		return result ;
 	}() ;
 
@@ -214,7 +224,7 @@ MSAView.prototype.set_physical_domain = function( domain ) {
 		Math.max( Math.floor( s.physicalToConcatenated( domain[0] )), 0 ),
 		Math.min( Math.ceil( s.physicalToConcatenated( domain[1] )), this.reference.sequence.length )
 	] ;
-	s.concatenatedToX.domain( addRange( concatenated_domain, [-0.5, 0.5 ] )) ;
+	s.concatenatedToX.domain( addRange( concatenated_domain, [-0.5, -0.5 ] )) ;
 	let concatenated_domain_closed = addRange( concatenated_domain, [0, -1] ) ;
 	let physical_domain = concatenated_domain_closed.map( s.physicalToConcatenated.invert ) ;
 //	console.log( "PHYS", domain, concatenated_domain_closed, physical_domain, concatenated_domain_closed.map( s.concatenatedToX ) ) ;
