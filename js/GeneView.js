@@ -130,8 +130,8 @@ GeneView.prototype.draw = function(
 ) {
 	let aes = aesthetic ;
 	let e = {
-		"exon": 0.175,
-		"CDS": 0.3
+		"exon": 0.15,
+		"CDS": 0.2
 	} ;
 	let h = 0.2 ;
 	let H = 0.4 ;

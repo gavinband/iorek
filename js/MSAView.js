@@ -667,7 +667,7 @@ MSAView.prototype.drawControls = function( panel, geom, aes ) {
 			.attr( 'stroke', '#111111' ) ;
 		switches
 			.append( 'text' )
-			.attr( 'x', 14 )
+			.attr( 'x', 16 )
 			.attr( 'y', 4 )
 			.style( 'user-select', 'none' )
 			.attr( 'alignment-baseline', 'central' )
@@ -676,7 +676,7 @@ MSAView.prototype.drawControls = function( panel, geom, aes ) {
 	}
 	{
 		let share = panel.selectAll( 'g.share' )
-			.data( ['bookmark?'] )
+			.data( ['bookmark/share?'] )
 			.enter()
 			.append( 'g' )
 			.attr( 'class', 'share' )
@@ -698,7 +698,7 @@ MSAView.prototype.drawControls = function( panel, geom, aes ) {
 			.attr( 'stroke', '#EEEEEE' ) ;
 		share
 			.selectAll( 'circle' )
-			.data( [ [ 0, 5 ], [ 8, 10 ], [8, 0] ] )
+			.data( [ [ 1, 5 ], [ 9, 10 ], [9, 0] ] )
 			.enter()
 			.append( 'circle' )
 			.attr( 'cx', elt=>elt[0] )
@@ -707,7 +707,7 @@ MSAView.prototype.drawControls = function( panel, geom, aes ) {
 			.attr( 'fill', '#EEEEEE' ) ;
 		share
 			.append( 'text' )
-			.attr( 'x', 14 )
+			.attr( 'x', 16 )
 			.attr( 'y', 4 )
 			.style( 'user-select', 'none' )
 			.attr( 'alignment-baseline', 'central' )
