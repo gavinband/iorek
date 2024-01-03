@@ -605,9 +605,9 @@ private:
 		std::deque< char > sequence ;
 		for( std::size_t i = 0; i < sequence_ids.size(); ++i ) {
 			ContigSubsequenceSpec const& sequence_id = sequence_ids[i] ;
-			std::cerr << "!! " << sequence_id.spec() << "\n" ;
-			std::cerr << fasta.sequence_ids()[0] << "\n" ;
-			std::cerr << fasta.sequence_ids()[1] << "\n" ;
+			//std::cerr << "!! " << sequence_id.spec() << "\n" ;
+			//std::cerr << fasta.sequence_ids()[0] << "\n" ;
+			//std::cerr << fasta.sequence_ids()[1] << "\n" ;
 
 			genfile::Fasta::ContigRange p = fasta.get_sequence( sequence_id.spec() ) ;
 			s << (count>0 ? ",\n" : "" )
