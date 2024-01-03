@@ -173,10 +173,12 @@ private:
 		matches['C'] = std::vector< int64_t >( 100, 0 ) ;
 		matches['G'] = std::vector< int64_t >( 100, 0 ) ;
 		matches['T'] = std::vector< int64_t >( 100, 0 ) ;
+		matches['N'] = std::vector< int64_t >( 100, 0 ) ;
 		mismatches['A'] = std::vector< int64_t >( 100, 0 ) ;
 		mismatches['C'] = std::vector< int64_t >( 100, 0 ) ;
 		mismatches['G'] = std::vector< int64_t >( 100, 0 ) ;
 		mismatches['T'] = std::vector< int64_t >( 100, 0 ) ;
+		mismatches['N'] = std::vector< int64_t >( 100, 0 ) ;
 
 		process_reads(
 			options().get_value< std::string >( "-reads" ),
@@ -331,11 +333,15 @@ private:
 							&& (!use_range || range.contains( chromosome, one_based_position ))
 						) {
 							if( type == eMismatch ) { // 'X'
-								std::vector< int64_t >& v = (*mismatches)[reference_base] ;
-								++v[base_quality] ;
+								Result::iterator where = mismatches->find(std::toupper(reference_base)) ;
+								if( where != mismatches->end() ) {
+									++((where->second)[base_quality]) ;
+								}
 							} else if( type == eMatch ) { // '='
-								std::vector< int64_t >& v = (*matches)[reference_base] ;
-								++v[base_quality] ;
+								Result::iterator where = matches->find(std::toupper(reference_base)) ;
+								if( where != matches->end() ) {
+									++((where->second)[base_quality]) ;
+								}
 							}
 						}
 					}
@@ -452,7 +458,7 @@ private:
 							callback(
 								contig_id,
 								aligned_position+1, // convert back to 1-based
-								reference_base,
+								std::toupper(reference_base),
 								eMatch, // '='
 								base_quality
 							) ;
@@ -462,7 +468,7 @@ private:
 							callback(
 								contig_id,
 								aligned_position+1, // convert back to 1-based
-								reference_base,
+								std::toupper(reference_base),
 								eMismatch, // 'X'
 								base_quality
 							) ;
