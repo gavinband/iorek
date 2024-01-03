@@ -36,7 +36,12 @@ let MSAController = function(
 			}
 		}
 		else if( share.contains( e.target )) {
-
+			self.updateParams() ;
+			let location = window.location ;
+			let url = location.protocol + "://" + location.host + ( location.port ? (":" + location.port) : "" ) + location.pathname + "?" + self.params.toString() ;
+			navigator.clipboard.writeText( url ) ;
+			history.pushState( null, null, "?" + self.params.toString() ) ;
+			console.log( "Copied to clipboard", url ) ;
 		}
 		self.updateParams() ;
 		self.view.draw( true ) ;
@@ -111,26 +116,45 @@ let MSAController = function(
 		self.view.draw( true ) ;
 	} ) ;
 
-	if( this.params.has( "viewport" )) {
-		let viewport = this.parseViewport( this.params.get( "viewport" ) ) ;
-//		console.log( "VIEWPORT", viewport ) ;
-		self.view.setViewport( viewport ) ;
-	}
-	if( this.params.has( "target" )) {
-		let target = this.params.get( "target" ) ;
-		if( target == "sequence" || target == "mismatches" ) {
-			self.view.target = target ;
-		}
-	}
+	let updateState = function(event) {
+		self.params = new URLSearchParams( window.location.search ) ;
+		console.log( "PARAMS", self.params ) ;
+		self.interpretParams( self.params ) ;
+		self.view.draw( true ) ;
+	} ;
+	window.addEventListener( 'popstate', updateState ) ;
+	window.addEventListener( 'pushstate', updateState ) ;
+
+	console.log( "PARAMS", self.params ) ;
+
+	self.interpretParams( this.params ) ;
 	self.view.draw( true ) ;
 
 	return this ;
 } ;
 
+MSAController.prototype.interpretParams = function( params ) {
+	if( params.has( "viewport" )) {
+		let viewport = this.parseViewport( params.get( "viewport" ) ) ;
+//		console.log( "VIEWPORT", viewport ) ;
+		this.view.setViewport( viewport ) ;
+	} else {
+		this.view.setViewport( [ -0.5, this.view.msa.scales.alignmentLength - 0.5 ] ) ;
+	}
+
+	if( params.has( "target" )) {
+		let target = params.get( "target" ) ;
+		if( target == "sequence" || target == "mismatches" ) {
+			this.view.target = target ;
+		}
+	} else {
+		this.view.target = 'sequence' ;
+	}
+}
+
 MSAController.prototype.updateParams = function() {
 	this.params.set( "target", this.view.target ) ;
 	this.params.set( "viewport", this.encodeViewport( this.view.viewport() )) ;
-	history.replaceState( null, null, "?" + this.params.toString() ) ;
 }
 
 MSAController.prototype.parseViewport = function( spec ) {

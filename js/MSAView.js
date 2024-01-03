@@ -583,7 +583,6 @@ MSAView.prototype.drawControls = function( panel, geom, aes ) {
 			.enter()
 			.append( 'g' )
 			.attr( 'class', 'guide' )
-			.attr( 'transform', (d,i) => ('translate(' + (geom.layout.width.reference/2) + ", 10)" ))
 			.append( 'text' ) ;
 		guide
 			.append( 'tspan' )
@@ -593,6 +592,8 @@ MSAView.prototype.drawControls = function( panel, geom, aes ) {
 			.attr( 'text-anchor', 'middle' )
 			.text( "Use mouse to scroll and zoom" )
 		;
+		panel.selectAll( 'g.guide' )
+			.attr( 'transform', (d,i) => ('translate(' + (Math.max( geom.layout.width.reference/2, 550 )) + ", 10)" )) ;
 	}
 	{
 		let logo = panel.selectAll( 'g.logo' )
@@ -600,7 +601,6 @@ MSAView.prototype.drawControls = function( panel, geom, aes ) {
 			.enter()
 			.append( 'g' )
 			.attr( 'class', 'logo' )
-			.attr( 'transform', (d,i) => ('translate(' + (geom.layout.width.reference - 100) + ", 10)" ))
 			.append( 'text' ) ;
 		logo
 			.append( 'tspan' )
@@ -616,7 +616,11 @@ MSAView.prototype.drawControls = function( panel, geom, aes ) {
 			.attr( 'dominant-baseline', 'middle' )
 			.attr( 'baseline-shift', 'super' )
 			.text( "beta" ) ;
+		panel.selectAll( 'g.logo' )
+			.attr( 'transform', (d,i) => ('translate(' + (geom.layout.width.reference - 100) + ", 10)" ))
+	}
 
+	{
 		panel.selectAll( 'g.base' )
 			.data( [ 'a', 'c', 'g', 't' ] )
 			.enter()
@@ -638,7 +642,9 @@ MSAView.prototype.drawControls = function( panel, geom, aes ) {
 			.attr( 'font-family', 'Palatino' )
 			.attr( 'dominant-baseline', 'middle' )
 			.text( d => d.toUpperCase() ) ;
-			
+	}
+
+	{
 		let switches = panel.selectAll( 'g.control' )
 			.data( ['highlight mismatches?'] )
 			.enter()
@@ -667,13 +673,45 @@ MSAView.prototype.drawControls = function( panel, geom, aes ) {
 			.attr( 'alignment-baseline', 'central' )
 			.attr( 'font-size', '10pt' )
 			.text( d => d ) ;
-
+	}
+	{
 		let share = panel.selectAll( 'g.share' )
-			.data( ['copy link'] )
+			.data( ['bookmark?'] )
 			.enter()
 			.append( 'g' )
 			.attr( 'class', 'share' )
-			.attr( 'transform', 'translate( 240,5 )') ;
-
+			.attr( 'id', 'share_button' )
+			.attr( 'transform', 'translate( 340,5 )')
+		;
+		share
+			.append( 'rect' )
+			.attr( 'x', -2 )
+			.attr( 'y', -2 )
+			.attr( 'width', 14 )
+			.attr( 'height', 14 )
+			.attr( 'stroke', '#111111' )
+			.attr( 'fill', '#111111' ) ;
+		share
+			.append( 'path' )
+			.attr( 'd', 'M1 5 L9 10 M1 5 L9 0')
+			.attr( 'stroke-width', 2 )
+			.attr( 'stroke', '#EEEEEE' ) ;
+		share
+			.selectAll( 'circle' )
+			.data( [ [ 0, 5 ], [ 8, 10 ], [8, 0] ] )
+			.enter()
+			.append( 'circle' )
+			.attr( 'cx', elt=>elt[0] )
+			.attr( 'cy', elt=>elt[1] )
+			.attr( 'r', 3 )
+			.attr( 'fill', '#EEEEEE' ) ;
+		share
+			.append( 'text' )
+			.attr( 'x', 14 )
+			.attr( 'y', 4 )
+			.style( 'user-select', 'none' )
+			.attr( 'alignment-baseline', 'central' )
+			.attr( 'font-size', '10pt' )
+			.text( d => d ) ;
 	}
 }
