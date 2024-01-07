@@ -421,12 +421,12 @@ GeneView.prototype.draw = function(
 		.attr( axes.height, elt => abs( scales.level( -2 * e['CDS'] ) - scales.level(0) ))
 		//.attr( 'stroke', 'black' )
 		//.attr( 'fill', elt => `rgba( 128 + 80*${elt.oddeven}, 128 + 80*${elt.oddeven}, 128 + 80*${elt.oddeven}, ${interpolator} )` )
-		.attr( 'fill', elt => ( elt.oddeven == 1 ) ? `rgba( 108, 108, 108, ${interpolator} )` : `rgb( 148, 148, 148, ${interpolator} )` )
+		.attr( 'fill', elt => ( elt.oddeven == 1 ) ? `rgba( 118, 118, 118, ${interpolator} )` : `rgb( 138, 138, 138, ${interpolator} )` )
 	;
 
 	let interpolator2 = 0 ;
 	if( baseWidth > 15 ) {
-		interpolator2 = Math.min( (baseWidth-15) / 30.0, 1.0 ) ;
+		interpolator2 = Math.min( (baseWidth-15) / 20.0, 1.0 ) ;
 	}
 	transcripts.selectAll( 'g.aa text' )
 		// At the time of writing I don't understand why I need to subtract 1 here!
