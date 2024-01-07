@@ -85,10 +85,12 @@ function reverse_complement( sequence ) {
 
 function compute_amino_acid_sequence( CDS, reference, strand ) {
 	// Could be passed this from MSAView, but let's compute it here
-	let mapPhysicalToSequenceCoord = new d3.scaleLinear()
+	let physicalToSequenceScale = new d3.scaleLinear()
 		.domain( [ reference.coordinateRange.start, reference.coordinateRange.end ] )
 		.range( [ 0, reference.sequence.length - 1 ] ) ;
-
+	let mapPhysicalToSequenceCoord = function(x) {
+		return Math.round( physicalToSequenceScale(x)) ;
+	}
 	let sequence = reference.sequence ;
 
 	let result = [] ;
@@ -104,13 +106,15 @@ function compute_amino_acid_sequence( CDS, reference, strand ) {
 			let length = CDS[i].end - CDS[i].start + 1 ;
 			let a = mapPhysicalToSequenceCoord( CDS[i].start ) ;
 			let b = mapPhysicalToSequenceCoord( CDS[i].end + 1 ) ; // convert to open interval
+			console.log( "AB", CDS[i].start, CDS[i].end, a, b, sequence.length ) ;
 			coding_sequence.subarray( where, where + length ).set( sequence.slice( a, b ) ) ;
 			where = where + length ;
 		}
 
 		let sequence_position = 0 ;
 		let oddeven = 0 ;
-		let count = 0 ;
+		let orientation = (strand == '+') ? 1 : -1 ;
+		let count = strand == '+' ? 0 : (coding_sequence.length/3)+1 ;
 		let aa = '' ;
 		let consumed = 3 ;
 		let decoder = new TextDecoder() ;
@@ -129,6 +133,7 @@ function compute_amino_acid_sequence( CDS, reference, strand ) {
 			}
 
 			for( ; physical_position <= CDS[i].end; sequence_position += 3, physical_position += 3 ) {
+				count += orientation ;
 				let codon = coding_sequence.slice( sequence_position, sequence_position+3 ) ;
 				if( strand == '-' ) {
 					codon = reverse_complement(codon) ;
@@ -139,7 +144,7 @@ function compute_amino_acid_sequence( CDS, reference, strand ) {
 					'start': physical_position,
 					'end': end,
 					'aa': aa,
-					'count': (++count),
+					'count': count,
 					'oddeven': (++oddeven) % 2
 				}) ;
 				consumed = (end + 1) - physical_position ;
