@@ -81,7 +81,7 @@ function run_msa_viewer( data ) {
 		d3.select( ".figure" ),
 		msa,
 		reference,
-		new GeneView( data.genes, reference.coordinateRange ),
+		new GeneView( data.genes, reference ),
 		data.annotations
 	) ;
 	let controller = new MSAController(

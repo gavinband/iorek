@@ -312,10 +312,10 @@ MSAView.prototype.draw = function( force ) {
 	this.drawControls( panels.controls, geom, aes ) ;
 
 	{
-		let genes = this.genes ;
 		//console.log( "GENES", this.genes ) ;
-		genes.draw(
-			panels.genes, {
+		this.genes.draw(
+			panels.genes,
+			{
 				position: vs.physicalToX,
 				level: vs.genes
 			}
