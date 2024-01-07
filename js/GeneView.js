@@ -60,15 +60,15 @@ let aa_table = {
 	'gtc': 'Val',
 	'gtg': 'Val',
 	'gtt': 'Val',
-	'taa': 'STP',
+	'taa': 'STOP',
 	'tac': 'Tyr',
-	'tag': 'STP',
+	'tag': 'STOP',
 	'tat': 'Tyr',
 	'tca': 'Ser',
 	'tcc': 'Ser',
 	'tcg': 'Ser',
 	'tct': 'Ser',
-	'tga': 'STP',
+	'tga': 'STOP',
 	'tgc': 'Cys',
 	'tgg': 'Trp',
 	'tgt': 'Cys',
@@ -421,7 +421,15 @@ GeneView.prototype.draw = function(
 		.attr( axes.height, elt => abs( scales.level( -2 * e['CDS'] ) - scales.level(0) ))
 		//.attr( 'stroke', 'black' )
 		//.attr( 'fill', elt => `rgba( 128 + 80*${elt.oddeven}, 128 + 80*${elt.oddeven}, 128 + 80*${elt.oddeven}, ${interpolator} )` )
-		.attr( 'fill', elt => ( elt.oddeven == 1 ) ? `rgba( 118, 118, 118, ${interpolator} )` : `rgb( 138, 138, 138, ${interpolator} )` )
+		.attr( 'fill', function(elt) {
+			if( elt.aa == 'STOP' ) {
+				return `rgba( 148, 20, 3, ${interpolator} )` ;
+			} else if( elt.oddeven == 1 ) {
+				return `rgba( 118, 118, 118, ${interpolator} )` ;
+			} else {
+				return `rgb( 138, 138, 138, ${interpolator} )` ;
+			}
+		})
 	;
 
 	let interpolator2 = 0 ;
@@ -440,7 +448,7 @@ GeneView.prototype.draw = function(
 		.attr( 'stroke', '#EEEEEE' )
 		.attr( 'stroke-opacity', interpolator2 )
 		.attr( 'fill-opacity', interpolator2 )
-		.text( elt => ( elt.aa + "    " + elt.count )) ;
+		.text( elt => ( elt.aa == "STOP" ? "STOP" : ( elt.count + " " + elt.aa ))) ;
 
 	function isVisible( x ) {
 		return x >= region.start && x <= region.end ;
