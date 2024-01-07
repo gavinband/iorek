@@ -597,7 +597,7 @@ MSAView.prototype.drawControls = function( panel, geom, aes ) {
 	}
 	{
 		let logo = panel.selectAll( 'g.logo' )
-			.data( ['zumu'] )
+			.data( ['seemsa'] )
 			.enter()
 			.append( 'g' )
 			.attr( 'class', 'logo' )
