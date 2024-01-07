@@ -400,8 +400,8 @@ GeneView.prototype.draw = function(
 	;
 
 	let aa_sequence = transcripts.selectAll( 'g.aa' )
-		.data( elt => elt.amino_acids ) ;
-	console.log( "AA", this.genes.filter( elt => elt.feature == 'transcript' )[0].amino_acids ) ;
+		.data( elt => ( baseWidth > 2 ? elt.amino_acids : [] ) ) ;
+	aa_sequence.exit().remove() ;
 	let aa_enter = aa_sequence
 		.enter()
 		.append( 'g' )
