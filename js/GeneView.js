@@ -355,7 +355,7 @@ GeneView.prototype.draw = function(
 	)) ;
 
 	let transcripts = elt.selectAll( 'g.gene' )
-		.data( visible_genes )
+		.data( visible_genes, elt => elt.ID )
 		.join(
 			function(enter) {
 				let g = enter.append( 'g' )
@@ -391,11 +391,7 @@ GeneView.prototype.draw = function(
 
 	transcripts = elt.selectAll( 'g.gene' ) ;
 	transcripts.selectAll( 'rect.exon' )
-		.data( function(elt) {
-			let filtered = elt.exons.filter( domain_filter ) ;
-			console.log( "EXON DATA",filtered ) ;
-			return elt.exons.filter( domain_filter ) ;
-		})
+		.data( elt => elt.exons.filter( domain_filter ), elt => elt.ID )
 		.join(
 			function(enter) {
 				return enter.append( 'rect' )
@@ -410,10 +406,7 @@ GeneView.prototype.draw = function(
 		) ;
 
 	transcripts.selectAll( 'g.aa' )
-		.data( function(elt) {
-			console.log( "AA DATA", elt, ) ;
-			return ( (baseWidth > 2) ? elt.amino_acids : [] ) ;
-		})
+		.data( elt => ( (baseWidth > 2) ? elt.amino_acids : [] ), elt => elt.count )
 		.join(
 			function( enter ) {
 				let g = enter.append('g')
@@ -462,8 +455,8 @@ GeneView.prototype.draw = function(
 		interpolator = Math.min( (baseWidth-2) / 5.0, 1.0 ) ;
 	}
 	let interpolator2 = 0 ;
-	if( baseWidth > 15 ) {
-		interpolator2 = Math.min( (baseWidth-15) / 20.0, 1.0 ) ;
+	if( baseWidth > 12 ) {
+		interpolator2 = Math.min( (baseWidth-12) / 10.0, 1.0 ) ;
 	}
 
 	transcripts.selectAll( 'g.aa rect' )
