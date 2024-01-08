@@ -86,7 +86,7 @@ public:
 				"By default this points to my server, but you can point to a local copy of the javascript and css code, "
 				" or place a copy elsewhere on the web, if desired." )
 			.set_takes_single_value()
-			.set_default_value( "https://www.well.ox.ac.uk/~gav/projects/msa_viewer" ) ;
+			.set_default_value( "https://www.chg.ox.ac.uk/~gav/projects/zoomsa" ) ;
 	}
 } ;
 

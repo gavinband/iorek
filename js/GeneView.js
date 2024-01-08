@@ -338,45 +338,100 @@ GeneView.prototype.draw = function(
 		return ;
 	}
 	//console.log( "GeneView.draw()", this.genes, orientation ) ;
+
+	let self = this ;
+	let region = self.region ;
 	let min = Math.min ;
 	let max = Math.max ;
 	let abs = Math.abs ;
-	let enter = elt.selectAll( 'g.gene' )
-		.data( this.genes.filter( elt => elt.feature == "mRNA" || elt.feature == "transcript" ) )
-		.enter()
-		.append( 'g' )
-		.attr( 'class', 'gene' ) ;
-	let self = this ;
-	let region = self.region ;
-	enter
-		.append( 'line' )
-		.attr( 'class', 'mid' ) ;
-	enter
-		.append( 'line' )
-		.attr( 'class', 'bar_s' ) ;
-	enter
-		.append( 'line' )
-		.attr( 'class', 'bar_e' ) ;
-	enter
-		.append( 'line' )
-		.attr( 'class', 'dash_s' ) ;
-	enter
-		.append( 'line' )
-		.attr( 'class', 'dash_e' ) ;
-	enter
-		.append( 'line' )
-		.attr( 'class', 'arrow_body' ) ;
-	enter
-		.append( 'line' )
-		.attr( 'class', 'arrow_lower' ) ;
-	enter
-		.append( 'line' )
-		.attr( 'class', 'arrow_upper' ) ;
-	enter
-		.append( 'text' )
-		.attr( 'class', 'symbol' ) ;
+	let domain = scales.position.domain() ;
+	console.log( "DOMAIN", domain ) ;
+	let domain_filter = function( elt ) {
+		return (elt.start <= domain[1] ) && (elt.end >= domain[0] ) ;
+	} ;
+	let visible_genes = this.genes.filter( elt => (
+		(elt.feature == "mRNA" || elt.feature == "transcript" )
+		&& domain_filter(elt)
+	)) ;
 
-	let transcripts = elt.selectAll( 'g.gene' ) ;
+	let transcripts = elt.selectAll( 'g.gene' )
+		.data( visible_genes )
+		.join(
+			function(enter) {
+				let g = enter.append( 'g' )
+					.attr( 'class', 'gene' ) ;
+				g.append( 'line' )
+					.attr( 'class', 'mid' ) ;
+				g.append( 'line' )
+					.attr( 'class', 'bar_s' ) ;
+				g.append( 'line' )
+					.attr( 'class', 'bar_e' ) ;
+				g.append( 'line' )
+					.attr( 'class', 'dash_s' ) ;
+				g.append( 'line' )
+					.attr( 'class', 'dash_e' ) ;
+				g.append( 'line' )
+					.attr( 'class', 'arrow_body' ) ;
+				g.append( 'line' )
+					.attr( 'class', 'arrow_lower' ) ;
+				g.append( 'line' )
+					.attr( 'class', 'arrow_upper' ) ;
+				g.append( 'text' )
+					.attr( 'class', 'symbol' ) ;
+
+				return g ;
+			},
+			function( update ) {
+				return update.attr( 'class', 'gene' ) ;
+			},
+			function(exit) {
+				return exit.remove() ;
+			}
+		) ;
+
+	transcripts = elt.selectAll( 'g.gene' ) ;
+	transcripts.selectAll( 'rect.exon' )
+		.data( function(elt) {
+			let filtered = elt.exons.filter( domain_filter ) ;
+			console.log( "EXON DATA",filtered ) ;
+			return elt.exons.filter( domain_filter ) ;
+		})
+		.join(
+			function(enter) {
+				return enter.append( 'rect' )
+					.attr( 'class', 'exon' ) ;
+			},
+			function(update ) {
+				return update.attr( 'class', 'exon' ) ;
+			},
+			function( exit ) {
+				return exit.remove() ;
+			}	
+		) ;
+
+	transcripts.selectAll( 'g.aa' )
+		.data( function(elt) {
+			console.log( "AA DATA", elt, ) ;
+			return ( (baseWidth > 2) ? elt.amino_acids : [] ) ;
+		})
+		.join(
+			function( enter ) {
+				let g = enter.append('g')
+					.attr( 'class', 'aa' )
+				;
+				g.append( 'rect' ).attr( 'class', elt => elt.count ) ; ;
+				g.append( 'text' ) ;
+				return g ;
+			},
+			function(update ) {
+				return update.attr( 'class', 'aa' ) ;
+			},
+			function( exit ) {
+				console.log( "REMOVING", exit ) ;
+				return exit.remove() ;
+			}
+		) ;
+
 	transcripts
 		.selectAll( 'line.mid' )
 		.attr( axes.x1, elt => scales.position( Math.max( elt.start, self.region.start )) )
@@ -385,14 +440,10 @@ GeneView.prototype.draw = function(
 		.attr( axes.y2, elt => scales.level( elt.level ))
 		.attr( "stroke", "black" )
 	;
-	
-	let exons = transcripts.selectAll( 'rect.exon' )
-		.data( elt => elt.exons ) ;
+
+	let exons = transcripts.selectAll( 'rect.exon' ) ;
+	exons.exit().remove() ;
 	exons
-		.enter()
-		.append( 'rect' )
-		.attr( 'class', 'exon' ) ;
-	transcripts.selectAll( 'rect.exon' )
 		// SVG widths / heights must be positive.
 		// The following formulation makes sure we plot rectangles
 		// in the right direction even when the scale is reversed.
@@ -404,19 +455,15 @@ GeneView.prototype.draw = function(
 		.attr( 'fill', 'grey' )
 	;
 
-	let aa_sequence = transcripts.selectAll( 'g.aa' )
-		.data( elt => ( baseWidth > 2 ? elt.amino_acids : [] ) ) ;
-	aa_sequence.exit().remove() ;
-	let aa_enter = aa_sequence
-		.enter()
-		.append( 'g' )
-		.attr( 'class', 'aa' ) ;
-	aa_enter.append( 'rect' ) ;
-	aa_enter.append( 'text' ) ;
+	let aa_sequence = transcripts.selectAll( 'g.aa' ) ;
 
 	let interpolator = 0 ;
 	if( baseWidth > 2 ) {
 		interpolator = Math.min( (baseWidth-2) / 5.0, 1.0 ) ;
+	}
+	let interpolator2 = 0 ;
+	if( baseWidth > 15 ) {
+		interpolator2 = Math.min( (baseWidth-15) / 20.0, 1.0 ) ;
 	}
 
 	transcripts.selectAll( 'g.aa rect' )
@@ -437,10 +484,6 @@ GeneView.prototype.draw = function(
 		})
 	;
 
-	let interpolator2 = 0 ;
-	if( baseWidth > 15 ) {
-		interpolator2 = Math.min( (baseWidth-15) / 20.0, 1.0 ) ;
-	}
 	transcripts.selectAll( 'g.aa text' )
 		// At the time of writing I don't understand why I need to subtract 1 here!
 		// But it puts the text in the middle.
