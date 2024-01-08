@@ -4,7 +4,7 @@ This repository contains a collection of programs for analysing sequence data.
 
 - `find-motifs` finds (short) specified motifs in sequences from a fasta file.
 - `coverotron` computes per-base or per-window sequence read coverage from a set of BAM or CRAM files.
-- `seemsa` reads a multiple sequence alignment FASTA file, and writes an interactive HTML visualisation of it.
+- `zoomsa` reads a multiple sequence alignment FASTA file, and writes an interactive HTML visualisation of it.
 - `tabulate-alignments` reports the count of reads split by read base (or insertion/deletion) and mapping quality at each position in a given range or ranges.
 - `find-homopolymers` finds homopolymer tracts, as well as di- and tri-nucleotide repeats, in sequences from a FASTA file.  See the [documentation](doc/trunk/doc/find-homopolymers.md)
 - `tabulate-mismatches` walks all reads and reports all mismatches / insertions / deletions stratified by their type and flanking sequence.  See the [documentation](doc/trunk/doc/tabulate-mismatches.md)
