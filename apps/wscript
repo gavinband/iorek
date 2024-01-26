@@ -80,3 +80,9 @@ def build( bld ):
 		use = 'seqlib package_revision appcontext genfile qcdb pthread',
 		includes = "./"
 	)
+	bld.program(
+		source = "count-trailing-kmers.cpp",
+		target = 'count-trailing-kmers',
+		use = 'seqan bamtools seqlib package_revision appcontext genfile qcdb iorek pthread parallel_hashmap concurrentqueue wfa2cpp wfa2 ssw zlib',
+		includes = "./"
+	)
