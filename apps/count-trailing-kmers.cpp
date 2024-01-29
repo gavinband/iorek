@@ -74,6 +74,10 @@ public:
 			.set_description( "Kmer size.  Must be <= 31" )
 			.set_takes_single_value()
 			.set_default_value( 10 ) ;
+
+		options[ "-compress-homopolymers" ]
+			.set_description( "If specified, homopolymers will be compressed before analysis." ) ;
+
 		options[ "-max-reads" ]
 			.set_description( "Stop processing reads after seeing this many records from the input files.  Zero means process all reads" )
 			.set_takes_single_value()
@@ -120,6 +124,7 @@ private:
 		compute_read_tails(
 			options().get_values< std::string >( "-reads" ),
 			tail_length,
+			options().check( "-compress-homopolymers" ),
 			options().get< std::size_t >( "-max-reads" ),
 			&m_tails
 		) ;
@@ -160,8 +165,9 @@ private:
 	
 	void compute_read_tails(
 		std::vector< std::string > const& filenames,
-		std::size_t l, // how much of end of read to look at?
-		std::size_t max_reads,
+		std::size_t const l, // how much of end of read to look at?
+		bool const compress_homopolymers,
+		std::size_t const max_reads,
 		TailMap* result
 	) const {
 		assert( result != 0 ) ;
@@ -171,14 +177,15 @@ private:
 				assert( "Failed to open file" ) ;
 			}
 			// seqlib::BamHeader const& header = reader.Header() ;
-			compute_read_tails( filenames[i], reader, l, max_reads, result ) ;
+			compute_read_tails( filenames[i], reader, l, compress_homopolymers, max_reads, result ) ;
 		}
 	}
 
 	void compute_read_tails(
 		std::string const& filename,
 		seqlib::BamReader& reader,
-		std::size_t l,
+		std::size_t const l,
+		bool const compress_homopolymers,
 		std::size_t max_reads,
 		TailMap* result
 	) const {
@@ -196,12 +203,27 @@ private:
 				read_id = subread_id.substr( 0, where ) ;
 			}
 			//std::cerr << "READ: " << subread_id << " " << where << " " << subread_id << ".\n" ;
-			std::string const sequence = alignment.Sequence() ;
+			std::string const sequence = compress_homopolymers ? homopolymer_compress( alignment.Sequence() ) : alignment.Sequence() ;
 			std::string const tail = sequence.substr( sequence.size() - std::min( sequence.size(), l ), l ) ;
 			(*result)[read_id] = tail ;
 
 			progress( ++count ) ;
 		}
+	}
+
+	std::string homopolymer_compress( std::string sequence ) const {
+		std::string result( ' ', sequence.size() ) ;
+		if( sequence.size() > 0 ) {
+			std::size_t count = 0 ;
+			result[0] = sequence[0] ;
+			for( std::size_t i = 1; i < sequence.size(); ++i ) {
+				if( sequence[i] != result[count] ) {
+					result[++count] = sequence[i] ;
+				}
+			}
+			result.resize( count+1 ) ;
+		}
+		return result ;
 	}
 
 	void compute_trailing_kmers(
