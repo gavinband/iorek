@@ -64,13 +64,22 @@ public:
 			.set_takes_single_value()
 			.set_default_value( "-" ) ;
 
+		options.declare_group( "Algorithm options" ) ;
 		options[ "-l" ]
 			.set_description( "Length to track at read ends." )
+			.set_takes_single_value()
 			.set_default_value( 50 ) ;
 
 		options[ "-k" ]
 			.set_description( "Kmer size.  Must be <= 31" )
+			.set_takes_single_value()
 			.set_default_value( 10 ) ;
+		options[ "-max-reads" ]
+			.set_description( "Stop processing reads after seeing this many records from the input files.  Zero means process all reads" )
+			.set_takes_single_value()
+			.set_default_value( 0 )
+		;
+		
 	}
 } ;
 
@@ -108,15 +117,16 @@ private:
 	void unsafe_process() {
 		std::size_t k = options().get< std::size_t >( "-k" ) ;
 		std::size_t tail_length = options().get< std::size_t >( "-l" ) ;
-		compute_read_ends(
+		compute_read_tails(
 			options().get_values< std::string >( "-reads" ),
 			tail_length,
+			options().get< std::size_t >( "-max-reads" ),
 			&m_tails
 		) ;
 
-		for( auto k: m_tails ) {
-			std::cerr << k.first << ": " << k.second << "\n" ;
-		}
+		//for( auto k: m_tails ) {
+		//	std::cerr << k.first << ": " << k.second << "\n" ;
+		//}
 
 		compute_trailing_kmers(
 			m_tails,
@@ -148,9 +158,10 @@ private:
 
 	}
 	
-	void compute_read_ends(
+	void compute_read_tails(
 		std::vector< std::string > const& filenames,
 		std::size_t l, // how much of end of read to look at?
+		std::size_t max_reads,
 		TailMap* result
 	) const {
 		assert( result != 0 ) ;
@@ -160,27 +171,31 @@ private:
 				assert( "Failed to open file" ) ;
 			}
 			// seqlib::BamHeader const& header = reader.Header() ;
-			compute_read_ends( filenames[i], reader, l, result ) ;
+			compute_read_tails( filenames[i], reader, l, max_reads, result ) ;
 		}
 	}
 
-	void compute_read_ends(
+	void compute_read_tails(
 		std::string const& filename,
 		seqlib::BamReader& reader,
 		std::size_t l,
+		std::size_t max_reads,
 		TailMap* result
 	) const {
 		auto progress = ui().get_progress_context( "Computing read tails from \"" + filename + "\"...\n" ) ;
 		std::size_t count = 0 ;
 		seqlib::BamRecord alignment ;
-		while( reader.GetNextRecord( alignment ) ) {
+		if( max_reads == 0 ) {
+			max_reads = std::numeric_limits< std::size_t >::max() ;
+		}
+		while( reader.GetNextRecord( alignment ) && count < max_reads ) {
 			std::string subread_id = alignment.Qname() ;
 			std::size_t where = subread_id.rfind( "/" ) ;
 			std::string read_id = subread_id ;
 			if( where != std::string::npos ) {
 				read_id = subread_id.substr( 0, where ) ;
 			}
-			std::cerr << "READ: " << subread_id << " " << where << " " << subread_id << ".\n" ;
+			//std::cerr << "READ: " << subread_id << " " << where << " " << subread_id << ".\n" ;
 			std::string const sequence = alignment.Sequence() ;
 			std::string const tail = sequence.substr( sequence.size() - std::min( sequence.size(), l ), l ) ;
 			(*result)[read_id] = tail ;
@@ -200,7 +215,7 @@ private:
 		for( auto kv: tails ) {
 			for( 
 				KmerIterator i( kv.second.begin(), kv.second.end(), k );
-				!i.finished();
+				1;
 				++i
 			) {
 				uint64_t const hash = i.hash() ;
@@ -208,6 +223,9 @@ private:
 					(*result)[hash] = 1 ;
 				} else {
 					++(*result)[hash] ;
+				}
+				if( i.finished() ) {
+					break ;
 				}
 			}
 			progress( ++count, tails.size() ) ;
