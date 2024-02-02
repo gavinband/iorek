@@ -64,6 +64,9 @@ public:
 			.set_takes_single_value()
 			.set_default_value( "-" ) ;
 
+		options[ "-incl-read-ids" ]
+			.set_description( "If specified, a file containing read identifiers to include in the analysis." ) ;
+
 		options.declare_group( "Algorithm options" ) ;
 		options[ "-l" ]
 			.set_description( "Length to track at read ends." )
@@ -77,6 +80,9 @@ public:
 
 		options[ "-compress-homopolymers" ]
 			.set_description( "If specified, homopolymers will be compressed before analysis." ) ;
+
+		options[ "-remove-trailing-homopolymers" ]
+			.set_description( "If specified, homopolymers *including those with single-base mutations* will be trimmed from read ends." ) ;
 
 		options[ "-max-reads" ]
 			.set_description( "Stop processing reads after seeing this many records from the input files.  Zero means process all reads" )
@@ -114,17 +120,24 @@ public:
 private:
 
 	typedef phmap::flat_hash_map<std::string, std::string> TailMap ;
-	typedef phmap::flat_hash_map<uint64_t, uint64_t> KmerCounts ;
 	TailMap m_tails ;
+	typedef phmap::flat_hash_map<uint64_t, uint64_t> KmerCounts ;
 	KmerCounts m_counts ;
+	typedef std::unordered_set< std::string > ReadIds ;
+	std::unique_ptr< ReadIds > m_read_ids ;
 
 	void unsafe_process() {
+		if( options().check( "-incl-read-ids" )) {
+			m_read_ids = load_read_ids( options().get< std::string >( "-incl-read-ids" )) ;
+		}
+
 		std::size_t k = options().get< std::size_t >( "-k" ) ;
 		std::size_t tail_length = options().get< std::size_t >( "-l" ) ;
 		compute_read_tails(
 			options().get_values< std::string >( "-reads" ),
 			tail_length,
 			options().check( "-compress-homopolymers" ),
+			options().check( "-remove-trailing-homopolymers" ),
 			options().get< std::size_t >( "-max-reads" ),
 			&m_tails
 		) ;
@@ -133,7 +146,7 @@ private:
 		//	std::cerr << k.first << ": " << k.second << "\n" ;
 		//}
 
-		compute_trailing_kmers(
+		count_kmers(
 			m_tails,
 			k,
 			&m_counts
@@ -163,10 +176,24 @@ private:
 
 	}
 	
+	std::unique_ptr< ReadIds > load_read_ids( std::string const& filename ) const {
+		auto source = genfile::open_text_file_for_input( filename ) ;
+		std::string read_id ;
+		std::unique_ptr< ReadIds > result( new ReadIds ) ;
+		auto progress = ui().get_progress_context( "Loading read Ids from \"" + filename + "\"" ) ;
+		int count = 0 ;
+		while( std::getline( *source, read_id )) {
+			(*result).insert( read_id ) ;
+			progress( ++count ) ;
+		}
+		return result ;
+	}
+
 	void compute_read_tails(
 		std::vector< std::string > const& filenames,
 		std::size_t const l, // how much of end of read to look at?
 		bool const compress_homopolymers,
+		bool const remove_trailing_homopolymers,
 		std::size_t const max_reads,
 		TailMap* result
 	) const {
@@ -177,7 +204,7 @@ private:
 				assert( "Failed to open file" ) ;
 			}
 			// seqlib::BamHeader const& header = reader.Header() ;
-			compute_read_tails( filenames[i], reader, l, compress_homopolymers, max_reads, result ) ;
+			compute_read_tails( filenames[i], reader, l, compress_homopolymers, remove_trailing_homopolymers, max_reads, result ) ;
 		}
 	}
 
@@ -186,6 +213,7 @@ private:
 		seqlib::BamReader& reader,
 		std::size_t const l,
 		bool const compress_homopolymers,
+		bool const remove_trailing_homopolymers,
 		std::size_t max_reads,
 		TailMap* result
 	) const {
@@ -202,17 +230,60 @@ private:
 			if( where != std::string::npos ) {
 				read_id = subread_id.substr( 0, where ) ;
 			}
-			//std::cerr << "READ: " << subread_id << " " << where << " " << subread_id << ".\n" ;
-			std::string const sequence = compress_homopolymers ? homopolymer_compress( alignment.Sequence() ) : alignment.Sequence() ;
-			std::string const tail = sequence.substr( sequence.size() - std::min( sequence.size(), l ), l ) ;
-			(*result)[read_id] = tail ;
-
+			if( m_read_ids && m_read_ids->find( read_id ) == m_read_ids->end() ) {
+				// this read is not included, ignore.
+			} else {
+				//std::cerr << "READ: " << subread_id << " " << where << " " << subread_id << ".\n" ;
+				std::string sequence = alignment.Sequence() ;
+				if( compress_homopolymers ) {
+					sequence = homopolymer_compress( alignment.Sequence() ) ;
+				}
+				if( remove_trailing_homopolymers ) {
+					sequence = remove_trailing_homopolymer_permissive( sequence ) ;
+				}
+				std::string const tail = sequence.substr( sequence.size() - std::min( sequence.size(), l ), l ) ;
+				(*result)[read_id] = tail ;
+			}
 			progress( ++count ) ;
 		}
 	}
 
+	std::string remove_trailing_homopolymer_permissive( std::string const s ) const {
+		if( s.size() < 2 ) {
+			return s ;
+		}
+		std::vector< std::size_t > ind( 256, 4 ) ;
+		ind['a'] = 0 ;
+		ind['c'] = 1 ;
+		ind['t'] = 2 ;
+		ind['g'] = 3 ;
+
+		std::vector< std::size_t > counts( 5, 0 ) ;
+
+		using std::tolower ;
+		char last = s[s.size()-1] ; // this is the potential hp base
+		std::size_t w = ind[tolower(last)] ;
+
+		std::size_t i = s.size() ;
+		++counts[ ind[ tolower(s[--i]) ]] ;
+		++counts[ ind[ tolower(s[--i]) ]] ;
+
+		if( counts[w] < 2 ) {
+			// no hp at read end, just return full sequence.
+			return s;
+		}
+		while(1) {
+			++counts[ tolower(s[--i]) ] ;
+			--counts[ tolower(s[i+2]) ] ;
+			if( i == 0 || counts[w] == 0 ) {
+				break ;
+			}
+		}
+		return s.substr( 0, i + (2-counts[w]) ) ;
+	}
+
 	std::string homopolymer_compress( std::string sequence ) const {
-		std::string result( ' ', sequence.size() ) ;
+		std::string result( sequence.size(), ' ' ) ;
 		if( sequence.size() > 0 ) {
 			std::size_t count = 0 ;
 			result[0] = sequence[0] ;
@@ -226,7 +297,7 @@ private:
 		return result ;
 	}
 
-	void compute_trailing_kmers(
+	void count_kmers(
 		TailMap const& tails,
 		std::size_t k,
 		KmerCounts* result

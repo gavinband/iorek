@@ -215,10 +215,13 @@ private:
 			}
 			return result ;
 		} ;
+
+		// create a new annotation track with the given name
 		void add_annotation( std::string const& name ) {
 			m_names.push_back( name ) ;
 		}
 
+		// add a region/value to the current annotation track
 		void add_annotation_value( std::string const& sequence_id, RegionValue const& value ) {
 			m_data[sequence_id][m_names.back()].push_back( value ) ;
 		}
