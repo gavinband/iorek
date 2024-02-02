@@ -142,6 +142,9 @@ private:
 			&m_tails
 		) ;
 
+		using genfile::string_utils::to_string ;
+		ui().logger() << "unsafe_process(): computed read tails for " << to_string( m_tails.size() ) << " reads.\n" ;
+
 		//for( auto k: m_tails ) {
 		//	std::cerr << k.first << ": " << k.second << "\n" ;
 		//}
@@ -152,15 +155,18 @@ private:
 			&m_counts
 		) ;
 
-		std::map< uint64_t, uint64_t, std::greater<uint64_t> > ordered ;
+		ui().logger() << "unsafe_process(): in total saw " << to_string( m_counts.size() ) << " distinct kmers.\n" ;
+		std::multimap< uint64_t, uint64_t, std::greater<uint64_t> > ordered ;
 		{
 			auto progress = ui().get_progress_context( "Sorting by count." ) ;
 			std::size_t count = 0 ;
 			for( auto r: m_counts ) {
-				ordered[r.second] = r.first ;
+				ordered.insert( std::make_pair( r.second, r.first )) ;
 				progress( ++count, m_counts.size() ) ;
 			}
 		}
+		ui().logger() << "unsafe_process(): in total saw " << to_string( ordered.size() ) << " ordered distinct kmers.\n" ;
+
 
 		{
 			std::string const& output_filename = options().get< std::string >( "-o" ) ;
