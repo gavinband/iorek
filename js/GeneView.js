@@ -412,7 +412,7 @@ GeneView.prototype.draw = function(
 	let visualaas = transcripts.selectAll( 'g.aas' )
 		.data( elt => [ elt.amino_acids ] ) ;
 	visualaas.selectAll( 'g.aa' )
-		.data( elt => ((baseWidth > 2) ? elt : [] ), elt => elt.count )
+		.data( elt => ((baseWidth > 1) ? elt : [] ), elt => elt.count )
 		.join(
 			function( enter ) {
 				let g = enter.append('g')
@@ -457,9 +457,9 @@ GeneView.prototype.draw = function(
 	let aa_sequence = transcripts.selectAll( 'g.aa' ) ;
 
 	let interpolator1 = 0 ;
-	if( baseWidth >= 0.5 ) {
-		interpolator1 = Math.min( (baseWidth-0.5) / 4.0, 1.0 ) ;
-	}
+//	if( (3*baseWidth) >= 0.1 ) {
+		interpolator1 = Math.min( ((baseWidth)-0.1) / 10.0, 1.0 ) ;
+//	}
 	let interpolator2 = 0 ;
 	if( baseWidth > 8 ) {
 		interpolator2 = Math.min( (baseWidth-8) / 10.0, 1.0 ) ;
