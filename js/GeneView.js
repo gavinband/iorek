@@ -11,71 +11,43 @@ let reverse_complement_map = {
 	120: 120
 } ;
 
+let iupac = {
+	'A': { 'three': 'Ala', 'name': 'Alanine' },
+	'C': { 'three': 'Cys', 'name': 'Cysteine' },
+	'D': { 'three': 'Asp', 'name': 'Aspartic Acid' },
+	'E': { 'three': 'Glu', 'name': 'Glutamic Acid' },
+	'F': { 'three': 'Phe', 'name': 'Phenylalanine' },
+	'G': { 'three': 'Gly', 'name': 'Glycine' },
+	'H': { 'three': 'His', 'name': 'Histidine' },
+	'I': { 'three': 'Ile', 'name': 'Isoleucine' },
+	'K': { 'three': 'Lys', 'name': 'Lysine' },
+	'L': { 'three': 'Leu', 'name': 'Leucine' },
+	'M': { 'three': 'Met', 'name': 'Methionine' },
+	'N': { 'three': 'Asn', 'name': 'Asparagine' },
+	'P': { 'three': 'Pro', 'name': 'Proline' },
+	'Q': { 'three': 'Gln', 'name': 'Glutamine' },
+	'R': { 'three': 'Arg', 'name': 'Arginine' },
+	'S': { 'three': 'Ser', 'name': 'Serine' },
+	'T': { 'three': 'Thr', 'name': 'Threonine' },
+	'V': { 'three': 'Val', 'name': 'Valine' },
+	'W': { 'three': 'Trp', 'name': 'Tryptophan' },
+	'Y': { 'three': 'Tyr', 'name': 'Tyrosine}' }
+} ;
+
 let aa_table = {
-	'aaa': 'Lys',
-	'aac': 'Asn',
-	'aag': 'Lys',
-	'aat': 'Asn',
-	'aca': 'Thr',
-	'acc': 'Thr',
-	'acg': 'Thr',
-	'act': 'Thr',
-	'aga': 'Arg',
-	'agc': 'Ser',
-	'agg': 'Arg',
-	'agt': 'Ser',
-	'ata': 'Ile',
-	'atc': 'Ile',
-	'atg': 'Met',
-	'att': 'Ile',
-	'caa': 'Gln',
-	'cac': 'His',
-	'cag': 'Gln',
-	'cat': 'His',
-	'cca': 'Pro',
-	'ccc': 'Pro',
-	'ccg': 'Pro',
-	'cct': 'Pro',
-	'cga': 'Arg',
-	'cgc': 'Arg',
-	'cgg': 'Arg',
-	'cgt': 'Arg',
-	'cta': 'Leu',
-	'ctc': 'Leu',
-	'ctg': 'Leu',
-	'ctt': 'Leu',
-	'gaa': 'Glu',
-	'gac': 'Asp',
-	'gag': 'Glu',
-	'gat': 'Asp',
-	'gca': 'Ala',
-	'gcc': 'Ala',
-	'gcg': 'Ala',
-	'gct': 'Ala',
-	'gga': 'Gly',
-	'ggc': 'Gly',
-	'ggg': 'Gly',
-	'ggt': 'Gly',
-	'gta': 'Val',
-	'gtc': 'Val',
-	'gtg': 'Val',
-	'gtt': 'Val',
-	'taa': 'STOP',
-	'tac': 'Tyr',
-	'tag': 'STOP',
-	'tat': 'Tyr',
-	'tca': 'Ser',
-	'tcc': 'Ser',
-	'tcg': 'Ser',
-	'tct': 'Ser',
-	'tga': 'STOP',
-	'tgc': 'Cys',
-	'tgg': 'Trp',
-	'tgt': 'Cys',
-	'tta': 'Leu',
-	'ttc': 'Phe',
-	'ttg': 'Leu',
-	'ttt': 'Phe'
+	'aaa': 'K', 'aac': 'N', 'aag': 'K', 'aat': 'N', 'aca': 'T',
+	'acc': 'T', 'acg': 'T', 'act': 'T', 'aga': 'R', 'agc': 'S',
+	'agg': 'R', 'agt': 'S', 'ata': 'I', 'atc': 'I', 'atg': 'M',
+	'att': 'I', 'caa': 'Q', 'cac': 'H', 'cag': 'Q', 'cat': 'H',
+	'cca': 'P', 'ccc': 'P', 'ccg': 'P', 'cct': 'P', 'cga': 'R',
+	'cgc': 'R', 'cgg': 'R', 'cgt': 'R', 'cta': 'L', 'ctc': 'L',
+	'ctg': 'L', 'ctt': 'L', 'gaa': 'Q', 'gac': 'D', 'gag': 'Q',
+	'gat': 'D', 'gca': 'A', 'gcc': 'A', 'gcg': 'A', 'gct': 'A',
+	'gga': 'G', 'ggc': 'G', 'ggg': 'G', 'ggt': 'G', 'gta': 'V',
+	'gtc': 'V', 'gtg': 'V', 'gtt': 'V', 'taa': 'STOP', 'tac': 'Y',
+	'tag': 'STOP', 'tat': 'Y', 'tca': 'S', 'tcc': 'S', 'tcg': 'S',
+	'tct': 'S', 'tga': 'STOP', 'tgc': 'C', 'tgg': 'W', 'tgt': 'C',
+	'tta': 'L', 'ttc': 'F', 'ttg': 'L', 'ttt': 'F'
 } ;
 
 function reverse_complement( sequence ) {
@@ -94,13 +66,13 @@ function compute_amino_acid_sequence( CDS, reference, strand ) {
 	let sequence = reference.sequence ;
 
 	let result = [] ;
+	// compute total length of cds
 	let coding_length = 0 ;
 	for( let i = 0; i < CDS.length; ++i ) {
 		coding_length += CDS[i].end - CDS[i].start + 1 ;
 	}
-	if( coding_length % 3 == 0 ) {
+	if( 1 ) {
 		let coding_sequence = new Uint8Array( coding_length ) ;
-		let breaks = [] ;
 		let where = 0 ;
 		for( let i = 0; i < CDS.length; ++i ) {
 			let length = CDS[i].end - CDS[i].start + 1 ;
@@ -111,43 +83,67 @@ function compute_amino_acid_sequence( CDS, reference, strand ) {
 			where = where + length ;
 		}
 
-		let sequence_position = 0 ;
+		// The above coding sequence is in position order.
+		// We assume that the aa sequences starts at the first base of the CDS.
+		// For reverse orientation genes this means the last base of the above sequence.
+		// This adds a complication because we process the sequence in position order.
+		// We keep track of the index of the AA in the coding sequence, and the number of
+		// bases 'consumed' so far so we can handle AAs overlapping CDS boundaries.
 		let oddeven = 0 ;
 		let orientation = (strand == '+') ? 1 : -1 ;
-		let count = strand == '+' ? 0 : (coding_sequence.length/3)+1 ;
-		let aa = '' ;
-		let consumed = 3 ;
+		let aa_index = (orientation == 1) ? 0 : (Math.floor( coding_sequence.length/3 ))+1 ;
+		let offset = (orientation == 1) ? 0 : coding_length % 3 ;
+		let aa = '?' ;
+		let index_in_sequence = 0 ;
+
 		let decoder = new TextDecoder() ;
 		for( let i = 0; i < CDS.length; ++i ) {
-			let physical_position = CDS[i].start + ((3-consumed) % 3) ;
-			if( consumed < 3 ) {
-				let end = Math.min( physical_position - 1, CDS[i].end ) ;
+			let consumed = Math.abs(index_in_sequence-offset) % 3 ;
+			let physical_position = CDS[i].start ;
+			if( consumed != 0 ) {
+				console.log( "aa", aa, "consumed", consumed, physical_position ) ;
+				// We are not at an AA boundary.
+				// Handle the remainder of the preceding AA.
+				// In an extreme case the AA could span three CDS records, I suppose
+				// so the code must handle this.
+				let start = CDS[i].start ;
+				let end = Math.min( start + 3-consumed - 1, CDS[i].end ) ;
+				let length = end - start + 1 ;
 				result.push({
-					'start': CDS[i].start,
+					'start': start,
 					'end': end,
 					'aa': aa,
-					'count': count,
+					'count': aa_index,
 					'oddeven': oddeven % 2
 				}) ;
-				consumed += (end - CDS[i].start) ;
+				index_in_sequence += length ;
+				physical_position += length ;
 			}
 
-			for( ; physical_position <= CDS[i].end; sequence_position += 3, physical_position += 3 ) {
-				count += orientation ;
-				let codon = coding_sequence.slice( sequence_position, sequence_position+3 ) ;
+			// in this loop, index_in_sequence always points to the
+			// start of an AA.
+			while( physical_position <= CDS[i].end ) {
+				aa_index += orientation ;
+				let codon = coding_sequence.slice(
+					index_in_sequence,
+					Math.min(index_in_sequence+3,coding_sequence.length)
+				) ;
 				if( strand == '-' ) {
 					codon = reverse_complement(codon) ;
 				}
-				aa = aa_table[decoder.decode(codon)] ;
+				aa = (codon.length == 3) ? aa_table[decoder.decode(codon)] : "?" ;
 				let end = Math.min( physical_position+2, CDS[i].end ) ;
+				let length = end - physical_position + 1 ;
 				result.push({
 					'start': physical_position,
 					'end': end,
 					'aa': aa,
-					'count': count,
+					'count': aa_index,
 					'oddeven': (++oddeven) % 2
 				}) ;
-				consumed = (end + 1) - physical_position ;
+
+				index_in_sequence += length ;
+				physical_position += length ;
 			}
 		}
 	}
@@ -199,9 +195,11 @@ function GeneView(
 			if( gene.strand == "-" ) {
 				gene.txStart = gene.end ;
 				gene.txEnd = gene.start ;
+				gene.orientation = -1 ;
 			} else {
 				gene.txStart = gene.start ;
 				gene.txEnd = gene.end ;
+				gene.orientation = 1 ;
 			}
 			
 			let exonData = genes.filter(
@@ -345,7 +343,6 @@ GeneView.prototype.draw = function(
 	let max = Math.max ;
 	let abs = Math.abs ;
 	let domain = scales.position.domain() ;
-	console.log( "DOMAIN", domain ) ;
 	let domain_filter = function( elt ) {
 		return (elt.start <= domain[1] ) && (elt.end >= domain[0] ) ;
 	} ;
@@ -378,7 +375,10 @@ GeneView.prototype.draw = function(
 					.attr( 'class', 'arrow_upper' ) ;
 				g.append( 'text' )
 					.attr( 'class', 'symbol' ) ;
-
+				g.append( 'g' )
+					.attr( 'class', 'exons' ) ;
+				g.append( 'g' )
+					.attr( 'class', 'aas' ) ;
 				return g ;
 			},
 			function( update ) {
@@ -390,8 +390,10 @@ GeneView.prototype.draw = function(
 		) ;
 
 	transcripts = elt.selectAll( 'g.gene' ) ;
-	transcripts.selectAll( 'rect.exon' )
-		.data( elt => elt.exons.filter( domain_filter ), elt => elt.ID )
+	let visualexons = transcripts.selectAll( 'g.exons' )
+		.data( elt => [ elt.exons ] ) ;
+	visualexons.selectAll( 'rect.exon' )
+		.data( elt => elt.filter( domain_filter ), elt => elt.ID )
 		.join(
 			function(enter) {
 				return enter.append( 'rect' )
@@ -405,37 +407,39 @@ GeneView.prototype.draw = function(
 			}	
 		) ;
 
-	transcripts.selectAll( 'g.aa' )
-		.data( elt => ( (baseWidth > 2) ? elt.amino_acids : [] ), elt => elt.count )
+	let visualaas = transcripts.selectAll( 'g.aas' )
+		.data( elt => [ elt.amino_acids ] ) ;
+	visualaas.selectAll( 'g.aa' )
+		.data( elt => ((baseWidth > 2) ? elt : [] ), elt => elt.count )
 		.join(
 			function( enter ) {
 				let g = enter.append('g')
 					.attr( 'class', 'aa' )
 				;
 				g.append( 'rect' ).attr( 'class', elt => elt.count ) ; ;
-				g.append( 'text' ) ;
+				g.append( 'text' ).attr( 'class', 'aa' ) ;
+				g.append( 'text' ).attr( 'class', 'count' ) ;
 				return g ;
 			},
 			function(update ) {
 				return update.attr( 'class', 'aa' ) ;
 			},
 			function( exit ) {
-				console.log( "REMOVING", exit ) ;
 				return exit.remove() ;
 			}
 		) ;
 
 	transcripts
 		.selectAll( 'line.mid' )
-		.attr( axes.x1, elt => scales.position( Math.max( elt.start, self.region.start )) )
-		.attr( axes.x2, elt => scales.position( Math.min( elt.end, self.region.end )) )
+		.attr( axes.x1, elt => scales.position( Math.max( elt.start, self.region.start ) - 0.5 ) )
+		.attr( axes.x2, elt => scales.position( Math.min( elt.end, self.region.end ) + 0.5 ) )
 		.attr( axes.y1, elt => scales.level( elt.level ))
 		.attr( axes.y2, elt => scales.level( elt.level ))
 		.attr( "stroke", "black" )
 	;
 
 	let exons = transcripts.selectAll( 'rect.exon' ) ;
-	exons.exit().remove() ;
+	//exons.exit().remove() ;
 	exons
 		// SVG widths / heights must be positive.
 		// The following formulation makes sure we plot rectangles
@@ -455,8 +459,13 @@ GeneView.prototype.draw = function(
 		interpolator = Math.min( (baseWidth-2) / 5.0, 1.0 ) ;
 	}
 	let interpolator2 = 0 ;
-	if( baseWidth > 12 ) {
-		interpolator2 = Math.min( (baseWidth-12) / 10.0, 1.0 ) ;
+	if( baseWidth > 8 ) {
+		interpolator2 = Math.min( (baseWidth-8) / 10.0, 1.0 ) ;
+	}
+
+	let interpolator3 = 0 ;
+	if( baseWidth > 20 ) {
+		interpolator3 = Math.min( (baseWidth-20) / 10.0, 1.0 ) ;
 	}
 
 	transcripts.selectAll( 'g.aa rect' )
@@ -469,27 +478,42 @@ GeneView.prototype.draw = function(
 		.attr( 'fill', function(elt) {
 			if( elt.aa == 'STOP' ) {
 				return `rgba( 148, 20, 3, ${interpolator} )` ;
+			} else if( elt.aa == "?" ) {
+				return `rgba( 188, 20, 180, ${interpolator} )` ;
 			} else if( elt.oddeven == 1 ) {
-				return `rgba( 118, 118, 118, ${interpolator} )` ;
+				return `rgba( 108, 128, 128, ${interpolator} )` ;
+				//return `rgba( 118, 118, 20, ${interpolator} )` ;
 			} else {
-				return `rgb( 138, 138, 138, ${interpolator} )` ;
+				return `rgb( 128, 128, 108, ${interpolator} )` ;
+				//return `rgba( 118, 20, 118, ${interpolator} )` ;
 			}
 		})
 	;
 
-	transcripts.selectAll( 'g.aa text' )
-		// At the time of writing I don't understand why I need to subtract 1 here!
-		// But it puts the text in the middle.
+	transcripts.selectAll( 'g.aa text.aa' )
 		.attr( axes.x, elt => (scales.position( (elt.start + elt.end )/2 )) )
 		.attr( axes.y, elt => scales.level( elt.level ))
 		.attr( 'text-anchor', 'middle' )
 		.attr( 'alignment-baseline', 'middle' )
 		.attr( 'font-size', '8pt' )
-		.attr( 'font-family', 'Helvetica' )
-		.attr( 'stroke', '#EEEEEE' )
+		.attr( 'font-family', 'Palatino' )
+		.attr( 'font-weight', 'bold' )
+		.attr( 'stroke', '#CCCCCC' )
 		.attr( 'stroke-opacity', interpolator2 )
 		.attr( 'fill-opacity', interpolator2 )
-		.text( elt => ( elt.aa == "STOP" ? "STOP" : ( elt.count + " " + elt.aa ))) ;
+		.text( elt => ( elt.aa == "STOP" ? "X" : elt.aa )) ;
+
+	transcripts.selectAll( 'g.aa text.count' )
+		.attr( axes.x, elt => (scales.position( ( 0.5 * elt.start + 0.5 * elt.end ) + 0.33 )) )
+		.attr( axes.y, elt => scales.level( elt.level ))
+		.attr( 'text-anchor', 'middle' )
+		.attr( 'alignment-baseline', 'middle' )
+		.attr( 'font-size', '7pt' )
+		.attr( 'font-family', 'Palatino' )
+		.attr( 'stroke', '#ABABAB' )
+		.attr( 'stroke-opacity', interpolator3 )
+		.attr( 'fill-opacity', interpolator3 )
+		.text( elt => "(" + elt.count + ")" ) ;
 
 	function isVisible( x ) {
 		return x >= region.start && x <= region.end ;
@@ -502,8 +526,8 @@ GeneView.prototype.draw = function(
 	transcripts
 		.selectAll( 'line.bar_s' )
 		.filter( elt => isVisible(elt.txStart))
-		.attr( axes.x1, elt => scales.position( elt.txStart - 0.5 ))
-		.attr( axes.x2, elt => scales.position( elt.txStart - 0.5 ))
+		.attr( axes.x1, elt => scales.position( elt.txStart - elt.orientation * 0.5 ))
+		.attr( axes.x2, elt => scales.position( elt.txStart - elt.orientation * 0.5 ))
 		.attr( axes.y1, elt => scales.level( elt.level - h ))
 		.attr( axes.y2, elt => scales.level( elt.level + H ) - 0.5 )
 		.attr( 'stroke', 'black' )
@@ -512,8 +536,8 @@ GeneView.prototype.draw = function(
 	transcripts
 		.selectAll( 'line.bar_e' )
 		.filter( elt => isVisible( elt.txEnd ))
-		.attr( axes.x1, elt => scales.position( elt.txEnd + 0.5 ))
-		.attr( axes.x2, elt => scales.position( elt.txEnd + 0.5 ))
+		.attr( axes.x1, elt => scales.position( elt.txEnd + elt.orientation * 0.5 ))
+		.attr( axes.x2, elt => scales.position( elt.txEnd + elt.orientation * 0.5 ))
 		.attr( axes.y1, elt => scales.level( elt.level - h ))
 		.attr( axes.y2, elt => scales.level( elt.level + h ))
 		.attr( 'stroke', 'black' )
@@ -544,24 +568,24 @@ GeneView.prototype.draw = function(
 	// arrow
 	transcripts
 		.selectAll( 'line.arrow_body' )
-		.attr( axes.x1, elt => scales.position( elt.txStart - 0.5 ))
-		.attr( axes.x2, elt => scales.position( elt.txStart - 0.5 ) + orientation * a[elt.strand] * 4 )
+		.attr( axes.x1, elt => scales.position( elt.txStart - elt.orientation * 0.5 ))
+		.attr( axes.x2, elt => scales.position( elt.txStart - elt.orientation * 0.5 ) + orientation * a[elt.strand] * 4 )
 		.attr( axes.y1, elt => scales.level( elt.level + H ))
 		.attr( axes.y2, elt => scales.level( elt.level + H ))
 		.attr( 'stroke', 'black' )
 	;
 	transcripts
 		.selectAll( 'line.arrow_lower' )
-		.attr( axes.x1, elt => scales.position( elt.txStart - 0.5 ) + orientation * a[elt.strand] * 4 )
-		.attr( axes.x2, elt => scales.position( elt.txStart - 0.5 ) + orientation * a[elt.strand] * 2 )
+		.attr( axes.x1, elt => scales.position( elt.txStart - elt.orientation * 0.5 ) + orientation * a[elt.strand] * 4 )
+		.attr( axes.x2, elt => scales.position( elt.txStart - elt.orientation * 0.5 ) + orientation * a[elt.strand] * 2 )
 		.attr( axes.y1, elt => scales.level( elt.level + H ))
 		.attr( axes.y2, elt => scales.level( elt.level + H ) - 2 )
 		.attr( 'stroke', 'black' )
 	;
 	transcripts
 		.selectAll( 'line.arrow_upper' )
-		.attr( axes.x1, elt => scales.position( elt.txStart - 0.5 ) + orientation * a[elt.strand] * 4 )
-		.attr( axes.x2, elt => scales.position( elt.txStart - 0.5 ) + orientation * a[elt.strand] * 2 )
+		.attr( axes.x1, elt => scales.position( elt.txStart - elt.orientation * 0.5 ) + orientation * a[elt.strand] * 4 )
+		.attr( axes.x2, elt => scales.position( elt.txStart - elt.orientation * 0.5 ) + orientation * a[elt.strand] * 2 )
 		.attr( axes.y1, elt => scales.level( elt.level + H ))
 		.attr( axes.y2, elt => scales.level( elt.level + H ) + 2 )
 		.attr( 'stroke', 'black' )
