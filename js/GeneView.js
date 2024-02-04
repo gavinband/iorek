@@ -78,7 +78,6 @@ function compute_amino_acid_sequence( CDS, reference, strand ) {
 			let length = CDS[i].end - CDS[i].start + 1 ;
 			let a = mapPhysicalToSequenceCoord( CDS[i].start ) ;
 			let b = mapPhysicalToSequenceCoord( CDS[i].end + 1 ) ; // convert to open interval
-			console.log( "AB", CDS[i].start, CDS[i].end, a, b, sequence.length ) ;
 			coding_sequence.subarray( where, where + length ).set( sequence.slice( a, b ) ) ;
 			where = where + length ;
 		}
@@ -98,8 +97,9 @@ function compute_amino_acid_sequence( CDS, reference, strand ) {
 
 		let decoder = new TextDecoder() ;
 		for( let i = 0; i < CDS.length; ++i ) {
-			let consumed = Math.abs(index_in_sequence-offset) % 3 ;
+			let consumed = Math.abs(index_in_sequence + (3-offset)) % 3 ;
 			let physical_position = CDS[i].start ;
+			// console.log( "Stt of CDS: i = ", i, "CDS: ", CDS[i].ID, physical_position, index_in_sequence, consumed, "offset:", offset ) ;
 			if( consumed != 0 ) {
 				console.log( "aa", aa, "consumed", consumed, physical_position ) ;
 				// We are not at an AA boundary.
@@ -145,6 +145,7 @@ function compute_amino_acid_sequence( CDS, reference, strand ) {
 				index_in_sequence += length ;
 				physical_position += length ;
 			}
+			// console.log( "End of CDS: i = ", i, "CDS: ", CDS[i].ID, physical_position, index_in_sequence, consumed ) ;
 		}
 	}
 	return result ;
@@ -181,14 +182,14 @@ function GeneView(
 				&& elt.start <= region.end
 			)
 		) ;
-		result.sort( function( a, b ) {
+		let sortFn = function( a, b ) {
 			var c = a.start - b.start ;
 			if( c == 0 ) {
 				c = a.end - b.end ;
 			}
 			return c ;
-		} ) ;
-
+		} ;
+		result.sort( sortFn ) ;
 
 		for( var j = 0; j < result.length; ++j ) {
 			let gene = result[j] ;
@@ -208,6 +209,7 @@ function GeneView(
 				&& elt.end >= region.start
 				&& elt.start <= region.end
 			).map( elt => Object.assign( elt, { level: gene.level } )) ;
+			exonData.sort( sortFn ) ;
 
 			result[j].exons = exonData ;
 			result[j].amino_acids = compute_amino_acid_sequence(
@@ -454,9 +456,9 @@ GeneView.prototype.draw = function(
 
 	let aa_sequence = transcripts.selectAll( 'g.aa' ) ;
 
-	let interpolator = 0 ;
-	if( baseWidth > 2 ) {
-		interpolator = Math.min( (baseWidth-2) / 5.0, 1.0 ) ;
+	let interpolator1 = 0 ;
+	if( baseWidth >= 0.5 ) {
+		interpolator1 = Math.min( (baseWidth-0.5) / 4.0, 1.0 ) ;
 	}
 	let interpolator2 = 0 ;
 	if( baseWidth > 8 ) {
@@ -477,14 +479,14 @@ GeneView.prototype.draw = function(
 		//.attr( 'fill', elt => `rgba( 128 + 80*${elt.oddeven}, 128 + 80*${elt.oddeven}, 128 + 80*${elt.oddeven}, ${interpolator} )` )
 		.attr( 'fill', function(elt) {
 			if( elt.aa == 'STOP' ) {
-				return `rgba( 148, 20, 3, ${interpolator} )` ;
+				return `rgba( 148, 20, 3, ${interpolator1} )` ;
 			} else if( elt.aa == "?" ) {
-				return `rgba( 188, 20, 180, ${interpolator} )` ;
+				return `rgba( 188, 20, 180, ${interpolator1} )` ;
 			} else if( elt.oddeven == 1 ) {
-				return `rgba( 108, 128, 128, ${interpolator} )` ;
+				return `rgba( 108, 128, 148, ${interpolator1} )` ;
 				//return `rgba( 118, 118, 20, ${interpolator} )` ;
 			} else {
-				return `rgb( 128, 128, 108, ${interpolator} )` ;
+				return `rgb( 128, 128, 108, ${interpolator1} )` ;
 				//return `rgba( 118, 20, 118, ${interpolator} )` ;
 			}
 		})
