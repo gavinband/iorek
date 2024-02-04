@@ -1,0 +1,39 @@
+seq1	me	mRNA	32	64	.	+	.	ID=gene1;comment=one_exon
+seq1	me	exon	32	64	.	+	.	ID=gene1.1;Parent=gene1
+seq1	me	CDS	32	64	.	+	.	ID=gene1.1;Parent=gene1
+
+seq1	me	mRNA	32	100	.	+	.	ID=gene2;comment=two_CDS
+seq1	me	exon	32	64	.	+	.	ID=gene2.1;Parent=gene2
+seq1	me	exon	80	96	.	+	.	ID=gene2.2;Parent=gene2
+seq1	me	CDS	47	64	.	+	.	ID=gene2.1;Parent=gene2
+seq1	me	CDS	80	94	.	+	.	ID=gene2.2;Parent=gene2
+
+seq1	me	mRNA	32	100	.	+	.	ID=gene3;comment=two_CDS
+seq1	me	exon	32	64	.	+	.	ID=gene3.1;Parent=gene3
+seq1	me	exon	80	96	.	+	.	ID=gene3.2;Parent=gene3
+seq1	me	CDS	48	64	.	+	.	ID=gene3.1;Parent=gene3
+seq1	me	CDS	80	94	.	+	.	ID=gene3.2;Parent=gene3
+
+seq1	me	mRNA	32	100	.	+	.	ID=gene4;comment=two_CDS
+seq1	me	exon	32	64	.	+	.	ID=gene4.1;Parent=gene4
+seq1	me	exon	80	96	.	+	.	ID=gene4.2;Parent=gene4
+seq1	me	CDS	49	64	.	+	.	ID=gene4.1;Parent=gene4
+seq1	me	CDS	80	94	.	+	.	ID=gene4.2;Parent=gene4
+
+seq1	me	mRNA	132	200	.	-	.	ID=gene_r2;comment=two_CDS
+seq1	me	exon	132	164	.	-	.	ID=gene_r2.1;Parent=gene_r2
+seq1	me	exon	180	196	.	-	.	ID=gene_r2.2;Parent=gene_r2
+seq1	me	CDS	149	164	.	-	.	ID=gene_r2.1;Parent=gene_r2
+seq1	me	CDS	180	196	.	-	.	ID=gene_r2.2;Parent=gene_r2
+
+seq1	me	mRNA	132	200	.	-	.	ID=gene_r3;comment=two_CDS
+seq1	me	exon	132	164	.	-	.	ID=gene_r3.1;Parent=gene_r3
+seq1	me	exon	180	196	.	-	.	ID=gene_r3.2;Parent=gene_r3
+seq1	me	CDS	149	164	.	-	.	ID=gene_r3.1;Parent=gene_r3
+seq1	me	CDS	180	195	.	-	.	ID=gene_r3.2;Parent=gene_r3
+
+seq1	me	mRNA	132	200	.	-	.	ID=gene_r4;comment=two_CDS
+seq1	me	exon	132	164	.	-	.	ID=gene_r4.1;Parent=gene_r4
+seq1	me	exon	180	196	.	-	.	ID=gene_r4.2;Parent=gene_r4
+seq1	me	CDS	149	164	.	-	.	ID=gene_r4.1;Parent=gene_r4
+seq1	me	CDS	180	194	.	-	.	ID=gene_r4.2;Parent=gene_r4

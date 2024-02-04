@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html>
+<head>
+	<meta charset="utf-8">
+	<title>Multiple sequence alignment viewer</title>
+	<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.3.0/d3.min.js"></script>
+	<script src="../../js/assert.js"></script>
+	<script src="../../js/GeneView.js"></script>
+	<script src="../../js/MSA.js"></script>
+	<script src="../../js/AlignmentTrackScale.js"></script>
+	<script src="../../js/MSAView.js"></script>
+	<script src="../../js/MSAController.js"></script>
+	<script src="../../js/run_msa_viewer.js"></script>
+	<link href="../../css/msa_viewer.css" rel="stylesheet" >
+</head>
+<body>
+	<section class="figure">
+		<svg class = "names" width=900 height=600></svg>
+		<svg class = "controls" width=900 height=200></svg>
+		<canvas class = "sequences" width=900 height=600></canvas>
+		<svg class = "genes" width=900 height=200></svg>
+	</section>
+</body>
+<script>
+	data = {
+  "alignment": [
+{ "name": "seq1", "sequence": "ACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGT" },
+{ "name": "seq2", "sequence": "512" },
+{ "name": "seq3", "sequence": "512" },
+{ "name": "seq4", "sequence": "512" },
+{ "name": "seq5", "sequence": "512" }
+],
+  "ranges": {
+"seq1": { "chromosome": "seq1", "start": 1, "end": 512 },
+"seq2": { "chromosome": "seq2", "start": 1, "end": 512 },
+"seq3": { "chromosome": "seq3", "start": 1, "end": 512 },
+"seq4": { "chromosome": "seq4", "start": 1, "end": 512 },
+"seq5": { "chromosome": "seq5", "start": 1, "end": 512 }
+},
+  "genes": [
+{ "ID": "gene1", "feature": "mRNA", "parent": "NA", "chromosome": "seq1", "start": 32, "end": 64, "strand": "+", "display": "gene1" },
+{ "ID": "gene1.1", "feature": "exon", "parent": "gene1", "chromosome": "seq1", "start": 32, "end": 64, "strand": "+", "display": "gene1.1" },
+{ "ID": "gene1.1", "feature": "CDS", "parent": "gene1", "chromosome": "seq1", "start": 32, "end": 64, "strand": "+", "display": "gene1.1" },
+{ "ID": "gene2", "feature": "mRNA", "parent": "NA", "chromosome": "seq1", "start": 32, "end": 100, "strand": "+", "display": "gene2" },
+{ "ID": "gene2.1", "feature": "exon", "parent": "gene2", "chromosome": "seq1", "start": 32, "end": 64, "strand": "+", "display": "gene2.1" },
+{ "ID": "gene2.2", "feature": "exon", "parent": "gene2", "chromosome": "seq1", "start": 80, "end": 96, "strand": "+", "display": "gene2.2" },
+{ "ID": "gene2.1", "feature": "CDS", "parent": "gene2", "chromosome": "seq1", "start": 47, "end": 64, "strand": "+", "display": "gene2.1" },
+{ "ID": "gene2.2", "feature": "CDS", "parent": "gene2", "chromosome": "seq1", "start": 80, "end": 94, "strand": "+", "display": "gene2.2" },
+{ "ID": "gene3", "feature": "mRNA", "parent": "NA", "chromosome": "seq1", "start": 32, "end": 100, "strand": "+", "display": "gene3" },
+{ "ID": "gene3.1", "feature": "exon", "parent": "gene3", "chromosome": "seq1", "start": 32, "end": 64, "strand": "+", "display": "gene3.1" },
+{ "ID": "gene3.2", "feature": "exon", "parent": "gene3", "chromosome": "seq1", "start": 80, "end": 96, "strand": "+", "display": "gene3.2" },
+{ "ID": "gene3.1", "feature": "CDS", "parent": "gene3", "chromosome": "seq1", "start": 48, "end": 64, "strand": "+", "display": "gene3.1" },
+{ "ID": "gene3.2", "feature": "CDS", "parent": "gene3", "chromosome": "seq1", "start": 80, "end": 94, "strand": "+", "display": "gene3.2" },
+{ "ID": "gene4", "feature": "mRNA", "parent": "NA", "chromosome": "seq1", "start": 32, "end": 100, "strand": "+", "display": "gene4" },
+{ "ID": "gene4.1", "feature": "exon", "parent": "gene4", "chromosome": "seq1", "start": 32, "end": 64, "strand": "+", "display": "gene4.1" },
+{ "ID": "gene4.2", "feature": "exon", "parent": "gene4", "chromosome": "seq1", "start": 80, "end": 96, "strand": "+", "display": "gene4.2" },
+{ "ID": "gene4.1", "feature": "CDS", "parent": "gene4", "chromosome": "seq1", "start": 49, "end": 64, "strand": "+", "display": "gene4.1" },
+{ "ID": "gene4.2", "feature": "CDS", "parent": "gene4", "chromosome": "seq1", "start": 80, "end": 94, "strand": "+", "display": "gene4.2" },
+{ "ID": "gene_r2", "feature": "mRNA", "parent": "NA", "chromosome": "seq1", "start": 132, "end": 200, "strand": "-", "display": "gene_r2" },
+{ "ID": "gene_r2.1", "feature": "exon", "parent": "gene_r2", "chromosome": "seq1", "start": 132, "end": 164, "strand": "-", "display": "gene_r2.1" },
+{ "ID": "gene_r2.2", "feature": "exon", "parent": "gene_r2", "chromosome": "seq1", "start": 180, "end": 196, "strand": "-", "display": "gene_r2.2" },
+{ "ID": "gene_r2.1", "feature": "CDS", "parent": "gene_r2", "chromosome": "seq1", "start": 149, "end": 164, "strand": "-", "display": "gene_r2.1" },
+{ "ID": "gene_r2.2", "feature": "CDS", "parent": "gene_r2", "chromosome": "seq1", "start": 180, "end": 196, "strand": "-", "display": "gene_r2.2" },
+{ "ID": "gene_r3", "feature": "mRNA", "parent": "NA", "chromosome": "seq1", "start": 132, "end": 200, "strand": "-", "display": "gene_r3" },
+{ "ID": "gene_r3.1", "feature": "exon", "parent": "gene_r3", "chromosome": "seq1", "start": 132, "end": 164, "strand": "-", "display": "gene_r3.1" },
+{ "ID": "gene_r3.2", "feature": "exon", "parent": "gene_r3", "chromosome": "seq1", "start": 180, "end": 196, "strand": "-", "display": "gene_r3.2" },
+{ "ID": "gene_r3.1", "feature": "CDS", "parent": "gene_r3", "chromosome": "seq1", "start": 149, "end": 164, "strand": "-", "display": "gene_r3.1" },
+{ "ID": "gene_r3.2", "feature": "CDS", "parent": "gene_r3", "chromosome": "seq1", "start": 180, "end": 195, "strand": "-", "display": "gene_r3.2" },
+{ "ID": "gene_r4", "feature": "mRNA", "parent": "NA", "chromosome": "seq1", "start": 132, "end": 200, "strand": "-", "display": "gene_r4" },
+{ "ID": "gene_r4.1", "feature": "exon", "parent": "gene_r4", "chromosome": "seq1", "start": 132, "end": 164, "strand": "-", "display": "gene_r4.1" },
+{ "ID": "gene_r4.2", "feature": "exon", "parent": "gene_r4", "chromosome": "seq1", "start": 180, "end": 196, "strand": "-", "display": "gene_r4.2" },
+{ "ID": "gene_r4.1", "feature": "CDS", "parent": "gene_r4", "chromosome": "seq1", "start": 149, "end": 164, "strand": "-", "display": "gene_r4.1" },
+{ "ID": "gene_r4.2", "feature": "CDS", "parent": "gene_r4", "chromosome": "seq1", "start": 180, "end": 194, "strand": "-", "display": "gene_r4.2" }
+],
+  "highlights": {},
+  "annotations": {}
+};
+run_msa_viewer( data ) ;
+</script>
+</html>
