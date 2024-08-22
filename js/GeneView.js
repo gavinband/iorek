@@ -41,7 +41,7 @@ let aa_table = {
 	'att': 'I', 'caa': 'Q', 'cac': 'H', 'cag': 'Q', 'cat': 'H',
 	'cca': 'P', 'ccc': 'P', 'ccg': 'P', 'cct': 'P', 'cga': 'R',
 	'cgc': 'R', 'cgg': 'R', 'cgt': 'R', 'cta': 'L', 'ctc': 'L',
-	'ctg': 'L', 'ctt': 'L', 'gaa': 'Q', 'gac': 'D', 'gag': 'Q',
+	'ctg': 'L', 'ctt': 'L', 'gaa': 'E', 'gac': 'D', 'gag': 'Q',
 	'gat': 'D', 'gca': 'A', 'gcc': 'A', 'gcg': 'A', 'gct': 'A',
 	'gga': 'G', 'ggc': 'G', 'ggg': 'G', 'ggt': 'G', 'gta': 'V',
 	'gtc': 'V', 'gtg': 'V', 'gtt': 'V', 'taa': 'STOP', 'tac': 'Y',
