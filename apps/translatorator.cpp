@@ -24,6 +24,11 @@
 namespace seqlib = SeqLib;
 // namespace bt = BamTools ;
 
+// Alignment
+#include "bindings/cpp/WFAligner.hpp"
+#include "ssw_cpp.h"
+
+//
 #include "appcontext/appcontext.hpp"
 #include "genfile/GenomePositionRange.hpp"
 #include "genfile/string_utils/string_utils.hpp"
@@ -52,7 +57,7 @@ public:
 		options.set_help_option( "-help" ) ;
 		
 		options.declare_group( "Input / output file options" ) ;
-		options[ "-reads" ]
+		options[ "-sequences" ]
 			.set_description( "Path of bam/cram files to operate on.  Note that this program expects to see "
 			"long DNA sequences that cover the full translated length of the target protain" )
 			.set_takes_values_until_next_option()
@@ -68,7 +73,7 @@ public:
 			.set_description(
 				"Ignore reads that don't overlap the this range of positions (in the form <chromosome>:<position>, or <chromosome>:<start>-<end>). "
 				"(Note " + globals::program_name + " uses 1-based coordinates with closed intervals.)"
-				" This option implies using an indexed BAM, SAM or CEAM file." )
+				" This option implies using an indexed BAM, SAM or CRAM file as input to -sequences." )
 			.set_takes_values_until_next_option()
 			.set_minimum_multiplicity( 0 )
 			.set_maximum_multiplicity( 1000 )
@@ -78,9 +83,6 @@ public:
 			.set_description( "Specify reference sequence (mandatory when using CRAM files)" )
 			.set_takes_single_value() ;
 		
-		options[ "-output-read-ids" ]
-			.set_description( "Output the read IDs as well as the counts." ) ;
-
 		options.declare_group( "Coding sequence options" ) ;
 		options[ "-cds-kmers" ]
 			.set_description(
@@ -90,6 +92,27 @@ public:
 			.set_takes_values_until_next_option()
 			.set_minimum_multiplicity(1)
 			.set_minimum_multiplicity(1000) ;
+
+		options.declare_group( "Algorithm options" ) ;
+		options[ "-cluster" ]
+			.set_description( "Output corrected DNA and amino acid sequences, by clustering sequences"
+			" and finding the highest-scoring alignments." )
+		;
+		options[ "-min-obs-per-sample" ]
+			.set_description( "The minimum number of times a sequence must be observed in one sample, "
+			" before it is treated as a candidate for clustering." )
+			.set_takes_single_value()
+			.set_default_value( 5 )
+		;
+		options[ "-min-obs-samples" ]
+			.set_description( "The minimum number of samples a sequence must be observed in,"
+			" before it is treated as a candidate for clustering." )
+			.set_takes_single_value()
+			.set_default_value( 1 )
+		;
+		options.option_implies_option( "-min-obs-per-sample", "-cluster" ) ;
+		options.option_implies_option( "-min-obs-samples", "-cluster" ) ;
+
 	}
 } ;
 
@@ -458,6 +481,76 @@ private:
 	typedef std::vector< genfile::GenomePositionRange > Regions ;
 	typedef std::vector< impl::Match > SequencesToReads ;
 	typedef impl::KmerPair KmerPair ;
+	struct AlignmentDetail {
+		std::string a ;
+		std::string b ;
+		int score ;
+		std::string cigar ;
+		std::string aligned_a ;
+		std::string aligned_b ;
+
+		AlignmentDetail() {}
+
+		AlignmentDetail(
+			std::string const& _a,
+			std::string const& _b,
+			int _score,
+			std::string const& _cigar
+		):
+			a( _a ),
+			b( _b ),
+			score( _score ),
+			cigar( run_length_encode(_cigar) )
+		{
+			aligned_a.reserve( a.size() + 25 ) ;
+			aligned_b.reserve( a.size() + 25 ) ;
+			std::size_t sa = 0, sb = 0 ;
+			for( std::size_t i = 0; i < _cigar.size(); ++i ) {
+				switch( _cigar[i] ) {
+					case 'M':
+					case '=':
+					case 'X':
+						aligned_a.push_back( a[sa++] ) ;
+						aligned_b.push_back( b[sb++] ) ;
+						break ;
+					case 'D':
+						aligned_a.push_back( '-' ) ;
+						aligned_b.push_back( b[sb++] ) ;
+						break ;
+					case 'I':
+						aligned_a.push_back( a[sa++] ) ;
+						aligned_b.push_back( '-' ) ;
+						break ;
+				}
+				assert( sa <= a.size() ) ;
+				assert( sb <= b.size() ) ;
+			}
+		}
+		private:
+
+		std::string run_length_encode( std::string const& cigar ) {
+			std::string result ;
+			if( cigar.size() == 0 ) {
+				return cigar ;
+			}
+			char op = cigar[0] ;
+			std::size_t i = 0 ;
+			std::size_t count = 1 ;
+			using genfile::string_utils::to_string ;
+			for( i = 0; i < cigar.size(); ++i ) {
+				if( cigar[i] == op ) {
+					++count ;
+				} else {
+					result += to_string( count ) + op ;
+					op = cigar[i] ;
+					count = 1 ;
+				}
+			}
+			result += to_string( count ) + op ;
+			return result ;
+		}
+	} ;
+	
 
 	void unsafe_process() {
 		std::vector< std::string > kmers = options().get_values< std::string >( "-cds-kmers" ) ;
@@ -477,12 +570,97 @@ private:
 		}
 
 		SequencesToReads result ;
-		std::vector< std::string > filenames = options().get_values< std::string >( "-reads" ) ;
+		std::vector< std::string > filenames = options().get_values< std::string >( "-sequences" ) ;
 		load_dna_sequences(
 			filenames,
 			kmer_pairs,
 			&result
 		) ;
+
+		std::vector< std::string > representatives ;
+		typedef std::unordered_map< std::string, AlignmentDetail > BestAlignments ;
+		BestAlignments aligned ;
+
+		bool const use_clustering = options().check( "-cluster" ) ;
+		if( use_clustering ) {
+			std::size_t const min_obs_per_sample = options().get_value< std::size_t >( "-min-obs-per-sample" ) ;
+			std::size_t const min_obs_samples = options().get_value< std::size_t >( "-min-obs-samples" ) ;
+
+			// clustering
+			// First, we group everything by sequence:
+			std::map< std::string, std::vector< impl::Match > > by_sequence ;
+			for( auto s: result ) {
+				if( s.strand() == impl::Match::eFwdStrand || s.strand() == impl::Match::eRevStrand ) {
+					by_sequence[s.sequence()].push_back( s ) ;
+				}
+			}
+
+			// Now generate candidate sequences for alignment
+			// taken as anything seen at least n times:
+			for( auto kv: by_sequence ) {
+				// Figure out if this sequence has been seen enough to be a candidate
+				// for clustering
+				std::unordered_map< std::string, std::size_t > sample_counts ;
+				std::size_t number_above_threshold = 0 ;
+				for( auto const& s: kv.second ) {
+					std::size_t& n = sample_counts[ s.name() ] ;
+					++n ;
+					// if n is now at the threshold, we've just found that this sample
+					// has enough.
+					if( n == min_obs_per_sample ) {
+						++number_above_threshold ;
+						if( number_above_threshold >= min_obs_samples ) {
+							break ;
+						}
+					}
+				}
+				bool sequence_is_candidate = number_above_threshold >= min_obs_samples ;
+				if( sequence_is_candidate ) {
+					representatives.push_back( kv.first ) ;
+				}
+			}
+			std::cerr << "++ There are " << representatives.size() << " representative sequences.\n" ;
+
+			ui().logger() << "++ Aligning...\n" ;
+			// map from sequences to score / cigar
+			{
+				// re-alignment
+				// These costs are from pbmm2 defaults https://github.com/PacificBiosciences/pbmm2:
+				// - "CCS" or "HIFI" --mismatch-score 1 --mismatch-penalty 4 --gap-open-1 6 --gap-extend-1 2 --gap-open-2 26 --gap-extend-2 1
+	//			wfa::WFAlignerGapAffine aligner(
+				wfa::WFAlignerGapAffine2Pieces aligner(
+					-1, // match
+					4, 	// mismatch
+					6, 	// gap1 open
+					2,	// gap1 extend
+					26, // gap2 open
+					1,	// gap2 extend
+					wfa::WFAligner::Alignment,
+					wfa::WFAligner::MemoryHigh
+				) ;
+				for( auto& kv: by_sequence ) {
+					for( std::size_t i = 0; i < representatives.size(); ++i ) {
+						std::string const& r = representatives[i] ;
+						std::string sequence = kv.first ;
+						std::string reference = r ;
+
+						auto status = aligner.alignEnd2End( reference, sequence ) ;
+						assert( status == WF_STATUS_SUCCESSFUL ) ;
+						int score = aligner.getAlignmentScore() ;
+
+						BestAlignments::iterator where = aligned.find( kv.first ) ;
+						if( where == aligned.end() || score > where->second.score ) {
+							aligned[ kv.first ] = AlignmentDetail(
+								sequence,
+								reference,
+								score,
+								aligner.getAlignmentCigar()
+							) ;
+						}
+					}
+				}
+			}
+		}
 
 		using genfile::string_utils::to_string ;
 		statfile::BuiltInTypeStatSink::UniquePtr
@@ -497,32 +675,65 @@ private:
 			for( std::size_t i = 0; i < kmer_pairs.size(); ++i ) {
 				(*output) | ("start_" + to_string(i+1)) | ("end_" + to_string(i+1)) ;
 			}
+			if( options().check( "-cluster" )) {
+				(*output) | "best_alignment_score" | "alignment_cigar" | "corrected_dna_sequence" ;
+			}
 			(*output) | "aa_sequence" ;
 		}
+		AlignmentDetail const* alignment ;
 		for( auto s: result ) {
+#if DEBUG > 1
 			std::cerr << "kmer pairs size: " << kmer_pairs.size() << ".\n" ;
 			std::cerr << s << "\n" ;
+#endif
 			(*output)
 				<< s.name()
 				<< s.sequence_name()
 				<< std::string( 1, s.strand() ) ;
+
 			if( s.strand() == impl::Match::eFwdStrand || s.strand() == impl::Match::eRevStrand ) {
-				(*output) << s.sequence() ;
+				BestAlignments::const_iterator where = aligned.find( s.sequence() ) ;
+				if( use_clustering && where != aligned.end() ) {
+					(*output) << where->second.aligned_a ;
+				} else {
+					(*output) << s.sequence() ;
+				}
 				for( std::size_t i = 0; i < kmer_pairs.size(); ++i ) {
 					(*output)
 						<< uint64_t(s.positions()[i].first + 1)
 						<< uint64_t(s.positions()[i].second) ;
 				}
-				(*output) << genfile::translate( s.sequence() ) ;
+				if( use_clustering ) {
+					if( where != aligned.end() ) {
+						(*output)
+							<< where->second.score
+							<< where->second.cigar
+							<< where->second.aligned_b
+							<< genfile::translate( where->second.b ) ;
+					} else {
+						(*output)
+							<< "NA"
+							<< "NA"
+							<< "NA"
+							<< "NA" ;
+					}
+				} else {
+					(*output) << genfile::translate( s.sequence() ) ;
+				}
 			} else {
-				for( std::size_t i = 0; i < (kmer_pairs.size()*2) + 2; ++i ) {
+				while( output->current_column() < output->number_of_columns() ) {
 					(*output) << "NA" ;
 				}
 			}
+
 			(*output) << statfile::end_row() ;
 		}
+
+
 	}
 	
+
+
 	Regions get_regions( std::vector< std::string > const& specs ) const {
 		Regions result ;
 		for( auto spec: specs ) {
