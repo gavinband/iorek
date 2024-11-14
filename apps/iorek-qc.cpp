@@ -328,8 +328,7 @@ namespace {
 	public:
 		SSWAdapterAligner():
 			// porechop defaults are: match = 3, mismatch = -6, gap open = -5, gap extend = -2
-			// we use the same scheme but WFA requires non-positive scores, and is most efficient
-			// for match = 0, so:
+			// we use the same scheme but SSW requires non-positive scores, so:
 			m_ssw(
 				3,  // match
 				6,  // mismatch
@@ -382,7 +381,7 @@ namespace {
 			std::size_t alignment_length = 0 ;
 
 			// We compute the identity as the number of matches divided by the total alignment length.
-			// The default expectation is not to have clipping, so we count clipped bases as part of the alignment length.
+			// The expectation is not to have clipping, so we count clipped bases as part of the alignment length.
 			//
 			// Example alignment:
 			//
@@ -392,7 +391,8 @@ namespace {
 
 			// The CIGAR is run length encoded in practice, i.e.: 2S2=1X2=1D2=1I2=2S
 			// Here:
-			// alignment length = total sum of clipped, inserted, matched, mismatch
+			// match length = total sum of '=' bases (8)
+			// alignment length = total sum of clipped, inserted, matched, mismatched, deleted bases (15)
 			//
 
 			for( std::size_t i = 0; i < cigar.size(); ++i ) {
