@@ -94,34 +94,6 @@ public:
 } ;
 
 namespace impl {
-	struct KmerPair {
-		KmerPair() {}
-
-		KmerPair( KmerPair const& other ):
-			m_start( other.m_start ),
-			m_end( other.m_end )
-		{}
-
-		KmerPair( std::string const& a, std::string const& b ):
-			m_start(a),
-			m_end(b)
-		{}
-
-		KmerPair& operator=( KmerPair const& pair ) {
-			m_start = pair.m_start ;
-			m_end = pair.m_end ;
-			return *this ;
-		}
-
-		std::string const& first() const { return m_start ; }
-		std::string const& second() const { return m_end ; }
-
-		private:
-
-		std::string m_start ;
-		std::string m_end ;
-	} ;
-
 	struct SequenceProvider: public boost::noncopyable {
 		typedef std::unique_ptr< SequenceProvider > UniquePtr ;
 		static UniquePtr open( std::string const& filename ) ;
@@ -275,11 +247,102 @@ namespace impl {
 		return result ;
 	}
 
-	boost::optional< std::string > load_fragmented_dna_sequence(
+	struct KmerPair {
+		KmerPair() {}
+
+		KmerPair( KmerPair const& other ):
+			m_start( other.m_start ),
+			m_end( other.m_end )
+		{}
+
+		KmerPair( std::string const& a, std::string const& b ):
+			m_start(a),
+			m_end(b)
+		{}
+
+		KmerPair& operator=( KmerPair const& pair ) {
+			m_start = pair.m_start ;
+			m_end = pair.m_end ;
+			return *this ;
+		}
+
+		std::string const& first() const { return m_start ; }
+		std::string const& second() const { return m_end ; }
+
+		private:
+
+		std::string m_start ;
+		std::string m_end ;
+	} ;
+
+	struct Match {
+		public:
+			enum Strand { eAmbiguousStrand = '?', eFwdStrand = '+', eRevStrand = '-', eNeitherStrand = '.' } ;
+			typedef std::vector< std::pair< std::size_t, std::size_t > > MatchRanges ;
+
+			Match() {}
+
+			Match(
+				std::string const& name,
+				std::string const& sequence_name,
+				Strand const strand,
+				std::string const& sequence,
+				std::vector< std::pair< std::size_t, std::size_t > > positions
+			):
+				m_name( name ),
+				m_sequence_name( sequence_name ),
+				m_strand( strand ),
+				m_sequence( sequence ),
+				m_positions( positions )
+			{}
+
+			Match( Match const& other ):
+				m_name( other.m_name ),
+				m_sequence_name( other.m_sequence_name ),
+				m_strand( other.m_strand ),
+				m_sequence( other.m_sequence ),
+				m_positions( other.m_positions )
+			{}
+
+			std::string const& name() const { return m_name ; }
+			std::string const& sequence_name() const { return m_sequence_name ; }
+			Strand const strand() const { return m_strand ; }
+			std::string const& sequence() const { return m_sequence ; }
+			MatchRanges const& positions() const { return m_positions ; }
+
+		private:
+			std::string m_name ;
+			std::string m_sequence_name ;
+			Strand m_strand ;
+			std::string m_sequence ;
+			MatchRanges m_positions ;
+	} ;
+
+	std::ostream& operator<<( std::ostream& out, Match const& match ) {
+		out
+		<< "M[ "
+		<< "\"" << match.name() << "\" "
+		<< "\"" << match.sequence_name() << "\" "
+		<< std::string( 1, match.strand()) << " "
+		;
+		for( std::size_t i = 0; i < match.positions().size(); ++i ) {
+			out
+				<< ((i>0) ? "," : "")
+				<< match.positions()[i].first
+				<< "-"
+				<< match.positions()[i].second
+			;
+		}
+		out << " ]" ;
+		return out ;
+	}
+
+	bool load_fragmented_dna_sequence(
 		std::string const& sequence,
-		std::vector< KmerPair > const& kmer_pairs
+		std::vector< KmerPair > const& kmer_pairs,
+		std::string* result = 0,
+		std::vector< std::pair< std::size_t, std::size_t > >* ranges = 0
 	) {
-		boost::optional< std::string > result ;
 		std::string result_sequence ;
 		std::vector< std::pair< std::size_t, std::size_t > > positions ;
 		for( std::size_t i = 0; i < kmer_pairs.size(); ++i ) {
@@ -296,10 +359,10 @@ namespace impl {
 			std::cerr << a << "(" << la << "), " << b << "(" << lb << ").\n" ;
 #endif
 			if( a == -1 || sequence.find( kmer_pairs[i].first(), a+1 ) != -1 ) {
-				return result ;
+				return false ;
 			};
 			if( b == -1 || sequence.find( kmer_pairs[i].second(), b+1 ) != -1 ) {
-				return result ;
+				return false ;
 			};
 #if DEBUG > 1
 			std::cerr << "OK\n" ;
@@ -310,44 +373,57 @@ namespace impl {
 				( b < (a+la))
 				|| ((i>0) && a < ( positions[i-1].second ))
 			) {
-				return result ;
+				return false ;
 			} else {
 				result_sequence += sequence.substr( a, b+lb-a ) ;
 				positions.push_back( std::make_pair( a, b+lb ) ) ;
 			}
 		}
-		result = result_sequence ;
+		if( result ) {
+			*result = result_sequence ;
+		}
+		if( ranges ) {
+			*ranges = positions ;
+		}
+
 #if DEBUG > 1
 			std::cerr << "RESULT: \"" << result_sequence << "\".\n" ;
 #endif
-		return result ;
+		return true ;
 	}
 
 	void test_load_fragmented_dna_sequence() {
 		std::string sequence = "ACGTAACCGGTTAAACCCGGGTTTAAAACCCCGGGGTTTT" ;
 		std::vector< KmerPair > pairs ;
+		std::string result ;
+		std::vector< std::pair< std::size_t, std::size_t > > positions ;
 		pairs.push_back( KmerPair( "CGTA", "GTTA" )) ;
-		assert( !load_fragmented_dna_sequence( "", pairs ) ) ;
-		assert( !load_fragmented_dna_sequence( "CGTA", pairs ) ) ;
-		assert( load_fragmented_dna_sequence( "CGTAGTTA", pairs ) ) ;
-		assert( load_fragmented_dna_sequence( "CGTAGTTA", pairs )->size() == 8 ) ;
-		assert( load_fragmented_dna_sequence( "CGTAGTTAAAAA", pairs ) ) ;
-		assert( load_fragmented_dna_sequence( "CGTAGTTAAAAA", pairs )->size() == 8 ) ;
-		assert( load_fragmented_dna_sequence( "CGTAGCGCGCGCGGTTA", pairs ) ) ;
-		assert( load_fragmented_dna_sequence( "CGTAGCGCGCGCGGTTA", pairs )->size() == 17 ) ;
-		assert( load_fragmented_dna_sequence( "CGTAGCGCGCGCGGTTAAAAA", pairs ) ) ;
-		assert( load_fragmented_dna_sequence( "CGTAGCGCGCGCGGTTAAAAA", pairs )->size() == 17 ) ;
-		assert( !load_fragmented_dna_sequence( "CGTACGTAGTTA", pairs ) ) ;
-		assert( !load_fragmented_dna_sequence( "CGTAGTTAGTTA", pairs ) ) ;
-		assert( !load_fragmented_dna_sequence( "GTTACGTA", pairs ) ) ;
+		assert( !load_fragmented_dna_sequence( "", pairs, &result, &positions ) ) ;
+		assert( !load_fragmented_dna_sequence( "CGTA", pairs, &result, &positions ) ) ;
+		assert( load_fragmented_dna_sequence( "CGTAGTTA", pairs, &result, &positions ) ) ;
+		assert( result.size() == 8 ) ;
+		assert( positions.size() == 1 ) ;
+		assert( load_fragmented_dna_sequence( "CGTAGTTAAAAA", pairs, &result, &positions ) ) ;
+		assert( result.size() == 8 ) ;
+		assert( positions.size() == 1 ) ;
+		assert( load_fragmented_dna_sequence( "CGTAGCGCGCGCGGTTA", pairs, &result, &positions ) ) ;
+		assert( result.size() == 17 ) ;
+		assert( positions.size() == 1 ) ;
+		assert( load_fragmented_dna_sequence( "CGTAGCGCGCGCGGTTAAAAA", pairs, &result, &positions ) ) ;
+		assert( result.size() == 17 ) ;
+		assert( positions.size() == 1 ) ;
+		assert( !load_fragmented_dna_sequence( "CGTACGTAGTTA", pairs, &result, &positions ) ) ;
+		assert( !load_fragmented_dna_sequence( "CGTAGTTAGTTA", pairs, &result, &positions ) ) ;
+		assert( !load_fragmented_dna_sequence( "GTTACGTA", pairs, &result, &positions ) ) ;
 
 		pairs.push_back( KmerPair( "GGTA", "GCTA" )) ;
-		assert( !load_fragmented_dna_sequence( "CGTANGTTA", pairs ) ) ;
-		assert( !load_fragmented_dna_sequence( "CGTANGTTANGGTA", pairs ) ) ;
-		assert( load_fragmented_dna_sequence( "CGTANGTTANGGTANGCTA", pairs ) ) ;
-		assert( load_fragmented_dna_sequence( "CGTANGTTANGGTANGCTA", pairs )->size() == 9+9 ) ;
-		assert( !load_fragmented_dna_sequence( "CGTAGGTAGTTAGCTA", pairs ) ) ;
-		assert( !load_fragmented_dna_sequence( "CGTAGCTAGTTAGGTA", pairs ) ) ;
+		assert( !load_fragmented_dna_sequence( "CGTANGTTA", pairs, &result, &positions ) ) ;
+		assert( !load_fragmented_dna_sequence( "CGTANGTTANGGTA", pairs, &result, &positions ) ) ;
+		assert( load_fragmented_dna_sequence( "CGTANGTTANGGTANGCTA", pairs, &result, &positions ) ) ;
+		assert( result.size() == 18 ) ;
+		assert( positions.size() == 2 ) ;
+		assert( !load_fragmented_dna_sequence( "CGTAGGTAGTTAGCTA", pairs, &result, &positions ) ) ;
+		assert( !load_fragmented_dna_sequence( "CGTAGCTAGTTAGGTA", pairs, &result, &positions ) ) ;
 	}
 }
 
@@ -380,7 +456,7 @@ private:
 	
 	typedef genfile::GenomePositionRange Region ;
 	typedef std::vector< genfile::GenomePositionRange > Regions ;
-	typedef std::map< std::string, std::vector< std::string > > SequencesToReads ;
+	typedef std::vector< impl::Match > SequencesToReads ;
 	typedef impl::KmerPair KmerPair ;
 
 	void unsafe_process() {
@@ -400,46 +476,50 @@ private:
 			kmer_pairs.push_back( impl::KmerPair( kmers[i], kmers[i+1] )) ;
 		}
 
-		SequencesToReads dna_sequences ;
+		SequencesToReads result ;
 		std::vector< std::string > filenames = options().get_values< std::string >( "-reads" ) ;
 		load_dna_sequences(
 			filenames,
 			kmer_pairs,
-			&dna_sequences
+			&result
 		) ;
 
-		SequencesToReads aa_sequences ;
-
-		for( auto kv: dna_sequences ) {
-			std::cerr << kv.first << ":" ;
-			for( auto read_id: kv.second ) {
-				std::cerr << " \"" << read_id << "\"" ;
-			}
-			std::cerr << ".\n" ;
-			std::string const aa_sequence = (
-				((kv.first == "no_match") || (kv.first == "ambiguous_strand")) ? kv.first : genfile::translate( kv.first )
-			) ;
-			aa_sequences[aa_sequence].insert( aa_sequences[aa_sequence].end(), kv.second.begin(), kv.second.end() ) ;
-		}
-
+		using genfile::string_utils::to_string ;
 		statfile::BuiltInTypeStatSink::UniquePtr
 			output = statfile::BuiltInTypeStatSink::open( options().get< std::string >( "-o" ) ) ;
-		if( options().check( "-output-read-ids" )) {
-			(*output) | "type" | "number_of_reads" | "sequence" | "read_ids" ;
-			for( auto kv: dna_sequences ) {
-				(*output) << "DNA" << kv.first << genfile::string_utils::join( kv.second, "," )  << uint64_t(kv.second.size()) << statfile::end_row() ;
+		{
+			output->write_comment( "Written by translatorator" ) ;
+			output->write_comment( "Kmer pairs are:" ) ;
+			for( std::size_t i = 0; i < kmer_pairs.size(); ++i ) {
+				output->write_comment( to_string(i+1) + ": " + kmer_pairs[i].first() + " / " + kmer_pairs[i].second() ) ;
 			}
-			for( auto kv: aa_sequences ) {
-				(*output) << "AA" << kv.first << genfile::string_utils::join( kv.second, "," ) << uint64_t(kv.second.size()) << statfile::end_row() ;
+			(*output) | "file" | "read_id" | "strand" | "dna_sequence" ;
+			for( std::size_t i = 0; i < kmer_pairs.size(); ++i ) {
+				(*output) | ("start_" + to_string(i+1)) | ("end_" + to_string(i+1)) ;
 			}
-		} else {
-			(*output) | "type" | "number_of_reads" | "sequence" ;
-			for( auto kv: dna_sequences ) {
-				(*output) << "DNA" << uint64_t(kv.second.size()) << kv.first << statfile::end_row() ;
+			(*output) | "aa_sequence" ;
+		}
+		for( auto s: result ) {
+			std::cerr << "kmer pairs size: " << kmer_pairs.size() << ".\n" ;
+			std::cerr << s << "\n" ;
+			(*output)
+				<< s.name()
+				<< s.sequence_name()
+				<< std::string( 1, s.strand() ) ;
+			if( s.strand() == impl::Match::eFwdStrand || s.strand() == impl::Match::eRevStrand ) {
+				(*output) << s.sequence() ;
+				for( std::size_t i = 0; i < kmer_pairs.size(); ++i ) {
+					(*output)
+						<< uint64_t(s.positions()[i].first + 1)
+						<< uint64_t(s.positions()[i].second) ;
+				}
+				(*output) << genfile::translate( s.sequence() ) ;
+			} else {
+				for( std::size_t i = 0; i < (kmer_pairs.size()*2) + 2; ++i ) {
+					(*output) << "NA" ;
+				}
 			}
-			for( auto kv: aa_sequences ) {
-				(*output) << "AA" << uint64_t(kv.second.size()) << kv.first << statfile::end_row() ;
-			}
+			(*output) << statfile::end_row() ;
 		}
 	}
 	
@@ -506,30 +586,57 @@ private:
 		SequencesToReads* result
 	) const {
 		try {
-			load_dna_sequences_unsafe( sequences, kmer_pairs, result ) ;
+			load_dna_sequences_unsafe( name, sequences, kmer_pairs, result ) ;
 		} catch( std::exception const& e ) {
 			ui().logger() << "!! Error processing \"" << name << "\", there will be no results for this file.\n" ;
 		}
 	}
 
 	void load_dna_sequences_unsafe(
+		std::string const& name,
 		impl::SequenceProvider& sequences,
 		std::vector< impl::KmerPair > const& kmer_pairs,
 		SequencesToReads* result
 	) const {
-		std::string name ;
+		std::string sequence_name ;
 		std::string sequence ;
-		while( sequences.next( &name, &sequence )) {
-			boost::optional< std::string > fwd_sequence = load_fragmented_dna_sequence( sequence, kmer_pairs ) ;
-			boost::optional< std::string > rc_sequence = load_fragmented_dna_sequence( genfile::reverse_complement( sequence ), kmer_pairs ) ;
-			if( fwd_sequence && ! rc_sequence ) {
-				(*result)[ *fwd_sequence ].push_back( name ) ;
-			} else if( rc_sequence && ! fwd_sequence ) {
-				(*result)[ *rc_sequence ].push_back( name ) ;
-			} else if( fwd_sequence && rc_sequence ) {
-				(*result)[ "ambiguous_strand" ].push_back( name ) ;
-			} else {
-				(*result)[ "no_match" ].push_back( name ) ;
+		std::string fwd_sequence, rc_sequence ;
+		impl::Match::MatchRanges fwd_positions, rc_positions ;
+		while( sequences.next( &sequence_name, &sequence )) {
+			bool fwd = load_fragmented_dna_sequence( sequence, kmer_pairs, &fwd_sequence, &fwd_positions ) ;
+			bool rev = load_fragmented_dna_sequence( genfile::reverse_complement( sequence ), kmer_pairs, &rc_sequence, &rc_positions ) ;
+			if( fwd ) {
+				result->push_back(
+					impl::Match(
+						name,
+						sequence_name,
+						impl::Match::eFwdStrand,
+						fwd_sequence,
+						fwd_positions
+					)
+				) ;
+			}
+			if( rev ) {
+				result->push_back(
+					impl::Match(
+						name,
+						sequence_name,
+						impl::Match::eRevStrand,
+						rc_sequence,
+						rc_positions
+					)
+				) ;
+			}
+			if( !fwd && !rev ) {
+				result->push_back(
+					impl::Match(
+						name,
+						sequence_name,
+						impl::Match::eNeitherStrand,
+						"",
+						impl::Match::MatchRanges()
+					)
+				) ;
 			}
 		}
 	}
