@@ -26,6 +26,8 @@ namespace genfile {
 	CompressionType get_compression_type_indicated_by_filename( std::string const& filename ) ;
 	Chromosome get_chromosome_indicated_by_filename( std::string const& filename ) ;
 
+	// return a pair of the file type (based on file extension) and filename.
+	// empty filetype means it can't be guessed.
 	std::pair< std::string, std::string > uniformise( std::string filename ) ;
 
 	std::string get_gen_file_extension_if_present( std::string const& filename ) ;

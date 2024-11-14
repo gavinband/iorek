@@ -180,6 +180,11 @@ namespace genfile {
 		types[ ".vcf" ]     = types[ ".vcf.gz" ] 		= "vcf" ;
 		types[ ".dosage" ]  = types[ ".dosage.gz" ] 	= "dosage" ;
 		types[ ".bed" ]  								= "binary_ped" ;
+		types[ ".fa" ]      = types[ ".fa.gz" ]			= "fasta" ;
+		types[ ".fasta" ]   = types[ ".fasta.gz" ]		= "fasta" ;
+		types[ ".bam" ]                                 = "bam" ;
+		types[ ".sam" ]     = types[ ".sam.gz" ]        = "sam" ;
+		types[ ".cram" ]                                = "cram" ;
 
 		for(
 			std::map< std::string, std::string >::const_iterator i = types.begin();

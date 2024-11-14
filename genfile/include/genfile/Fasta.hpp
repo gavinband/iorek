@@ -102,8 +102,8 @@ namespace genfile {
 	public:
 		Fasta() {}
 
-		void add_sequences_from_file( std::string const& fasta_filename, ProgressCallback ) ;
-		void add_sequences_from_files( std::vector< std::string > const& fasta_filenames, ProgressCallback ) ;
+		void add_sequences_from_file( std::string const& fasta_filename, ProgressCallback = ProgressCallback() ) ;
+		void add_sequences_from_files( std::vector< std::string > const& fasta_filenames, ProgressCallback = ProgressCallback() ) ;
 		void add_sequence( std::string const& name, std::string const& sequence ) ;
 
 		std::size_t number_of_sequences() const { return m_data.size() ; }
