@@ -759,7 +759,7 @@ private:
 		auto progress_context = ui().get_progress_context( "Processing reads" ) ;
 		std::vector< std::string > const& names = get_names_from_filenames(filenames) ;
 		for( std::size_t i = 0; i < filenames.size(); ++i ) {
-			if( options().check( " " )) {
+			if( options().check( "-range" )) {
 				Regions regions = get_regions( options().get_values< std::string >( "-range" ) ) ;
 				// Only bam/sam/cram files are supported if -range is given
 				impl::BamSequenceProvider::UniquePtr sequences ;

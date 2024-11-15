@@ -42,8 +42,12 @@ namespace {
 namespace genfile {
 	std::string translate( std::string const& sequence ) {
 		std::size_t const length = sequence.size() ;
+		if( length % 3 != 0 ) {
+			return "?" ;
+		}
 		std::string result( length/3, '-' ) ;
-		for( std::size_t i = 0; i < length; i += 3 ) {
+		std::size_t i = 0 ;
+		for( ; i < length; i += 3 ) {
 			std::string const& codon = genfile::string_utils::to_lower( sequence.substr( i, 3 )) ;
 			AATable::const_iterator where = aa_table.find( codon ) ;
 #if DEBUG
