@@ -104,6 +104,12 @@ public:
 			.set_takes_single_value()
 			.set_default_value( 5 )
 		;
+		options[ "-min-fraction-per-sample" ]
+			.set_description( "The minimum fraction of sequences must be observed in one sample, "
+			" before it is treated as a candidate for clustering." )
+			.set_takes_single_value()
+			.set_default_value( 0.01 )
+		;
 		options[ "-min-obs-samples" ]
 			.set_description( "The minimum number of samples a sequence must be observed in,"
 			" before it is treated as a candidate for clustering." )
@@ -112,6 +118,7 @@ public:
 		;
 		options.option_implies_option( "-min-obs-per-sample", "-cluster" ) ;
 		options.option_implies_option( "-min-obs-samples", "-cluster" ) ;
+		options.option_implies_option( "-min-fraction-per-sample", "-cluster" ) ;
 
 	}
 } ;
@@ -577,6 +584,7 @@ private:
 			&result
 		) ;
 
+		ui().logger() << "++ There were " << result.size() << " total sequences.\n" ;
 		std::vector< std::string > representatives ;
 		typedef std::unordered_map< std::string, AlignmentDetail > BestAlignments ;
 		BestAlignments aligned ;
@@ -584,14 +592,17 @@ private:
 		bool const use_clustering = options().check( "-cluster" ) ;
 		if( use_clustering ) {
 			std::size_t const min_obs_per_sample = options().get_value< std::size_t >( "-min-obs-per-sample" ) ;
+			double const min_fraction_per_sample = options().get_value< double >( "-min-fraction-per-sample" ) ;
 			std::size_t const min_obs_samples = options().get_value< std::size_t >( "-min-obs-samples" ) ;
 
 			// clustering
 			// First, we group everything by sequence:
 			std::map< std::string, std::vector< impl::Match > > by_sequence ;
+			std::unordered_map< std::string, std::size_t > total_read_counts ;
 			for( auto s: result ) {
 				if( s.strand() == impl::Match::eFwdStrand || s.strand() == impl::Match::eRevStrand ) {
 					by_sequence[s.sequence()].push_back( s ) ;
+					++total_read_counts[s.name()] ;
 				}
 			}
 
@@ -607,14 +618,14 @@ private:
 					++n ;
 					// if n is now at the threshold, we've just found that this sample
 					// has enough.
-					if( n == min_obs_per_sample ) {
+					if( n == std::max( min_obs_per_sample, std::size_t(std::ceil( min_fraction_per_sample * total_read_counts[s.name()] )))) {
 						++number_above_threshold ;
 						if( number_above_threshold >= min_obs_samples ) {
 							break ;
 						}
 					}
 				}
-				bool sequence_is_candidate = number_above_threshold >= min_obs_samples ;
+				bool sequence_is_candidate = (number_above_threshold >= min_obs_samples) ;
 				if( sequence_is_candidate ) {
 					representatives.push_back( kv.first ) ;
 				}
