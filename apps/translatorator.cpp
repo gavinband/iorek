@@ -617,7 +617,8 @@ private:
 			bool const only_translatable = options().check( "-only-translatable" ) ;
 
 			// clustering
-			// First, we group everything by sequence and count reads per sample:
+			// First, we group everything by sequence and count reads per sample.
+			// by_sequence maps from sequence to sequence matches
 			std::map< std::string, std::vector< impl::Match > > by_sequence ;
 			std::unordered_map< std::string, std::size_t > total_read_counts ;
 			for( auto s: result ) {
@@ -638,11 +639,13 @@ private:
 				std::unordered_map< std::string, std::size_t > sequence_sample_counts ;
 				std::size_t number_above_threshold = 0 ;
 				for( auto const& s: kv.second ) {
-					// keep track of the total number of reads seen for this sequ
+					// keep track of the total number of times this sequence
+					// is seen in this sample
 					std::size_t& n = sequence_sample_counts[ s.name() ] ;
 					++n ;
 
-					// If this sequence has been seen in this sample enough times, which means
+					// Accumulate sample count for this sequence if it has been seen enough times
+					// in this sample.
 					if( n == std::max( min_obs_per_sample, std::size_t(std::ceil( min_fraction_per_sample * total_read_counts[s.name()] )))) {
 						++number_above_threshold ;
 						if( number_above_threshold >= min_obs_samples ) {
@@ -651,7 +654,10 @@ private:
 						}
 					}
 				}
-				bool sequence_is_candidate = (number_above_threshold >= min_obs_samples) ;
+				bool sequence_is_candidate = (
+					(number_above_threshold >= min_obs_samples)
+					&& ( (!only_translatable) || (kv.first.size() % 3 == 0) )
+				) ;
 				if( sequence_is_candidate ) {
 					representatives.push_back( kv.first ) ;
 				}
@@ -783,15 +789,19 @@ private:
 		if( options().check( "-summary" ) || options().check( "-dna-fasta" ) || options().check( "-aa-fasta" )) {
 			std::map< std::string, std::map< std::string, double > > aa_sequence_summary ;
 			std::map< std::string, std::map< std::string, double > > dna_sequence_summary ;
-			std::map< std::string, std::size_t > counts ;
+			std::map< std::string, std::size_t > dna_sequence_counts ;
+			std::map< std::string, std::size_t > aa_sequence_counts ;
 			for( auto s: result ) {
 				if( s.strand() == impl::Match::eFwdStrand || s.strand() == impl::Match::eRevStrand ) {
 					BestAlignments::const_iterator where = aligned.find( s.sequence() ) ;
 					if( use_clustering && where != aligned.end() ) {
 						std::string const& sequence =  where->second.b ;
 						++dna_sequence_summary[s.name()][sequence] ;
-						++aa_sequence_summary[s.name()][genfile::translate(sequence)] ;
-						++counts[s.name()] ;
+						++dna_sequence_counts[s.name()] ;
+						if( sequence != "?" ) {
+							++aa_sequence_summary[s.name()][genfile::translate(sequence)] ;
+							++aa_sequence_counts[s.name()] ;
+						}
 						//std::cerr << "!! " << s.name() << ": " << where->second.aligned_b << "\n" ;
 					}
 				}
@@ -812,7 +822,7 @@ private:
 								<< kv.first
 								<< "dna"
 								<< sc.second
-								<< sc.second / counts[kv.first]
+								<< sc.second / dna_sequence_counts[kv.first]
 								<< sc.first
 								<< statfile::end_row()
 							;
@@ -824,7 +834,7 @@ private:
 								<< kv.first
 								<< "aa"
 								<< sc.second
-								<< sc.second / counts[kv.first]
+								<< sc.second / aa_sequence_counts[kv.first]
 								<< sc.first
 								<< statfile::end_row()
 							;
@@ -834,7 +844,7 @@ private:
 				if( options().check( "-dna-fasta" )) {
 					std::auto_ptr< std::ostream > fasta = genfile::open_text_file_for_output( options().get< std::string >( "-dna-fasta" )) ;
 					for( auto& kv: dna_sequence_summary ) {
-						std::size_t const total = counts[kv.first] ;
+						std::size_t const total = dna_sequence_counts[kv.first] ;
 						for( auto& sc: kv.second ) {
 							(*fasta)
 								<< (boost::format( ">%s-%d/%d-%.1f%%" ) % kv.first % sc.second % total % (100.0 * sc.second / total ) )
@@ -848,7 +858,7 @@ private:
 				if( options().check( "-aa-fasta" )) {
 					std::auto_ptr< std::ostream > fasta = genfile::open_text_file_for_output( options().get< std::string >( "-aa-fasta" )) ;
 					for( auto& kv: aa_sequence_summary ) {
-						std::size_t const total = counts[kv.first] ;
+						std::size_t const total = aa_sequence_counts[kv.first] ;
 						for( auto& sc: kv.second ) {
 							(*fasta)
 								<< (boost::format( ">%s-%d/%d-%.1f%%" ) % kv.first % sc.second % total % (100.0 * sc.second / total ) )
