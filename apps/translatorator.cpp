@@ -75,8 +75,13 @@ public:
 			.set_takes_single_value()
 			.set_default_value( "-" ) ;
 
-		options[ "-fasta" ]
-			.set_description( "Path to FASTA output file." )
+		options[ "-dna-fasta" ]
+			.set_description( "Path to FASTA output file for DNA sequences." )
+			.set_takes_single_value()
+			.set_default_value( "-" ) ;
+
+		options[ "-aa-fasta" ]
+			.set_description( "Path to FASTA output file for AA sequences." )
 			.set_takes_single_value()
 			.set_default_value( "-" ) ;
 
@@ -775,15 +780,17 @@ private:
 		}
 
 		// Now let's work out a per-sample summary of reads
-		if( options().check( "-summary" ) || options().check( "-fasta" ) ) {
-			std::map< std::string, std::map< std::string, double > > summary ;
+		if( options().check( "-summary" ) || options().check( "-dna-fasta" ) || options().check( "-aa-fasta" )) {
+			std::map< std::string, std::map< std::string, double > > aa_sequence_summary ;
+			std::map< std::string, std::map< std::string, double > > dna_sequence_summary ;
 			std::map< std::string, std::size_t > counts ;
 			for( auto s: result ) {
 				if( s.strand() == impl::Match::eFwdStrand || s.strand() == impl::Match::eRevStrand ) {
 					BestAlignments::const_iterator where = aligned.find( s.sequence() ) ;
 					if( use_clustering && where != aligned.end() ) {
-						std::string sequence = genfile::string_utils::replace_all( where->second.aligned_b, "-", "" ) ;
-						++summary[s.name()][sequence] ;
+						std::string const& sequence =  where->second.b ;
+						++dna_sequence_summary[s.name()][sequence] ;
+						++aa_sequence_summary[s.name()][genfile::translate(sequence)] ;
 						++counts[s.name()] ;
 						//std::cerr << "!! " << s.name() << ": " << where->second.aligned_b << "\n" ;
 					}
@@ -797,12 +804,25 @@ private:
 						for( std::size_t i = 0; i < kmer_pairs.size(); ++i ) {
 							output->write_comment( to_string(i+1) + ": " + kmer_pairs[i].first() + " / " + kmer_pairs[i].second() ) ;
 						}
-						(*output) | "file" | "count" | "proportion" | "dna_sequence" ;
+						(*output) | "file" | "type" | "count" | "proportion" | "dna_sequence" ;
 					}
-					for( auto& kv: summary ) {
+					for( auto& kv: dna_sequence_summary ) {
 						for( auto& sc: kv.second ) {
 							(*output)
 								<< kv.first
+								<< "dna"
+								<< sc.second
+								<< sc.second / counts[kv.first]
+								<< sc.first
+								<< statfile::end_row()
+							;
+						}
+					}
+					for( auto& kv: aa_sequence_summary ) {
+						for( auto& sc: kv.second ) {
+							(*output)
+								<< kv.first
+								<< "aa"
 								<< sc.second
 								<< sc.second / counts[kv.first]
 								<< sc.first
@@ -811,9 +831,23 @@ private:
 						}
 					}
 				}
-				if( options().check( "-fasta" )) {
-					std::auto_ptr< std::ostream > fasta = genfile::open_text_file_for_output( options().get< std::string >( "-fasta" )) ;
-					for( auto& kv: summary ) {
+				if( options().check( "-dna-fasta" )) {
+					std::auto_ptr< std::ostream > fasta = genfile::open_text_file_for_output( options().get< std::string >( "-dna-fasta" )) ;
+					for( auto& kv: dna_sequence_summary ) {
+						std::size_t const total = counts[kv.first] ;
+						for( auto& sc: kv.second ) {
+							(*fasta)
+								<< (boost::format( ">%s-%d/%d-%.1f%%" ) % kv.first % sc.second % total % (100.0 * sc.second / total ) )
+								<< "\n"
+								<< genfile::string_utils::replace_all( sc.first, "-", "" )
+								<< "\n"
+							;
+						}
+					}
+				}
+				if( options().check( "-aa-fasta" )) {
+					std::auto_ptr< std::ostream > fasta = genfile::open_text_file_for_output( options().get< std::string >( "-aa-fasta" )) ;
+					for( auto& kv: aa_sequence_summary ) {
 						std::size_t const total = counts[kv.first] ;
 						for( auto& sc: kv.second ) {
 							(*fasta)
