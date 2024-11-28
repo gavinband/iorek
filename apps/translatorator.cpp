@@ -13,6 +13,7 @@
 #include <boost/filesystem.hpp>
 #include <boost/noncopyable.hpp>
 #include <boost/optional.hpp>
+#include <boost/format.hpp>
 
 // seqlib
 #include "SeqLib/RefGenome.h"
@@ -69,6 +70,16 @@ public:
 			.set_takes_single_value()
 			.set_default_value( "-" ) ;
 
+		options[ "-summary" ]
+			.set_description( "Path to per-sample summary output file." )
+			.set_takes_single_value()
+			.set_default_value( "-" ) ;
+
+		options[ "-fasta" ]
+			.set_description( "Path to FASTA output file." )
+			.set_takes_single_value()
+			.set_default_value( "-" ) ;
+
 		options[ "-range" ]
 			.set_description(
 				"Ignore reads that don't overlap the this range of positions (in the form <chromosome>:<position>, or <chromosome>:<start>-<end>). "
@@ -116,6 +127,10 @@ public:
 			.set_takes_single_value()
 			.set_default_value( 1 )
 		;
+		options[ "-only-translatable" ]
+			.set_description( "Only take sequences that are a multiple of 3 in length to cluster." )
+		;
+
 		options.option_implies_option( "-min-obs-per-sample", "-cluster" ) ;
 		options.option_implies_option( "-min-obs-samples", "-cluster" ) ;
 		options.option_implies_option( "-min-fraction-per-sample", "-cluster" ) ;
@@ -507,7 +522,7 @@ private:
 			a( _a ),
 			b( _b ),
 			score( _score ),
-			cigar( run_length_encode(_cigar) )
+			cigar( runlength_encode(_cigar) )
 		{
 			aligned_a.reserve( a.size() + 25 ) ;
 			aligned_b.reserve( a.size() + 25 ) ;
@@ -535,7 +550,7 @@ private:
 		}
 		private:
 
-		std::string run_length_encode( std::string const& cigar ) {
+		std::string runlength_encode( std::string const& cigar ) {
 			std::string result ;
 			if( cigar.size() == 0 ) {
 				return cigar ;
@@ -594,9 +609,10 @@ private:
 			std::size_t const min_obs_per_sample = options().get_value< std::size_t >( "-min-obs-per-sample" ) ;
 			double const min_fraction_per_sample = options().get_value< double >( "-min-fraction-per-sample" ) ;
 			std::size_t const min_obs_samples = options().get_value< std::size_t >( "-min-obs-samples" ) ;
+			bool const only_translatable = options().check( "-only-translatable" ) ;
 
 			// clustering
-			// First, we group everything by sequence:
+			// First, we group everything by sequence and count reads per sample:
 			std::map< std::string, std::vector< impl::Match > > by_sequence ;
 			std::unordered_map< std::string, std::size_t > total_read_counts ;
 			for( auto s: result ) {
@@ -605,9 +621,12 @@ private:
 					++total_read_counts[s.name()] ;
 				}
 			}
+			std::cerr << "++ There were " << by_sequence.size() << " distinct sequences.\n" ;
 
 			// Now generate candidate sequences for alignment
-			// taken as anything seen at least n times:
+			// taken as anything:
+			// - seen at least a certain number of times (min_obs_per_sample)
+			// - seen in at least a certain fraction of reads per sample (min_fraction_per_sample) 
 			for( auto kv: by_sequence ) {
 				// Figure out if this sequence has been seen enough to be a candidate
 				// for clustering
@@ -616,8 +635,6 @@ private:
 				for( auto const& s: kv.second ) {
 					std::size_t& n = sample_counts[ s.name() ] ;
 					++n ;
-					// if n is now at the threshold, we've just found that this sample
-					// has enough.
 					if( n == std::max( min_obs_per_sample, std::size_t(std::ceil( min_fraction_per_sample * total_read_counts[s.name()] )))) {
 						++number_above_threshold ;
 						if( number_above_threshold >= min_obs_samples ) {
@@ -630,11 +647,21 @@ private:
 					representatives.push_back( kv.first ) ;
 				}
 			}
-			std::cerr << "++ There are " << representatives.size() << " representative sequences.\n" ;
+			std::cerr << "++ There were " << representatives.size() << " representative sequences\n" ;
+			std::cerr << "++ meeting these conditions:\n" ;
+			std::cerr
+				<< "   - seen in at least "
+				<< min_obs_per_sample
+				<< " sequence(s),\n"
+				<< "   - and at least "
+				<< (min_fraction_per_sample*100)
+				<< "% of reads,\n"
+				<< "   - in at least " << min_obs_samples << " sample(s).\n" ;
+			;
 
-			ui().logger() << "++ Aligning...\n" ;
-			// map from sequences to score / cigar
+			// Now all reads are mapped to the candidates
 			{
+				auto progress = ui().get_progress_context( "Aligning" ) ;
 				// re-alignment
 				// These costs are from pbmm2 defaults https://github.com/PacificBiosciences/pbmm2:
 				// - "CCS" or "HIFI" --mismatch-score 1 --mismatch-penalty 4 --gap-open-1 6 --gap-extend-1 2 --gap-open-2 26 --gap-extend-2 1
@@ -649,6 +676,7 @@ private:
 					wfa::WFAligner::Alignment,
 					wfa::WFAligner::MemoryHigh
 				) ;
+				std::size_t alignment_count = 0 ;
 				for( auto& kv: by_sequence ) {
 					for( std::size_t i = 0; i < representatives.size(); ++i ) {
 						std::string const& r = representatives[i] ;
@@ -669,10 +697,12 @@ private:
 							) ;
 						}
 					}
+					progress( ++alignment_count, by_sequence.size() ) ;
 				}
 			}
 		}
 
+		// Output reads and clustered reads
 		using genfile::string_utils::to_string ;
 		statfile::BuiltInTypeStatSink::UniquePtr
 			output = statfile::BuiltInTypeStatSink::open( options().get< std::string >( "-o" ) ) ;
@@ -686,7 +716,7 @@ private:
 			for( std::size_t i = 0; i < kmer_pairs.size(); ++i ) {
 				(*output) | ("start_" + to_string(i+1)) | ("end_" + to_string(i+1)) ;
 			}
-			if( options().check( "-cluster" )) {
+			if( use_clustering ) {
 				(*output) | "best_alignment_score" | "alignment_cigar" | "corrected_dna_sequence" ;
 			}
 			(*output) | "aa_sequence" ;
@@ -740,10 +770,58 @@ private:
 			(*output) << statfile::end_row() ;
 		}
 
-
+		// Now let's work out a per-sample summary of reads
+		if( options().check( "-summary" ) || options().check( "-fasta" ) ) {
+			std::map< std::string, std::map< std::string, double > > summary ;
+			std::map< std::string, std::size_t > counts ;
+			for( auto s: result ) {
+				if( s.strand() == impl::Match::eFwdStrand || s.strand() == impl::Match::eRevStrand ) {
+					BestAlignments::const_iterator where = aligned.find( s.sequence() ) ;
+					if( use_clustering && where != aligned.end() ) {
+						++summary[s.name()][where->second.aligned_b] ;
+						++counts[s.name()] ;
+						std::cerr << "!! " << s.name() << ": " << where->second.aligned_b << "\n" ;
+					}
+				}
+				if( options().check( "-summary" )) {
+					statfile::BuiltInTypeStatSink::UniquePtr
+						output = statfile::BuiltInTypeStatSink::open( options().get< std::string >( "-summary" ) ) ;
+					{
+						output->write_comment( "Written by translatorator" ) ;
+						output->write_comment( "Kmer pairs are:" ) ;
+						for( std::size_t i = 0; i < kmer_pairs.size(); ++i ) {
+							output->write_comment( to_string(i+1) + ": " + kmer_pairs[i].first() + " / " + kmer_pairs[i].second() ) ;
+						}
+						(*output) | "file" | "dna_sequence" | "count" | "proportion" ;
+					}
+					for( auto& kv: summary ) {
+						for( auto& sc: kv.second ) {
+							(*output)
+								<< kv.first
+								<< sc.first
+								<< sc.second
+								<< sc.second / counts[kv.first]
+								<< statfile::end_row()
+							;
+						}
+					}
+				}
+				if( options().check( "-fasta" )) {
+					std::auto_ptr< std::ostream > fasta = genfile::open_text_file_for_output( options().get< std::string >( "-fasta" )) ;
+					for( auto& kv: summary ) {
+						for( auto& sc: kv.second ) {
+							(*fasta)
+								<< (boost::format( ">%s-%.1f%%" ) % kv.first % (100.0 * sc.second / counts[kv.first]) )
+								<< "\n"
+								<< sc.first
+								<< "\n"
+							;
+						}
+					}
+				}
+			}
+		}
 	}
-	
-
 
 	Regions get_regions( std::vector< std::string > const& specs ) const {
 		Regions result ;
@@ -766,8 +844,8 @@ private:
 		std::vector< impl::KmerPair > const& kmer_pairs,
 		SequencesToReads* result
 	) {
-		using genfile::string_utils::to_string ;
-		auto progress_context = ui().get_progress_context( "Processing reads" ) ;
+		using genfile::string_utils::to_string ;\
+		auto progress_context = ui().get_progress_context( "Loading sequences" ) ;
 		std::vector< std::string > const& names = get_names_from_filenames(filenames) ;
 		for( std::size_t i = 0; i < filenames.size(); ++i ) {
 			if( options().check( "-range" )) {
@@ -779,8 +857,8 @@ private:
 				} else {
 					sequences = impl::BamSequenceProvider::open( filenames[i] ) ;
 				}
-				for( std::size_t region_i = 0; region_i < regions.size(); ++region_i ) {
-					sequences->set_region( regions[i] ) ;
+				for( auto const& region: regions ) {
+					sequences->set_region( region ) ;
 					load_dna_sequences(
 						*sequences,
 						names[i],
