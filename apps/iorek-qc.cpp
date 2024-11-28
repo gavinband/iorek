@@ -1548,24 +1548,27 @@ namespace {
 	void alignment_test() {
 		wfa::WFAlignerGapAffine aligner(
 			-3, // match
-			9, 	// mismatch
-			5, 	// gap open
-			5,	// gap extend
+			6, 	// mismatch
+			3, 	// gap open
+			2,	// gap extend
 			wfa::WFAligner::Alignment,
 			wfa::WFAligner::MemoryHigh
 		) ;
 
 		std::string const pattern = "TTCAGTTACGTATTGCT" ;
 		std::string const sequence = "AGTGGTGACTCAGTCTATGCTGGTTCTGAGCAGGCCACACAAGCAATACAGAAAATAGGAAGAAAGATTTGTGTGATTAATACAGTAGGAATCAGCATAT" ;
-
+		//          TTCAGTTACGTATTGCT
+		// AGTGGTGACT-CAGT--C-TAT-GCTGGTTCTGAGCAGGCCACACAAGCAATACAGAAAATAGGAAGAAAGATTTGTGTGATTAATACAGTAGGAATCAGCATAT
+		//          MDMMMMDDMDMMMDMMM
+		// score = 12*3 - 4*3 - 2 = 22
 		aligner.alignEndsFree( pattern, 0, 0, sequence, 0, 0 ) ;
 		std::cerr << "0, 0: cigar is: " << aligner.getAlignmentCigar() << ", score: " << aligner.getAlignmentScore() << ".\n" ;
 
-		aligner.alignEndsFree( pattern, 1, 1, sequence, 0, 0 ) ;
-		std::cerr << "1, 1: cigar is: " << aligner.getAlignmentCigar() << ", score: " << aligner.getAlignmentScore() << ".\n" ;
-
 		aligner.alignEndsFree( pattern, 0, 0, sequence, sequence.size(), sequence.size() ) ;
 		std::cerr << "L, L: cigar is: " << aligner.getAlignmentCigar() << ", score: " << aligner.getAlignmentScore() << ".\n" ;
+
+		aligner.alignEndsFree( pattern, 0, 0, "TCAGTCTATGCTGGTTCTG", 0, 0 ) ;
+		std::cerr << " sub: cigar is: " << aligner.getAlignmentCigar() << ", score: " << aligner.getAlignmentScore() << ".\n" ;
 
 		std::cerr << "\n-------------------------\n" ;
 		StripedSmithWaterman::Aligner ssw( 3, 6, 5, 2 ) ;
@@ -1588,7 +1591,7 @@ namespace {
 
 int main( int argc, char** argv )
 {
-	// alignment_test() ;
+	alignment_test() ;
 	std::ios_base::sync_with_stdio( false ) ;
 	try {
 		IorekQCApplication app( argc, argv ) ;
