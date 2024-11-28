@@ -630,14 +630,18 @@ private:
 			for( auto kv: by_sequence ) {
 				// Figure out if this sequence has been seen enough to be a candidate
 				// for clustering
-				std::unordered_map< std::string, std::size_t > sample_counts ;
+				std::unordered_map< std::string, std::size_t > sequence_sample_counts ;
 				std::size_t number_above_threshold = 0 ;
 				for( auto const& s: kv.second ) {
-					std::size_t& n = sample_counts[ s.name() ] ;
+					// keep track of the total number of reads seen for this sequ
+					std::size_t& n = sequence_sample_counts[ s.name() ] ;
 					++n ;
+
+					// If this sequence has been seen in this sample enough times, which means
 					if( n == std::max( min_obs_per_sample, std::size_t(std::ceil( min_fraction_per_sample * total_read_counts[s.name()] )))) {
 						++number_above_threshold ;
 						if( number_above_threshold >= min_obs_samples ) {
+							std::cerr << "!! accepting read with count " << n << " of " << total_read_counts[s.name()] << ".\n" ;
 							break ;
 						}
 					}
@@ -778,9 +782,10 @@ private:
 				if( s.strand() == impl::Match::eFwdStrand || s.strand() == impl::Match::eRevStrand ) {
 					BestAlignments::const_iterator where = aligned.find( s.sequence() ) ;
 					if( use_clustering && where != aligned.end() ) {
-						++summary[s.name()][where->second.aligned_b] ;
+						std::string sequence = genfile::string_utils::replace_all( where->second.aligned_b, "-", "" ) ;
+						++summary[s.name()][sequence] ;
 						++counts[s.name()] ;
-						std::cerr << "!! " << s.name() << ": " << where->second.aligned_b << "\n" ;
+						//std::cerr << "!! " << s.name() << ": " << where->second.aligned_b << "\n" ;
 					}
 				}
 				if( options().check( "-summary" )) {
@@ -792,15 +797,15 @@ private:
 						for( std::size_t i = 0; i < kmer_pairs.size(); ++i ) {
 							output->write_comment( to_string(i+1) + ": " + kmer_pairs[i].first() + " / " + kmer_pairs[i].second() ) ;
 						}
-						(*output) | "file" | "dna_sequence" | "count" | "proportion" ;
+						(*output) | "file" | "count" | "proportion" | "dna_sequence" ;
 					}
 					for( auto& kv: summary ) {
 						for( auto& sc: kv.second ) {
 							(*output)
 								<< kv.first
-								<< sc.first
 								<< sc.second
 								<< sc.second / counts[kv.first]
+								<< sc.first
 								<< statfile::end_row()
 							;
 						}
@@ -809,11 +814,12 @@ private:
 				if( options().check( "-fasta" )) {
 					std::auto_ptr< std::ostream > fasta = genfile::open_text_file_for_output( options().get< std::string >( "-fasta" )) ;
 					for( auto& kv: summary ) {
+						std::size_t const total = counts[kv.first] ;
 						for( auto& sc: kv.second ) {
 							(*fasta)
-								<< (boost::format( ">%s-%.1f%%" ) % kv.first % (100.0 * sc.second / counts[kv.first]) )
+								<< (boost::format( ">%s-%d/%d-%.1f%%" ) % kv.first % sc.second % total % (100.0 * sc.second / total ) )
 								<< "\n"
-								<< sc.first
+								<< genfile::string_utils::replace_all( sc.first, "-", "" )
 								<< "\n"
 							;
 						}
