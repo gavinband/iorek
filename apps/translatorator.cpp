@@ -798,8 +798,9 @@ private:
 						std::string const& sequence =  where->second.b ;
 						++dna_sequence_summary[s.name()][sequence] ;
 						++dna_sequence_counts[s.name()] ;
-						if( sequence != "?" ) {
-							++aa_sequence_summary[s.name()][genfile::translate(sequence)] ;
+						std::string translated = genfile::translate(sequence) ;
+						if( translated != "?" ) {
+							++aa_sequence_summary[s.name()][translated] ;
 							++aa_sequence_counts[s.name()] ;
 						}
 						//std::cerr << "!! " << s.name() << ": " << where->second.aligned_b << "\n" ;
