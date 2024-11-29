@@ -111,8 +111,8 @@ public:
 
 		options.declare_group( "Algorithm options" ) ;
 		options[ "-cluster" ]
-			.set_description( "Output corrected DNA and amino acid sequences, by clustering sequences"
-			" and finding the highest-scoring alignments." )
+			.set_description( "Generate a list of candidate correct sequences, and align all reads back to candidates to cluster them. "
+			"Then output corrected DNA and amino acid sequences" )
 		;
 		options[ "-min-obs-per-sample" ]
 			.set_description( "The minimum number of times a sequence must be observed in one sample, "
@@ -134,6 +134,12 @@ public:
 		;
 		options[ "-only-translatable" ]
 			.set_description( "Only take sequences that are a multiple of 3 in length to cluster." )
+		;
+		options[ "-min-alignment-identity" ]
+			.set_description( "When summarising reads aligned to candidate correct sequences, "
+			" only accept alignments with this minimum proportion of matching bases compared to alignment length" )
+			.set_takes_single_value()
+			.set_default_value( 0.95 )
 		;
 
 		options.option_implies_option( "-min-obs-per-sample", "-cluster" ) ;
@@ -512,6 +518,7 @@ private:
 		std::string a ;
 		std::string b ;
 		int score ;
+		double identity ;
 		std::string cigar ;
 		std::string aligned_a ;
 		std::string aligned_b ;
@@ -527,6 +534,7 @@ private:
 			a( _a ),
 			b( _b ),
 			score( _score ),
+			identity( 0.0 ),
 			cigar( runlength_encode(_cigar) )
 		{
 			aligned_a.reserve( a.size() + 25 ) ;
@@ -536,6 +544,7 @@ private:
 				switch( _cigar[i] ) {
 					case 'M':
 					case '=':
+						identity += 1.0 ;
 					case 'X':
 						aligned_a.push_back( a[sa++] ) ;
 						aligned_b.push_back( b[sb++] ) ;
@@ -548,7 +557,10 @@ private:
 						aligned_a.push_back( a[sa++] ) ;
 						aligned_b.push_back( '-' ) ;
 						break ;
+					default:
+						assert(0) ;
 				}
+				identity /= _cigar.size() ;
 				assert( sa <= a.size() ) ;
 				assert( sb <= b.size() ) ;
 			}
@@ -717,7 +729,7 @@ private:
 			}
 		}
 
-		// Output reads and clustered reads
+		// Output reads and 'corrected'' reads
 		using genfile::string_utils::to_string ;
 		statfile::BuiltInTypeStatSink::UniquePtr
 			output = statfile::BuiltInTypeStatSink::open( options().get< std::string >( "-o" ) ) ;
@@ -732,7 +744,7 @@ private:
 				(*output) | ("start_" + to_string(i+1)) | ("end_" + to_string(i+1)) ;
 			}
 			if( use_clustering ) {
-				(*output) | "best_alignment_score" | "alignment_cigar" | "corrected_dna_sequence" ;
+				(*output) | "best_alignment_score" | "best_alignment_cigar" | "best_alignment_identity" | "corrected_dna_sequence" ;
 			}
 			(*output) | "aa_sequence" ;
 		}
@@ -764,10 +776,12 @@ private:
 						(*output)
 							<< where->second.score
 							<< where->second.cigar
+							<< where->second.identity
 							<< where->second.aligned_b
 							<< genfile::translate( where->second.b ) ;
 					} else {
 						(*output)
+							<< "NA"
 							<< "NA"
 							<< "NA"
 							<< "NA"
@@ -787,6 +801,7 @@ private:
 
 		// Now let's work out a per-sample summary of reads
 		if( options().check( "-summary" ) || options().check( "-dna-fasta" ) || options().check( "-aa-fasta" )) {
+			double const min_identity = options().get< double >( "-min-alignment-identity" ) ;
 			std::map< std::string, std::map< std::string, double > > aa_sequence_summary ;
 			std::map< std::string, std::map< std::string, double > > dna_sequence_summary ;
 			std::map< std::string, std::size_t > dna_sequence_counts ;
@@ -794,7 +809,7 @@ private:
 			for( auto s: result ) {
 				if( s.strand() == impl::Match::eFwdStrand || s.strand() == impl::Match::eRevStrand ) {
 					BestAlignments::const_iterator where = aligned.find( s.sequence() ) ;
-					if( use_clustering && where != aligned.end() ) {
+					if( use_clustering && where != aligned.end() && where->second.identity >= min_identity ) {
 						std::string const& sequence =  where->second.b ;
 						++dna_sequence_summary[s.name()][sequence] ;
 						++dna_sequence_counts[s.name()] ;
