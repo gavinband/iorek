@@ -33,7 +33,9 @@ namespace statfile {
 		setup( filename ) ;
 	}
 
-	DelimitedStatSink::~DelimitedStatSink() {}
+	DelimitedStatSink::~DelimitedStatSink() {
+		write_header_if_necessary() ;
+	}
 
 	void DelimitedStatSink::set_descriptive_text( std::string const& text ) {
 		m_descriptive_text = std::string( 1, m_comment_character ) + " " ;
