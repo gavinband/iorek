@@ -560,10 +560,10 @@ private:
 					default:
 						assert(0) ;
 				}
-				identity /= _cigar.size() ;
 				assert( sa <= a.size() ) ;
 				assert( sb <= b.size() ) ;
 			}
+			identity /= _cigar.size() ;
 		}
 		private:
 
@@ -861,9 +861,10 @@ private:
 					std::auto_ptr< std::ostream > fasta = genfile::open_text_file_for_output( options().get< std::string >( "-dna-fasta" )) ;
 					for( auto& kv: dna_sequence_summary ) {
 						std::size_t const total = dna_sequence_counts[kv.first] ;
+						std::size_t indicator = 1 ;
 						for( auto& sc: kv.second ) {
 							(*fasta)
-								<< (boost::format( ">%s-%d/%d-%.1f%%" ) % kv.first % sc.second % total % (100.0 * sc.second / total ) )
+								<< (boost::format( ">%s-%d/%d-%.1f%%-%d" ) % kv.first % sc.second % total % (100.0 * sc.second / total ) % (indicator++) )
 								<< "\n"
 								<< genfile::string_utils::replace_all( sc.first, "-", "" )
 								<< "\n"
@@ -875,9 +876,10 @@ private:
 					std::auto_ptr< std::ostream > fasta = genfile::open_text_file_for_output( options().get< std::string >( "-aa-fasta" )) ;
 					for( auto& kv: aa_sequence_summary ) {
 						std::size_t const total = aa_sequence_counts[kv.first] ;
+						std::size_t indicator = 1 ;
 						for( auto& sc: kv.second ) {
 							(*fasta)
-								<< (boost::format( ">%s-%d/%d-%.1f%%" ) % kv.first % sc.second % total % (100.0 * sc.second / total ) )
+								<< (boost::format( ">%s-%d/%d-%.1f%%-%d" ) % kv.first % sc.second % total % (100.0 * sc.second / total ) % (indicator++) )
 								<< "\n"
 								<< genfile::string_utils::replace_all( sc.first, "-", "" )
 								<< "\n"
