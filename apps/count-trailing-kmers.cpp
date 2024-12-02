@@ -64,8 +64,9 @@ public:
 			.set_takes_single_value()
 			.set_default_value( "-" ) ;
 
-		options[ "-incl-read-ids" ]
-			.set_description( "If specified, a file containing read identifiers to include in the analysis." ) ;
+		options[ "-incl-reads" ]
+			.set_description( "If specified, a file containing read identifiers to include in the analysis." )
+			.set_takes_single_value() ;
 
 		options.declare_group( "Algorithm options" ) ;
 		options[ "-l" ]
@@ -127,8 +128,8 @@ private:
 	std::unique_ptr< ReadIds > m_read_ids ;
 
 	void unsafe_process() {
-		if( options().check( "-incl-read-ids" )) {
-			m_read_ids = load_read_ids( options().get< std::string >( "-incl-read-ids" )) ;
+		if( options().check( "-incl-reads" )) {
+			m_read_ids = load_read_ids( options().get< std::string >( "-incl-reads" )) ;
 		}
 
 		std::size_t k = options().get< std::size_t >( "-k" ) ;
@@ -186,12 +187,15 @@ private:
 		auto source = genfile::open_text_file_for_input( filename ) ;
 		std::string read_id ;
 		std::unique_ptr< ReadIds > result( new ReadIds ) ;
-		auto progress = ui().get_progress_context( "Loading read Ids from \"" + filename + "\"" ) ;
 		int count = 0 ;
-		while( std::getline( *source, read_id )) {
-			(*result).insert( read_id ) ;
-			progress( ++count ) ;
+		{
+			auto progress = ui().get_progress_context( "Loading read ids from \"" + filename + "\"" ) ;
+			while( std::getline( *source, read_id )) {
+				(*result).insert( read_id ) ;
+				progress( ++count ) ;
+			}
 		}
+		ui().logger() << "++ Ok, read " << count << " read IDs.\n" ;
 		return result ;
 	}
 
@@ -224,12 +228,12 @@ private:
 		TailMap* result
 	) const {
 		auto progress = ui().get_progress_context( "Computing read tails from \"" + filename + "\"...\n" ) ;
-		std::size_t count = 0 ;
+		std::size_t count = 0, count_total = 0 ;
 		seqlib::BamRecord alignment ;
 		if( max_reads == 0 ) {
 			max_reads = std::numeric_limits< std::size_t >::max() ;
 		}
-		while( reader.GetNextRecord( alignment ) && count < max_reads ) {
+		while( reader.GetNextRecord( alignment ) && result->size() < max_reads ) {
 			std::string subread_id = alignment.Qname() ;
 			std::size_t where = subread_id.rfind( "/" ) ;
 			std::string read_id = subread_id ;
@@ -249,8 +253,9 @@ private:
 				}
 				std::string const tail = sequence.substr( sequence.size() - std::min( sequence.size(), l ), l ) ;
 				(*result)[read_id] = tail ;
+				++count ;
 			}
-			progress( ++count ) ;
+			progress( ++count_total ) ;
 		}
 	}
 
@@ -270,6 +275,7 @@ private:
 		char last = s[s.size()-1] ; // this is the potential hp base
 		std::size_t w = ind[tolower(last)] ;
 
+		// std::cerr << "LAST CHAR is: " << last << ", index " << w << ".\n" ;
 		std::size_t i = s.size() ;
 		++counts[ ind[ tolower(s[--i]) ]] ;
 		++counts[ ind[ tolower(s[--i]) ]] ;
@@ -279,12 +285,15 @@ private:
 			return s;
 		}
 		while(1) {
-			++counts[ tolower(s[--i]) ] ;
-			--counts[ tolower(s[i+2]) ] ;
+			//	std::cerr << "counts: i=" << i << " a=" << counts[0] << " c=" << counts[1] << " t=" << counts[2] << " g=" << counts[3] << ".\n" ;
+			++counts[ ind[tolower(s[--i])] ] ;
+			--counts[ ind[tolower(s[i+2])] ] ;
+			
 			if( i == 0 || counts[w] == 0 ) {
 				break ;
 			}
 		}
+		// std::cerr << "After: i = " << i << ", counts = a:" << counts[0] << "c:" << counts[1] << " t:" << counts[2] << " g:" << counts[3] << ".\n" ;
 		return s.substr( 0, i + (2-counts[w]) ) ;
 	}
 
