@@ -53,4 +53,4 @@ Executables will be copied to `[installation path]/bin/`.
 
 ## Contributors ##
 
-Iorek was written by Gavin Band.
+Iorek was written by [Gavin Band](https://github.com/gavinband) with contributions from [Tom Roberts](https://github.com/Tomrrr1).
