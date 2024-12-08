@@ -79,8 +79,7 @@ let MSAView = function(
 		result.y = new d3.scaleLinear()
 			.domain( [ 0, result.tracks.total_height() ])
 			.range( [ 0, result.tracks.total_height() ] ) ;
-		// adjust ranges by half a basewidth, so that bases line up on coordinates.
-			
+
 		// bases are drawn centered on the integers.
 		// leave enough space for half a base either side
 		result.msaToX = new d3.scaleLinear()
@@ -234,13 +233,16 @@ MSAView.prototype.set_physical_domain = function( domain ) {
 MSAView.prototype.updateLayout = function() {
 	let geom = this.geom ;
 	geom.layout.width.all = window.innerWidth - 40 ;
+	geom.layout.heights.all = Math.min(
+		this.scales.tracks.total_height() + geom.margin.top + geom.margin.bottom + geom.layout.heights.genes,
+		document.getElementsByTagName( 'html' )[0].clientHeight - 30
+	) ;
 	geom.layout.width.sequences = window.innerWidth - geom.layout.width.names - 40 ;
 	geom.layout.width.reference = window.innerWidth - geom.layout.width.names - 40 ;
 	let visible_range = [ geom.margin.left, geom.layout.width.sequences - geom.margin.right ] ;
 	this.scales.msaToX.range( visible_range ) ;
 	this.scales.concatenatedToX.range( visible_range ) ;
 }
-
 
 MSAView.prototype.draw = function( force ) {
 	let viewport = this.scales.msaToX.domain() ;
@@ -254,21 +256,19 @@ MSAView.prototype.draw = function( force ) {
 	let vs = this.scales ;
 	let aes = this.aes ;
 
-	let canvas_height = vs.tracks.total_height() + geom.margin.top + geom.margin.bottom  ;
-
-	vs.y.range( [ canvas_height - geom.margin.bottom, geom.margin.top ] ) ;
+	vs.y.range( [ geom.layout.heights.all - geom.layout.heights.genes - geom.margin.bottom, geom.margin.top ] ) ;
 	// put panels in the right place
 	d3.select( '.figure' )
 		.attr( 'width', geom.layout.width.all )
-		.attr( 'height', canvas_height + 300 ) ;
+		.attr( 'height', geom.layout.heights.all + 300 ) ;
 
 	panels.names.attr( 'width', geom.layout.width.names ) ;
-	panels.names.attr( 'height', canvas_height ) ;
+	panels.names.attr( 'height', geom.layout.heights.all - geom.layout.heights.genes ) ;
 
 	panels.sequences.attr( 'width', geom.layout.width.sequences ) ;
-	panels.sequences.attr( 'height', canvas_height ) ;
+	panels.sequences.attr( 'height', geom.layout.heights.all - geom.layout.heights.genes ) ;
 
-	panels.genes.style( 'top', canvas_height + 40 ) ;
+	panels.genes.style( 'top', geom.layout.heights.all - geom.layout.heights.genes + 20 ) ;
 	panels.genes.attr( 'width', geom.layout.width.reference ) ;
 
 	panels.controls.style( 'top', '20px' ) ;
@@ -304,9 +304,11 @@ MSAView.prototype.draw = function( force ) {
 			.enter()
 			.append( 'g' )
 			.attr( "class", "name" )
-			.attr( 'transform', ( d, i ) => ('translate(' + (geom.layout.width.names - geom.margin.right) + ',' + vs.y(vs.tracks.map(d.sequence_id, d.track_name).baseline) + ")" ))
 		;
 		names.call( renderName ) ;
+		panels.names.selectAll( 'g.name' )
+			.attr( 'transform', ( d, i ) => ('translate(' + (geom.layout.width.names - geom.margin.right) + ',' + vs.y(vs.tracks.map(d.sequence_id, d.track_name).baseline) + ")" )) ;
+
 	}
 
 	this.drawControls( panels.controls, geom, aes ) ;
