@@ -37,7 +37,7 @@ body {
 .genes {
 	top: 600px ;
 }
-.controls: {
+.controls {
 	top: 20px ;
 }
 .names {
@@ -55,3 +55,39 @@ body {
 	border-left: 1px solid gray ;
 	border-right: 1px solid gray ;
 }
+
+#legend {
+    position: fixed;
+    padding: 10px;
+    background-color: #333;
+    border: 1px solid #eee;
+    border-radius: 8px;
+    cursor: pointer;
+    z-index: 1000;
+}
+
+.legend-opened {
+    min-width: 100px;
+}
+
+.legend-table {
+    margin-top: 10px;
+}
+
+.legend-row {
+    display: flex;
+    align-items: center;
+    margin: 5px 0;
+}
+
+.legend-cell {
+    padding: 2px 5px;
+}
+
+.color-box {
+    width: 20px;
+    height: 20px;
+    border: 1px solid #eee;
+}
+
+

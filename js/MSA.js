@@ -104,7 +104,7 @@ let preprocessAlignment = function( alignment ) {
 		if( !mismatch ) {
 			for( let i = 0; i < alignment.length; ++i ) {
 				if( alignment[i].mismatches[j] != 45 ) {
-					alignment[i].mismatches[j] = 109 ;
+					alignment[i].mismatches[j] = 61 ;
 				}
 			}
 		}
@@ -131,7 +131,7 @@ let preprocessAlignment = function( alignment ) {
 		) ;
 		alignment[i].mismatches.levels = computeLevels(
 			alignment[i].mismatches,
-			[ 45, 109, 97, 99, 103, 116 ],
+			[ 45, 61, 97, 99, 103, 116 ],
 			function( counts ) {
 				let max = 0 ;
 				let max_base = '-' ;
@@ -142,7 +142,7 @@ let preprocessAlignment = function( alignment ) {
 					}
 				}) ;
 				if( max == 0 ) {
-					[ 45, 109 ].forEach( function(x) {
+					[ 45, 61 ].forEach( function(x) {
 						if( counts[x] >= max ) {
 							max = counts[x] ;
 							max_base = x ;
@@ -243,4 +243,3 @@ let MSA = function( alignment, coordinateRanges ) {
 MSA.prototype.sequence_ids = function() {
 	return this.alignment.map( elt => elt.name ) ;
 }
-
