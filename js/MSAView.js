@@ -39,8 +39,15 @@ let MSAView = function(
 			left: 10,
 			right: 10
 		}
-	}
+	},
+	sequence_type = 'dna', // dna or aa
+	theme = themes,
 ) {
+
+	this.sequence_type = sequence_type ;
+	this.globalColours = theme[sequence_type].colour ;
+	this.aes = theme[sequence_type].default ; 
+	this.baseMap = theme[sequence_type].displayText ;
 	this.elt = elt ;
 	this.elt.selectAll( '*' ).remove() ;
 	this.panels = {
@@ -79,7 +86,7 @@ let MSAView = function(
 		result.y = new d3.scaleLinear()
 			.domain( [ 0, result.tracks.total_height() ])
 			.range( [ 0, result.tracks.total_height() ] ) ;
-
+			
 		// bases are drawn centered on the integers.
 		// leave enough space for half a base either side
 		result.msaToX = new d3.scaleLinear()
@@ -113,72 +120,8 @@ let MSAView = function(
 			) ;
 		return result ;
 	}() ;
-
-	this.aes = {
-		bases: {
-			colour: {
-				'-': 'lightgrey',
-				'm': '#333618',
-				'a': '#02AAE9',
-				't': '#1A356C',
-				'c': '#941504',
-				'g': '#F44B1A',
-				'n': '#555555',
-				'A': '#02AAE9',
-				'T': '#1A356C',
-				'C': '#941504',
-				'G': '#F44B1A',
-				'N': '#555555',
-				// ASCII values, for Int8Array version
-				 45: 'lightgrey',  // '-'
-				109: '#333618',  // 'm'
-				 97: '#02AAE9',  // 'a'
-				116: '#1A356C',  // 't'
-				 99: '#941504',  // 'c'
-				103: '#F44B1A',  // 'g'
-				110: '#555555',  // 'n'
-				 65: '#02AAE9',  // 'A'
-				 84: '#1A356C',  // 'T'
-				 67: '#941504',  // 'C'
-				 71: '#F44B1A',  // 'G'
-				 78: '#555555'   // 'N'
-			},
-			geom: {
-				'-': { "offset": -5, "height": 2 },
-				'm': { "offset": -8, "height": 8 },
-				'a': { "offset": -8, "height": 8 },
-				't': { "offset": -8, "height": 8 },
-				'c': { "offset": -8, "height": 8 },
-				'g': { "offset": -8, "height": 8 },
-				'n': { "offset": -6, "height": 6 },
-				'A': { "offset": -8, "height": 8 },
-				'T': { "offset": -8, "height": 8 },
-				'C': { "offset": -8, "height": 8 },
-				'G': { "offset": -8, "height": 8 },
-				'N': { "offset": -6, "height": 6 },
-				 45: { "offset": -5, "height": 2 }, // '-'
-				109: { "offset": -8, "height": 8 }, // 'm'
-				 97: { "offset": -8, "height": 8 }, // 'a'
-				116: { "offset": -8, "height": 8 }, // 't'
-				 99: { "offset": -8, "height": 8 }, // 'c'
-				103: { "offset": -8, "height": 8 }, // 'g'
-				110: { "offset": -6, "height": 6 }, // 'n'
-				 65: { "offset": -8, "height": 8 }, // 'A'
-				 84: { "offset": -8, "height": 8 }, // 'T'
-				 67: { "offset": -8, "height": 8 }, // 'C'
-				 71: { "offset": -8, "height": 8 }, // 'G'
-				 78: { "offset": -6, "height": 6 }, // 'N'
-			}
-		},
-		colour: {
-			"text": "#eeeeee",
-			"highlight": "#FF4444",
-			"background": '#222222'
-		}
-	} ;
 	
 	this.drawn_viewport = [ 0, 0 ] ;
-	
 	console.log( "++ MSAView(): scales.reference = ", this.scales.concatenatedToX.domain(), this.scales.concatenatedToX.range() ) ;
 	
 	return this ;
@@ -244,6 +187,7 @@ MSAView.prototype.updateLayout = function() {
 	this.scales.concatenatedToX.range( visible_range ) ;
 }
 
+
 MSAView.prototype.draw = function( force ) {
 	let viewport = this.scales.msaToX.domain() ;
 	if( !force && (this.drawn_viewport[0] == viewport[0] && this.drawn_viewport[1] == viewport[1] )) {
@@ -255,6 +199,10 @@ MSAView.prototype.draw = function( force ) {
 	let geom = this.geom ;
 	let vs = this.scales ;
 	let aes = this.aes ;
+	let globalColours = this.globalColours ;
+	let baseMap = this.baseMap ;
+
+	let canvas_height = vs.tracks.total_height() + geom.margin.top + geom.margin.bottom  ;
 
 	vs.y.range( [ geom.layout.heights.all - geom.layout.heights.genes - geom.margin.bottom, geom.margin.top ] ) ;
 	// put panels in the right place
@@ -296,7 +244,7 @@ MSAView.prototype.draw = function( force ) {
 				.attr( 'dy', d => (d.track_name == 'sequence') ? (-aes.bases.geom['a'].height/2) : (-geom.layout.heights.annotation/2) )
 				.attr( 'font-family', 'Courier' )
 				.attr( 'font-style', 'italic' )
-				.attr( 'fill', aes.colour.text )
+				.attr( 'fill', globalColours.text.colour )
 				.text( d => (d.track_name == 'sequence') ? formatName( d.sequence_id ) : d.track_name ) ;
 		} ;
 		let names = panels.names.selectAll( 'g.name' )
@@ -377,7 +325,7 @@ MSAView.prototype.draw = function( force ) {
 				base = levels[by][level_j] ;
 			} else {
 				base = sequence[j] ;
-			}
+            }
 			let geom ;
 			if( aes.bases.geom.hasOwnProperty( base )) {
 				geom = aes.bases.geom[base] ;
@@ -398,15 +346,7 @@ MSAView.prototype.draw = function( force ) {
 			ctx.textAlign = "center" ;
 			ctx.textBaseline = "middle" ;
 			ctx.fillStyle = `rgb(255, 255, 255, ${interpolator})` ;
-			let baseMap = {
-				97: "A",
-				99: "C",
-			   103: "G",
-			   116: "T",
-				45: "",
-			   109: ""
-			} ;
-//			console.log( "RANGE", range ) ;
+			// console.log( "RANGE", range ) ;
 			for( let j = range[0]; j < range[1]; ++j ) {
 				let base = sequence[j] ;
 				let text = baseMap[ base ] ;
@@ -621,31 +561,60 @@ MSAView.prototype.drawControls = function( panel, geom, aes ) {
 		panel.selectAll( 'g.logo' )
 			.attr( 'transform', (d,i) => ('translate(' + (geom.layout.width.reference - 100) + ", 10)" ))
 	}
+	{ // Legend
+		d3.selectAll('#legend').remove();
+		let baseColours = this.aes.bases.colour;
+		let sequence_type = this.sequence_type;
+	
+		let legendContainer = d3.select('body')
+			.append('div')
+			.attr('id', 'legend')
+			.attr('class', 'legend-closed')          // Collapsed by default
+			.text('Legend')
+			.style('color', this.globalColours.text) // Text color from aesthetic settings
+			.style('font-size', '10pt')
 
-	{
-		panel.selectAll( 'g.base' )
-			.data( [ 'a', 'c', 'g', 't' ] )
-			.enter()
-			.append( 'g' )
-			.attr( 'class', 'base' )
-			.attr( 'transform', (d,i) => ('translate(' + (20 + i*40) + ", 10)" )) ;
-		panel.selectAll( 'g.base' )
-			.append( 'rect' )
-			.attr( 'x', 0 )
-			.attr( 'y', -5 )
-			.attr( 'width', 6 )
-			.attr( 'height', 10 )
-			.attr( 'fill', d => this.aes.bases.colour[d] ) ;
-		panel.selectAll( 'g.base' )
-			.append( 'text' )
-			.attr( 'x', 10 )
-			.attr( 'y', 0 )
-			.attr( 'font-size', '10pt' )
-			.attr( 'font-family', 'Palatino' )
-			.attr( 'dominant-baseline', 'middle' )
-			.text( d => d.toUpperCase() ) ;
+		// Add click event listener to handle opened/closed behaviour
+		legendContainer.on('click', function() {
+			let legend = d3.select(this);
+			let isClosed = legend.classed('legend-closed'); // true if the class is present (i.e. if the legend is closed)
+	
+			legend
+				.classed('legend-closed', !isClosed)  // If the legend is currently closed we open
+				.classed('legend-opened', isClosed);  // If the legend is currently open we close
+	
+			if (isClosed) {
+				// If expanding, create new table container
+				let table = legend.append('div')
+                	.attr('class', 'legend-table')
+                	.style('display', 'grid')
+                	.style('grid-template-columns', 'repeat(4, 1fr)')
+					.style('font-size', '10pt')
+                	.style('gap', '5px');
+
+				// Get bases from the colour mapping dictionary
+        		let bases = Object.keys(baseColours)
+					.filter(key => isNaN(key))           	   // Remove ASCII number keys
+					.filter(key => key !== '-' && key !== '=') // Remove special character keys
+					.filter(key => sequence_type === 'dna' ? key.toLowerCase() !== 'n' : true) // Remove 'N' for DNA
+					.filter(key => key !== key.toLowerCase()); // Remove duplicates 
+					
+				bases.forEach(d => {
+					let row = table.append('div')
+						.attr('class', 'legend-row');
+					row.append('div')
+						.attr('class', 'legend-cell color-box')
+						.style('background-color', baseColours[d]) ;
+					row.append('div')
+						.attr('class', 'legend-cell')
+						.text(d);
+				});
+			} else {
+				// If collapsing, remove the table from DOM
+				legend.select('.legend-table').remove();
+			}
+		});
 	}
-
 	{
 		let switches = panel.selectAll( 'g.control' )
 			.data( ['highlight mismatches?'] )
@@ -661,7 +630,8 @@ MSAView.prototype.drawControls = function( panel, geom, aes ) {
 			.attr( 'y', 0 )
 			.attr( 'width', 10 )
 			.attr( 'height', 10 )
-			.attr( 'stroke', aes.colour.text )
+			// .attr( 'stroke', aes.colour.text )
+			.attr( 'stroke', this.globalColours.text )
 			.attr( 'fill', '#111111' ) ;
 		switches.append( 'path' )
 			.attr( 'd', 'M1 1 L9 9 M9 1 L1 9')
