@@ -821,70 +821,70 @@ private:
 						//std::cerr << "!! " << s.name() << ": " << where->second.aligned_b << "\n" ;
 					}
 				}
-				if( options().check( "-summary" )) {
-					statfile::BuiltInTypeStatSink::UniquePtr
-						output = statfile::BuiltInTypeStatSink::open( options().get< std::string >( "-summary" ) ) ;
-					{
-						output->write_comment( "Written by translatorator" ) ;
-						output->write_comment( "Kmer pairs are:" ) ;
-						for( std::size_t i = 0; i < kmer_pairs.size(); ++i ) {
-							output->write_comment( to_string(i+1) + ": " + kmer_pairs[i].first() + " / " + kmer_pairs[i].second() ) ;
-						}
-						(*output) | "file" | "type" | "count" | "proportion" | "dna_sequence" ;
+			}
+			if( options().check( "-summary" )) {
+				statfile::BuiltInTypeStatSink::UniquePtr
+					output = statfile::BuiltInTypeStatSink::open( options().get< std::string >( "-summary" ) ) ;
+				{
+					output->write_comment( "Written by translatorator" ) ;
+					output->write_comment( "Kmer pairs are:" ) ;
+					for( std::size_t i = 0; i < kmer_pairs.size(); ++i ) {
+						output->write_comment( to_string(i+1) + ": " + kmer_pairs[i].first() + " / " + kmer_pairs[i].second() ) ;
 					}
-					for( auto& kv: dna_sequence_summary ) {
-						for( auto& sc: kv.second ) {
-							(*output)
-								<< kv.first
-								<< "dna"
-								<< sc.second
-								<< sc.second / dna_sequence_counts[kv.first]
-								<< sc.first
-								<< statfile::end_row()
-							;
-						}
-					}
-					for( auto& kv: aa_sequence_summary ) {
-						for( auto& sc: kv.second ) {
-							(*output)
-								<< kv.first
-								<< "aa"
-								<< sc.second
-								<< sc.second / aa_sequence_counts[kv.first]
-								<< sc.first
-								<< statfile::end_row()
-							;
-						}
+					(*output) | "file" | "type" | "count" | "proportion" | "dna_sequence" ;
+				}
+				for( auto& kv: dna_sequence_summary ) {
+					for( auto& sc: kv.second ) {
+						(*output)
+							<< kv.first
+							<< "dna"
+							<< sc.second
+							<< sc.second / dna_sequence_counts[kv.first]
+							<< sc.first
+							<< statfile::end_row()
+						;
 					}
 				}
-				if( options().check( "-dna-fasta" )) {
-					std::auto_ptr< std::ostream > fasta = genfile::open_text_file_for_output( options().get< std::string >( "-dna-fasta" )) ;
-					for( auto& kv: dna_sequence_summary ) {
-						std::size_t const total = dna_sequence_counts[kv.first] ;
-						std::size_t indicator = 1 ;
-						for( auto& sc: kv.second ) {
-							(*fasta)
-								<< (boost::format( ">%s-%d/%d-%.1f%%-%d" ) % kv.first % sc.second % total % (100.0 * sc.second / total ) % (indicator++) )
-								<< "\n"
-								<< genfile::string_utils::replace_all( sc.first, "-", "" )
-								<< "\n"
-							;
-						}
+				for( auto& kv: aa_sequence_summary ) {
+					for( auto& sc: kv.second ) {
+						(*output)
+							<< kv.first
+							<< "aa"
+							<< sc.second
+							<< sc.second / aa_sequence_counts[kv.first]
+							<< sc.first
+							<< statfile::end_row()
+						;
 					}
 				}
-				if( options().check( "-aa-fasta" )) {
-					std::auto_ptr< std::ostream > fasta = genfile::open_text_file_for_output( options().get< std::string >( "-aa-fasta" )) ;
-					for( auto& kv: aa_sequence_summary ) {
-						std::size_t const total = aa_sequence_counts[kv.first] ;
-						std::size_t indicator = 1 ;
-						for( auto& sc: kv.second ) {
-							(*fasta)
-								<< (boost::format( ">%s-%d/%d-%.1f%%-%d" ) % kv.first % sc.second % total % (100.0 * sc.second / total ) % (indicator++) )
-								<< "\n"
-								<< genfile::string_utils::replace_all( sc.first, "-", "" )
-								<< "\n"
-							;
-						}
+			}
+			if( options().check( "-dna-fasta" )) {
+				std::auto_ptr< std::ostream > fasta = genfile::open_text_file_for_output( options().get< std::string >( "-dna-fasta" )) ;
+				for( auto& kv: dna_sequence_summary ) {
+					std::size_t const total = dna_sequence_counts[kv.first] ;
+					std::size_t indicator = 1 ;
+					for( auto& sc: kv.second ) {
+						(*fasta)
+							<< (boost::format( ">%s-%d/%d-%.1f%%-%d" ) % kv.first % sc.second % total % (100.0 * sc.second / total ) % (indicator++) )
+							<< "\n"
+							<< genfile::string_utils::replace_all( sc.first, "-", "" )
+							<< "\n"
+						;
+					}
+				}
+			}
+			if( options().check( "-aa-fasta" )) {
+				std::auto_ptr< std::ostream > fasta = genfile::open_text_file_for_output( options().get< std::string >( "-aa-fasta" )) ;
+				for( auto& kv: aa_sequence_summary ) {
+					std::size_t const total = aa_sequence_counts[kv.first] ;
+					std::size_t indicator = 1 ;
+					for( auto& sc: kv.second ) {
+						(*fasta)
+							<< (boost::format( ">%s-%d/%d-%.1f%%-%d" ) % kv.first % sc.second % total % (100.0 * sc.second / total ) % (indicator++) )
+							<< "\n"
+							<< genfile::string_utils::replace_all( sc.first, "-", "" )
+							<< "\n"
+						;
 					}
 				}
 			}
