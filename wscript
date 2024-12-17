@@ -72,8 +72,11 @@ def compute_revision(task):
 		c.execute( "SELECT value FROM vvar WHERE name == 'checkout-hash'" )
 		result = c.fetchone()
 		revision = result[0][0:10]
+	elif os.path.exists( '.git' ):
+		import subprocess
+		revision = subprocess.check_output( ['git', 'rev-parse', '--short', 'HEAD'] ).decode('ascii').strip()
 	else:
-		print( "../.fslckout does not exist.\n" )
+		print( "Neither .fslckout nor .git exist.\n" )
 	target = open( task.outputs[0].abspath(), "w" )
 	target.write(
 	"""
