@@ -15,8 +15,10 @@ let MSAView = function(
 	elt,
 	msa,
 	reference,
+	sequence_type = 'dna', // dna or aa
 	genes,
 	annotations,
+	theme,
 	geom = {
 		layout: {
 			heights: {
@@ -39,15 +41,14 @@ let MSAView = function(
 			left: 10,
 			right: 10
 		}
-	},
-	sequence_type = 'dna', // dna or aa
-	theme = themes,
+	}
 ) {
 
 	this.sequence_type = sequence_type ;
-	this.globalColours = theme[sequence_type].colour ;
-	this.aes = theme[sequence_type].default ; 
-	this.baseMap = theme[sequence_type].displayText ;
+	this.theme = theme ;
+	this.globalColours = theme.colour ;
+	this.aes = theme.default ; 
+	this.baseMap = theme.displayText ;
 	this.elt = elt ;
 	this.elt.selectAll( '*' ).remove() ;
 	this.panels = {

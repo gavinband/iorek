@@ -77,12 +77,15 @@ function run_msa_viewer( data ) {
 	let msa = new MSA( data.alignment, data.ranges ) ;
 	let reference = msa.scales.ungappedSequences[reference_name] ;
 	console.log( "REFERENCE", reference ) ;
+	let sequence_type = data.sequence_type ? data.sequence_type : "dna" ;
 	let viewer = new MSAView(
 		d3.select( ".figure" ),
 		msa,
 		reference,
+		sequence_type,
 		new GeneView( data.genes, reference ),
-		data.annotations
+		data.annotations,
+		themes[sequence_type]
 	) ;
 	let controller = new MSAController(
 		viewer.panels,
