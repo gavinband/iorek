@@ -68,6 +68,11 @@ public:
 				"The *last value* specified here represents a 'reference' sequence against which genes will be plotted." )
 			.set_takes_values_until_next_option() ;
 
+		options[ "-sequence-type" ]
+			.set_description( "Specify the type of sequence.  Only 'dna' and 'aa' are supported currently." )
+			.set_takes_single_value()
+			.set_default_value( "gudnaess" ) ;
+
 		options[ "-genes" ]
 			.set_description( "Specific a gff file of genes to load" )
 			.set_takes_single_value() ;
@@ -423,7 +428,6 @@ private:
 			auto progress_context = ui().get_progress_context( "Loading highlights" ) ;
 			std::size_t const nameIndex = source->index_of_column( "primer_name" ) ;
 			std::size_t const sequenceIndex = source->index_of_column( "sequence" ) ;
-			std::cerr << "COLUMN INDEX: " << nameIndex << ", " << sequenceIndex << ".\n" ;
 			assert( nameIndex < sequenceIndex ) ; // TODO: allow this either way.
 			std::string name, sequence ;
 			while(
@@ -547,6 +551,7 @@ private:
 	<script src="[URLBASE]/js/AlignmentTrackScale.js"></script>
 	<script src="[URLBASE]/js/MSAView.js"></script>
 	<script src="[URLBASE]/js/MSAController.js"></script>
+	<script src="[URLBASE]/js/themes.js"></script>
 	<script src="[URLBASE]/js/run_msa_viewer.js"></script>
 	<link href="[URLBASE]/css/msa_viewer.css" rel="stylesheet" >
 </head>
@@ -561,9 +566,11 @@ private:
 <script>
 	data = )"""" ;
 		boost::algorithm::replace_all( preamble, "[URLBASE]", options().get< std::string >( "-url-base" )) ;
+		std::string sequence_type = options().get_value< std::string >( "-sequence-type" ) ;
 		out
 			<< preamble
 			<< "{\n"
+			<< "  \"sequence_type\": \"" << sequence_type << "\","
 			<< "  \"alignment\": "
 			<< sequencesToJSON( fasta, sequence_ids )
 			<< ",\n"
