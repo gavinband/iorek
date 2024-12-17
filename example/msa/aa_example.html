@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html>
+<head>
+	<meta charset="utf-8">
+	<title>Multiple sequence alignment viewer</title>
+	<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.3.0/d3.min.js"></script>
+	<script src="../../js/assert.js"></script>
+	<script src="../../js/GeneView.js"></script>
+	<script src="../../js/MSA.js"></script>
+	<script src="../../js/AlignmentTrackScale.js"></script>
+	<script src="../../js/MSAView.js"></script>
+	<script src="../../js/MSAController.js"></script>
+	<script src="../../js/themes.js"></script>
+	<script src="../../js/run_msa_viewer.js"></script>
+	<link href="../../css/msa_viewer.css" rel="stylesheet" >
+</head>
+<body>
+	<section class="figure">
+		<svg class = "names" width=900 height=600></svg>
+		<svg class = "controls" width=900 height=200></svg>
+		<canvas class = "sequences" width=900 height=600></canvas>
+		<svg class = "genes" width=900 height=200></svg>
+	</section>
+</body>
+<script>
+	data = {
+		"sequence_type": "aa",
+  "alignment": [
+{ "name": "S001", "sequence": "MMRKLAILSVSSFLFVEALFQEYQCYGSSSNTRVLNELNYDNAGTNLYNELEMNYYGKQENWYSLKKNSRSLGEND-------------------DGNNEDNEKLRKPKHKKLKQPGDGNPDPNANPNVDPNANPNVDPNANPNVD----PNANPNANPNANPNANPNANPNANPNANPNANPNANPNANPNANPNAN--------PNANPNANPNVDPNANPNANPNANPNANPNANPNANPNANPNANPNANPNANPNANPNANPNANPNANPNANPNANPNANPNANPNANPNKNNQGNGQGHNMPNDPNRNVDENANANNAVKNNNNEEPSDKHIEQYLKTIKNSLSTEWSPCSVTCGNGIQVRIKPGSANKPKDELNYENDIEKKICKMEKCSSVFNVVNSSIGLIMVLSFLFLNX" },
+{ "name": "S002", "sequence": "236G184" },
+{ "name": "S003", "sequence": "421" },
+{ "name": "S004", "sequence": "421" },
+{ "name": "S005", "sequence": "421" },
+{ "name": "S006", "sequence": "116A99AN2VD114Q3K3I34Q1D1A37" },
+{ "name": "S007", "sequence": "116A29PNAN186Q3K2QI34Q1D39" },
+{ "name": "S008", "sequence": "116A99AN2VD114Q3K3I34Q3A37" },
+{ "name": "S009", "sequence": "116A29PNAN186Q3K2QK34Q41" },
+{ "name": "S010", "sequence": "116A99AN2VD114Q3K3I34Q1D1A37" },
+{ "name": "S011", "sequence": "202PNVD10AN126I34Q1D1A37" },
+{ "name": "S012", "sequence": "116A264D1A37" },
+{ "name": "S013", "sequence": "116A264D1A37" },
+{ "name": "S014", "sequence": "202PNVD10AN126I34Q1D1A37" },
+{ "name": "S015", "sequence": "116A264D1A37" },
+{ "name": "S016", "sequence": "150----182Q3K2QK34Q41" },
+{ "name": "S017", "sequence": "198PNANPNVD10AN118Q3K2QK1Q32Q41" },
+{ "name": "S018", "sequence": "150----182Q3K2QK34Q41" },
+{ "name": "S019", "sequence": "150----182Q3K2QK34Q41" },
+{ "name": "S020", "sequence": "198PNANPNVD10AN118Q3K2QK1Q32Q41" },
+{ "name": "S021", "sequence": "150----182Q3K2QK34Q41" },
+{ "name": "S022", "sequence": "116A33----182Q3K2QK34Q41" },
+{ "name": "S023", "sequence": "116A33----182Q3K2QK34Q41" },
+{ "name": "S024", "sequence": "116A33----182Q3K2QK34Q41" },
+{ "name": "S025", "sequence": "116A33----182Q3K2QK34Q41" },
+{ "name": "S026", "sequence": "150----169S15KE2NK1Q34D1A37" },
+{ "name": "S027", "sequence": "150----169S15KE2NK1Q34D1A37" },
+{ "name": "S028", "sequence": "150----169S15KE2NK1Q34D1A37" },
+{ "name": "S029", "sequence": "150----169S15KE2NK1Q34D1A37" },
+{ "name": "S030", "sequence": "150------------------------------------------------8--------------------------------------------------------------------------------50Q3K2QK1R32Q41" },
+{ "name": "S031", "sequence": "192VD22AN118Q3K2QK1R32Q41" },
+{ "name": "S032", "sequence": "192VD22AN118Q3K2QK1R32Q41" },
+{ "name": "S033", "sequence": "192VD22AN118Q3K2QK1R32Q41" },
+{ "name": "S034", "sequence": "192VD22AN118Q3K2QK1R32Q41" },
+{ "name": "S035", "sequence": "116A219Q3K3I1Q32Q1D1A37" },
+{ "name": "S036", "sequence": "116A219Q3K3I1Q32Q1D1A37" },
+{ "name": "S037", "sequence": "116A219Q3K3I1Q32Q1D1A37" },
+{ "name": "S038", "sequence": "116A219Q3K3I1Q32Q1D1A37" },
+{ "name": "S039", "sequence": "336Q3K3R1Q32Q1D1A37" },
+{ "name": "S040", "sequence": "336Q3K3R1Q32Q1D1A37" },
+{ "name": "S041", "sequence": "336Q3K3R1Q32Q1D1A37" },
+{ "name": "S042", "sequence": "336Q3K3R1Q32Q1D1A37" },
+{ "name": "S043", "sequence": "339KE3I1Q27G3E42" },
+{ "name": "S044", "sequence": "339KE3I1Q27G3E42" },
+{ "name": "S045", "sequence": "146PNAN189KK3E1Q27D3N2D39" },
+{ "name": "S046", "sequence": "116A33----166K60D39" },
+{ "name": "S047", "sequence": "339KE3I1Q27G3E42" },
+{ "name": "S048", "sequence": "98------------------------------------------------4------------------------------------------------8-------------------------------------------------------------------------------------------------------------------------9Q3K38Q1D1A37" },
+{ "name": "S049", "sequence": "76DGNNNNGDNGREGKDEDKR21A29PNAN186Q3K38Q1D1A37" },
+{ "name": "S050", "sequence": "97-------------------------------------------------4------------------------------------------------8---------------------------------------------------------------------------------------------------------------------------7Q3K40D1A37" },
+{ "name": "S051", "sequence": "116A5------------------------4------------------------------------------------8--------------------------------------------------------------------62Q3K40D1A37" },
+{ "name": "S052", "sequence": "116A33----182Q3K40D1A37" },
+{ "name": "S053", "sequence": "116A33------------------------------------------------8------------------------------------------------82Q3K2NK34Q1D1A37" },
+{ "name": "S054", "sequence": "116A99AN2VD114Q3K2NK34Q1D1A37" },
+{ "name": "S055", "sequence": "116A33----166K25Q34D1A37" },
+{ "name": "S056", "sequence": "51V24DGNNNNGDNGREGKDEDKR21A33----182Q3K38Q1D1A37" },
+{ "name": "S057", "sequence": "150----169S15KE2NK1Q34D1A37" },
+{ "name": "S058", "sequence": "51V24DGNNNNGDNGREGKDEDKR21A33----4----------------------------------------8------------50VD66Q3K38Q1D1A37" },
+{ "name": "S059", "sequence": "116A99AN2VD114Q3K5Q32Q1D1A37" },
+{ "name": "S060", "sequence": "116A99AN2VD114Q3K5Q32Q1D1A37" },
+{ "name": "S061", "sequence": "116A99AN2VD114Q3K5Q32Q1D1A37" },
+{ "name": "S062", "sequence": "116A99AN2VD114Q3K5Q32Q1D1A37" },
+{ "name": "S063", "sequence": "116A99AN2VD114Q3K5Q32Q1D1A37" },
+{ "name": "S064", "sequence": "116A99AN2VD114Q3K5Q32Q1D1A37" },
+{ "name": "S065", "sequence": "116A99AN2VD114Q3K5Q32Q1D1A37" },
+{ "name": "S066", "sequence": "116A99AN2VD114Q3K5Q32Q1D1A37" },
+{ "name": "S067", "sequence": "116A99AN2VD121NK4I71" },
+{ "name": "S068", "sequence": "116A29PNAN66AN2VD121NK4I71" },
+{ "name": "S069", "sequence": "116A219Q3K38Q1D1A37" },
+{ "name": "S070", "sequence": "323S15KE2NK1Q34D1A37" },
+{ "name": "S071", "sequence": "323S15KE2NK1Q34D1A37" },
+{ "name": "S072", "sequence": "323S15KE2NK1Q34D1A37" },
+{ "name": "S073", "sequence": "116A99AN2VD114Q3K2QK1Q32Q1D1A37" },
+{ "name": "S074", "sequence": "323S15KE2NK1Q34D1A37" }
+],
+  "ranges": {
+"S001": { "chromosome": "S001", "start": 1, "end": 390 },
+"S002": { "chromosome": "S002", "start": 1, "end": 390 },
+"S003": { "chromosome": "S003", "start": 1, "end": 390 },
+"S004": { "chromosome": "S004", "start": 1, "end": 390 },
+"S005": { "chromosome": "S005", "start": 1, "end": 390 },
+"S006": { "chromosome": "S006", "start": 1, "end": 390 },
+"S007": { "chromosome": "S007", "start": 1, "end": 394 },
+"S008": { "chromosome": "S008", "start": 1, "end": 390 },
+"S009": { "chromosome": "S009", "start": 1, "end": 394 },
+"S010": { "chromosome": "S010", "start": 1, "end": 390 },
+"S011": { "chromosome": "S011", "start": 1, "end": 394 },
+"S012": { "chromosome": "S012", "start": 1, "end": 390 },
+"S013": { "chromosome": "S013", "start": 1, "end": 390 },
+"S014": { "chromosome": "S014", "start": 1, "end": 394 },
+"S015": { "chromosome": "S015", "start": 1, "end": 390 },
+"S016": { "chromosome": "S016", "start": 1, "end": 386 },
+"S017": { "chromosome": "S017", "start": 1, "end": 398 },
+"S018": { "chromosome": "S018", "start": 1, "end": 386 },
+"S019": { "chromosome": "S019", "start": 1, "end": 386 },
+"S020": { "chromosome": "S020", "start": 1, "end": 398 },
+"S021": { "chromosome": "S021", "start": 1, "end": 386 },
+"S022": { "chromosome": "S022", "start": 1, "end": 386 },
+"S023": { "chromosome": "S023", "start": 1, "end": 386 },
+"S024": { "chromosome": "S024", "start": 1, "end": 386 },
+"S025": { "chromosome": "S025", "start": 1, "end": 386 },
+"S026": { "chromosome": "S026", "start": 1, "end": 386 },
+"S027": { "chromosome": "S027", "start": 1, "end": 386 },
+"S028": { "chromosome": "S028", "start": 1, "end": 386 },
+"S029": { "chromosome": "S029", "start": 1, "end": 386 },
+"S030": { "chromosome": "S030", "start": 1, "end": 262 },
+"S031": { "chromosome": "S031", "start": 1, "end": 390 },
+"S032": { "chromosome": "S032", "start": 1, "end": 390 },
+"S033": { "chromosome": "S033", "start": 1, "end": 390 },
+"S034": { "chromosome": "S034", "start": 1, "end": 390 },
+"S035": { "chromosome": "S035", "start": 1, "end": 390 },
+"S036": { "chromosome": "S036", "start": 1, "end": 390 },
+"S037": { "chromosome": "S037", "start": 1, "end": 390 },
+"S038": { "chromosome": "S038", "start": 1, "end": 390 },
+"S039": { "chromosome": "S039", "start": 1, "end": 390 },
+"S040": { "chromosome": "S040", "start": 1, "end": 390 },
+"S041": { "chromosome": "S041", "start": 1, "end": 390 },
+"S042": { "chromosome": "S042", "start": 1, "end": 390 },
+"S043": { "chromosome": "S043", "start": 1, "end": 390 },
+"S044": { "chromosome": "S044", "start": 1, "end": 390 },
+"S045": { "chromosome": "S045", "start": 1, "end": 394 },
+"S046": { "chromosome": "S046", "start": 1, "end": 386 },
+"S047": { "chromosome": "S047", "start": 1, "end": 390 },
+"S048": { "chromosome": "S048", "start": 1, "end": 173 },
+"S049": { "chromosome": "S049", "start": 1, "end": 413 },
+"S050": { "chromosome": "S050", "start": 1, "end": 170 },
+"S051": { "chromosome": "S051", "start": 1, "end": 250 },
+"S052": { "chromosome": "S052", "start": 1, "end": 386 },
+"S053": { "chromosome": "S053", "start": 1, "end": 294 },
+"S054": { "chromosome": "S054", "start": 1, "end": 390 },
+"S055": { "chromosome": "S055", "start": 1, "end": 386 },
+"S056": { "chromosome": "S056", "start": 1, "end": 405 },
+"S057": { "chromosome": "S057", "start": 1, "end": 386 },
+"S058": { "chromosome": "S058", "start": 1, "end": 353 },
+"S059": { "chromosome": "S059", "start": 1, "end": 390 },
+"S060": { "chromosome": "S060", "start": 1, "end": 390 },
+"S061": { "chromosome": "S061", "start": 1, "end": 390 },
+"S062": { "chromosome": "S062", "start": 1, "end": 390 },
+"S063": { "chromosome": "S063", "start": 1, "end": 390 },
+"S064": { "chromosome": "S064", "start": 1, "end": 390 },
+"S065": { "chromosome": "S065", "start": 1, "end": 390 },
+"S066": { "chromosome": "S066", "start": 1, "end": 390 },
+"S067": { "chromosome": "S067", "start": 1, "end": 390 },
+"S068": { "chromosome": "S068", "start": 1, "end": 394 },
+"S069": { "chromosome": "S069", "start": 1, "end": 390 },
+"S070": { "chromosome": "S070", "start": 1, "end": 390 },
+"S071": { "chromosome": "S071", "start": 1, "end": 390 },
+"S072": { "chromosome": "S072", "start": 1, "end": 390 },
+"S073": { "chromosome": "S073", "start": 1, "end": 390 },
+"S074": { "chromosome": "S074", "start": 1, "end": 390 }
+},
+  "genes": [
+
+],
+  "highlights": {},
+  "annotations": {}
+};
+run_msa_viewer( data ) ;
+</script>
+</html>
