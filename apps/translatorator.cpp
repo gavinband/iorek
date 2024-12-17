@@ -393,6 +393,25 @@ namespace impl {
 		return out ;
 	}
 
+	void to_lower_inplace( std::string& s ) {
+		std::transform(
+			s.begin(), s.end(),
+			s.begin(), [](unsigned char c) { return std::tolower(c) ; }
+		) ;
+	}
+
+	void to_upper_inplace( std::string& s ) {
+		std::transform(
+			s.begin(), s.end(),
+			s.begin(), [](unsigned char c) { return std::toupper(c) ; }
+		) ;
+	}
+	std::string to_upper( std::string const& s ) {
+		std::string result = s ;
+		to_upper_inplace(result) ;
+		return( result ) ;
+	}
+
 	bool load_fragmented_dna_sequence(
 		std::string const& sequence,
 		std::vector< KmerPair > const& kmer_pairs,
@@ -523,7 +542,10 @@ private:
 		std::string aligned_a ;
 		std::string aligned_b ;
 
-		AlignmentDetail() {}
+		AlignmentDetail():
+			score(0),
+			identity(0.0)
+		 {}
 
 		AlignmentDetail(
 			std::string const& _a,
@@ -605,7 +627,7 @@ private:
 
 		std::vector< impl::KmerPair > kmer_pairs ;
 		for( std::size_t i = 0; i < kmers.size(); i += 2 ) {
-			kmer_pairs.push_back( impl::KmerPair( kmers[i], kmers[i+1] )) ;
+			kmer_pairs.push_back( impl::KmerPair( impl::to_upper(kmers[i]), impl::to_upper(kmers[i+1]) )) ;
 		}
 
 		SequencesToReads result ;
@@ -971,6 +993,7 @@ private:
 		std::string fwd_sequence, rc_sequence ;
 		impl::Match::MatchRanges fwd_positions, rc_positions ;
 		while( sequences.next( &sequence_name, &sequence )) {
+			impl::to_upper_inplace( sequence ) ;
 			bool fwd = load_fragmented_dna_sequence( sequence, kmer_pairs, &fwd_sequence, &fwd_positions ) ;
 			bool rev = load_fragmented_dna_sequence( genfile::reverse_complement( sequence ), kmer_pairs, &rc_sequence, &rc_positions ) ;
 			if( fwd ) {
