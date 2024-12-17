@@ -761,10 +761,11 @@ private:
 			for( std::size_t i = 0; i < kmer_pairs.size(); ++i ) {
 				output->write_comment( to_string(i+1) + ": " + kmer_pairs[i].first() + " / " + kmer_pairs[i].second() ) ;
 			}
-			(*output) | "file" | "read_id" | "strand" | "dna_sequence" ;
+			(*output) | "file" | "read_id" | "strand" ;
 			for( std::size_t i = 0; i < kmer_pairs.size(); ++i ) {
 				(*output) | ("start_" + to_string(i+1)) | ("end_" + to_string(i+1)) ;
 			}
+			(*output) | "dna_sequence" ;
 			if( use_clustering ) {
 				(*output) | "best_alignment_score" | "best_alignment_cigar" | "best_alignment_identity" | "corrected_dna_sequence" ;
 			}
@@ -783,15 +784,15 @@ private:
 
 			if( s.strand() == impl::Match::eFwdStrand || s.strand() == impl::Match::eRevStrand ) {
 				BestAlignments::const_iterator where = aligned.find( s.sequence() ) ;
-				if( use_clustering && where != aligned.end() ) {
-					(*output) << where->second.aligned_a ;
-				} else {
-					(*output) << s.sequence() ;
-				}
 				for( std::size_t i = 0; i < kmer_pairs.size(); ++i ) {
 					(*output)
 						<< uint64_t(s.positions()[i].first + 1)
 						<< uint64_t(s.positions()[i].second) ;
+				}
+				if( use_clustering && where != aligned.end() ) {
+					(*output) << where->second.aligned_a ;
+				} else {
+					(*output) << s.sequence() ;
 				}
 				if( use_clustering ) {
 					if( where != aligned.end() ) {
