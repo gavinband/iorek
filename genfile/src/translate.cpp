@@ -40,14 +40,18 @@ namespace {
 }
 
 namespace genfile {
-	std::string translate( std::string const& sequence ) {
+	std::string translate(
+		std::string const& sequence,
+		bool truncate
+	) {
 		std::size_t const length = sequence.size() ;
-		if( length % 3 != 0 ) {
+		if( length % 3 != 0 && !truncate ) {
 			return "?" ;
 		}
-		std::string result( length/3, '-' ) ;
+		std::string result( length/3, ' ' ) ;
+		std::size_t translation_length = (length/3) * 3 ;
 		std::size_t i = 0 ;
-		for( ; i < length; i += 3 ) {
+		for( ; i < translation_length; i += 3 ) {
 			std::string const& codon = genfile::string_utils::to_lower( sequence.substr( i, 3 )) ;
 			AATable::const_iterator where = aa_table.find( codon ) ;
 #if DEBUG
@@ -57,6 +61,15 @@ namespace genfile {
 				result[i/3] = '-' ;
 			} else {
 				result[i/3] = where->second ;
+			}
+			if( truncate && result[i/3] == 'X' ) {
+				result.resize( (i/3)+1 ) ;
+				break ;	
+			}
+		}
+		if( truncate && (length % 3 != 0) && result.back() != 'X' ) {
+			for( ; i < length; ++i ) {
+				result.push_back( '?' ) ;
 			}
 		}
 		return result ;

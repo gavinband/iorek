@@ -9,7 +9,10 @@
 #include <string>
 
 namespace genfile {
-	std::string translate( std::string const& sequence ) ;
+	std::string translate(
+		std::string const& sequence,
+		bool truncate_at_stops
+	) ;
 }
 
 #endif

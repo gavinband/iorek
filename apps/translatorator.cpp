@@ -135,6 +135,9 @@ public:
 		options[ "-only-translatable" ]
 			.set_description( "Only take sequences that are a multiple of 3 in length to cluster." )
 		;
+		options[ "-truncate-at-stops" ]
+			.set_description( "Specify that aa sequences will be truncated at stop codons." )
+		;
 		options[ "-min-alignment-identity" ]
 			.set_description( "When summarising reads aligned to candidate correct sequences, "
 			" only accept alignments with this minimum proportion of matching bases compared to alignment length" )
@@ -146,6 +149,7 @@ public:
 		options.option_implies_option( "-min-obs-samples", "-cluster" ) ;
 		options.option_implies_option( "-min-fraction-per-sample", "-cluster" ) ;
 
+		options.option_excludes_option( "-only-translatable", "-truncate-at-stops" ) ;
 	}
 } ;
 
@@ -644,11 +648,12 @@ private:
 		BestAlignments aligned ;
 
 		bool const use_clustering = options().check( "-cluster" ) ;
+		bool const only_translatable = options().check( "-only-translatable" ) ;
+		bool const truncate_at_stops = options().check( "-truncate-at-stops" ) ;
 		if( use_clustering ) {
 			std::size_t const min_obs_per_sample = options().get_value< std::size_t >( "-min-obs-per-sample" ) ;
 			double const min_fraction_per_sample = options().get_value< double >( "-min-fraction-per-sample" ) ;
 			std::size_t const min_obs_samples = options().get_value< std::size_t >( "-min-obs-samples" ) ;
-			bool const only_translatable = options().check( "-only-translatable" ) ;
 
 			// clustering
 			// First, we group everything by sequence and count reads per sample.
@@ -801,7 +806,7 @@ private:
 							<< where->second.cigar
 							<< where->second.identity
 							<< where->second.aligned_b
-							<< genfile::translate( where->second.b ) ;
+							<< genfile::translate( where->second.b, truncate_at_stops ) ;
 					} else {
 						(*output)
 							<< "NA"
@@ -811,7 +816,7 @@ private:
 							<< "NA" ;
 					}
 				} else {
-					(*output) << genfile::translate( s.sequence() ) ;
+					(*output) << genfile::translate( s.sequence(), truncate_at_stops ) ;
 				}
 			} else {
 				while( output->current_column() < output->number_of_columns() ) {
@@ -836,7 +841,7 @@ private:
 						std::string const& sequence =  where->second.b ;
 						++dna_sequence_summary[s.name()][sequence] ;
 						++dna_sequence_counts[s.name()] ;
-						std::string translated = genfile::translate(sequence) ;
+						std::string translated = genfile::translate( sequence, truncate_at_stops ) ;
 						if( translated != "?" ) {
 							++aa_sequence_summary[s.name()][translated] ;
 							++aa_sequence_counts[s.name()] ;
