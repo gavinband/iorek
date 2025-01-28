@@ -95,6 +95,7 @@ namespace genfile {
 		
 		typedef std::pair< std::pair< genfile::Position, genfile::Position >, ContigSequence > ChromosomeRangeAndSequence ;
 		typedef std::map< Chromosome, ChromosomeRangeAndSequence > SequenceData ;
+		typedef std::vector< Chromosome > ContigIds ;
 		typedef boost::function< void ( std::size_t, boost::optional< std::size_t > ) > ProgressCallback ;
 	public:
 		static UniquePtr create() ;
@@ -141,7 +142,8 @@ namespace genfile {
 
 	private:
 		SequenceData m_data ;
-	
+		ContigIds m_contig_ids ;
+
 		void load_sequence( std::vector< std::string > const& filenames, ProgressCallback callback ) ;
 		void load_sequence( std::string const& name, std::string const& filename ) ;
 	} ;

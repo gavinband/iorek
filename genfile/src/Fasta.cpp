@@ -49,6 +49,7 @@ namespace genfile {
 			range,
 			sequence
 		) ;
+		m_contig_ids.push_back( name ) ;
 	}
 
 	std::string const Fasta::get_spec() const {
@@ -178,6 +179,7 @@ namespace genfile {
 						std::make_pair( start, end ),
 						sequence
 					) ;
+					m_contig_ids.push_back( storedName ) ;
 				}
 			) ;
 		} catch( genfile::MalformedInputError const& e ) {
@@ -193,8 +195,9 @@ namespace genfile {
 	std::string Fasta::get_summary( std::string const& prefix, std::size_t column_width ) const {
 		using genfile::string_utils::to_string ;
 		std::string result = prefix + "Fasta sequence for the following regions:" ;
-		std::size_t count = 0 ;
-		for( SequenceData::const_iterator i = m_data.begin(); i != m_data.end(); ++i, ++count ) {
+		for( Chromosome const& name: m_contig_ids ) {
+			SequenceData::const_iterator i = m_data.find( name ) ;
+			assert( i != m_data.end() ) ;
 			result += "\n" + prefix + " - sequence \"" + to_string( i->first ) + "\":"
 				+ to_string( i->second.first.first ) + "-" + to_string( i->second.first.second )
 				+  " (length " + to_string( i->second.first.second - i->second.first.first ) + ")" ;
@@ -204,8 +207,9 @@ namespace genfile {
 
 	std::vector< genfile::GenomePositionRange > Fasta::get_ranges() const {
 		std::vector< genfile::GenomePositionRange > result ;
-		SequenceData::const_iterator i = m_data.begin(), end_i = m_data.end() ;
-		for( ; i != end_i; ++i ) {
+		for( Chromosome const& name: m_contig_ids ) {
+			SequenceData::const_iterator i = m_data.find( name ) ;
+			assert( i != m_data.end() ) ;
 			result.push_back(
 				genfile::GenomePositionRange(
 					i->first,
@@ -324,18 +328,12 @@ namespace genfile {
 	}
 
 	std::vector< std::string > Fasta::sequence_ids() const {
-		std::vector< std::string > result ;
-		SequenceData::const_iterator i = m_data.begin(), end_i = m_data.end() ;
-		for( ; i != end_i; ++i ) {
-			result.push_back( i->first ) ;
-		}
-		return result ;
+		return std::vector< std::string >( m_contig_ids.begin(), m_contig_ids.end() ) ;
 	}
 
 	void Fasta::sequence_ids( boost::function< void( std::string ) > callback ) const {
-		SequenceData::const_iterator i = m_data.begin(), end_i = m_data.end() ;
-		for( ; i != end_i; ++i ) {
-			callback( i->first ) ;
+		for( Chromosome const& name: m_contig_ids ) {
+			callback( name ) ;
 		}
 	}
 
