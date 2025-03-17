@@ -36,8 +36,8 @@ let MSAView = function(
 			}
 		},
 		margin: {
-			top: 20,
-			bottom: 20,
+			top: 10,
+			bottom: 10,
 			left: 10,
 			right: 10
 		}
@@ -214,10 +214,11 @@ MSAView.prototype.draw = function( force ) {
 	panels.names.attr( 'width', geom.layout.width.names ) ;
 	panels.names.attr( 'height', geom.layout.heights.all - geom.layout.heights.genes ) ;
 
+	panels.sequences.attr( 'top', "50px" ) ;
 	panels.sequences.attr( 'width', geom.layout.width.sequences ) ;
 	panels.sequences.attr( 'height', geom.layout.heights.all - geom.layout.heights.genes ) ;
 
-	panels.genes.style( 'top', geom.layout.heights.all - geom.layout.heights.genes + 20 ) ;
+	panels.genes.style( 'top', geom.layout.heights.all - geom.layout.heights.genes + 60 + "px" ) ;
 	panels.genes.attr( 'width', geom.layout.width.reference ) ;
 
 	panels.controls.style( 'top', '20px' ) ;
@@ -326,7 +327,7 @@ MSAView.prototype.draw = function( force ) {
 				base = levels[by][level_j] ;
 			} else {
 				base = sequence[j] ;
-            }
+			}
 			let geom ;
 			if( aes.bases.geom.hasOwnProperty( base )) {
 				geom = aes.bases.geom[base] ;

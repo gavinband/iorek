@@ -464,14 +464,15 @@ GeneView.prototype.draw = function(
 		interpolator1 = Math.min( ((baseWidth)-0.1) / 10.0, 1.0 ) ;
 //	}
 	let interpolator2 = 0 ;
-	if( baseWidth > 8 ) {
-		interpolator2 = Math.min( (baseWidth-8) / 10.0, 1.0 ) ;
+	if( baseWidth > 2 ) {
+		interpolator2 = Math.min( (baseWidth-2) / 10.0, 1.0 ) ;
 	}
 
 	let interpolator3 = 0 ;
 	if( baseWidth > 20 ) {
 		interpolator3 = Math.min( (baseWidth-20) / 10.0, 1.0 ) ;
 	}
+	console.log( "baseWidth", baseWidth ) ;
 
 	transcripts.selectAll( 'g.aa rect' )
 		.attr( axes.x, elt => min( scales.position( elt.start - 0.5 ), scales.position( elt.end - 0.5 )) )
@@ -500,10 +501,10 @@ GeneView.prototype.draw = function(
 		.attr( axes.y, elt => scales.level( elt.level ))
 		.attr( 'text-anchor', 'middle' )
 		.attr( 'alignment-baseline', 'middle' )
-		.attr( 'font-size', '8pt' )
-		.attr( 'font-family', 'Palatino' )
-		.attr( 'font-weight', 'bold' )
-		.attr( 'stroke', '#CCCCCC' )
+		.attr( 'font-size', '9pt' )
+		.attr( 'font-family', 'Palatino; Sans-serif' )
+		//.attr( 'font-weight', 'bold' )
+		.attr( 'stroke', '#EEEEEE' )
 		.attr( 'stroke-opacity', interpolator2 )
 		.attr( 'fill-opacity', interpolator2 )
 		.text( elt => ( elt.aa == "STOP" ? "X" : elt.aa )) ;
@@ -515,10 +516,10 @@ GeneView.prototype.draw = function(
 		.attr( 'alignment-baseline', 'middle' )
 		.attr( 'font-size', '7pt' )
 		.attr( 'font-family', 'Palatino' )
-		.attr( 'stroke', '#ABABAB' )
+		.attr( 'stroke', '#DDDDDD' )
 		.attr( 'stroke-opacity', interpolator3 )
 		.attr( 'fill-opacity', interpolator3 )
-		.text( elt => "(" + elt.count + ")" ) ;
+		.text( elt => "" + elt.count ) ;
 
 	function isVisible( x ) {
 		return x >= region.start && x <= region.end ;

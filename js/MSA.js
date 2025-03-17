@@ -60,8 +60,7 @@ let computeUngappedSequence = function( name, gappedSequence, coordinateRange ) 
 			}
 		} ) ;
 	}
-	
-	console.log( "S", gappedSequence, ungappedSequence ) ;
+	// console.log( "S", gappedSequence, ungappedSequence ) ;
 	// sanity check
 	assert(
 		ungappedSequence.length == Math.abs(coordinateRange.end - coordinateRange.start)+1,
