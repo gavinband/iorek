@@ -57,7 +57,7 @@ namespace genfile {
 		Mask::iterator where = m_mask.find( id ) ;
 		assert( where != m_mask.end() ) ;
 		where->second.set_zero_based( lower, upper, value ) ;
-	} ;
+	}
 
 	void FastaMask::set_from_bed3_file(
 		std::string const& filename,
