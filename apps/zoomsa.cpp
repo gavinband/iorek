@@ -71,7 +71,7 @@ public:
 		options[ "-sequence-type" ]
 			.set_description( "Specify the type of sequence.  Only 'dna' and 'aa' are supported currently." )
 			.set_takes_single_value()
-			.set_default_value( "gudnaess" ) ;
+			.set_default_value( "dna" ) ;
 
 		options[ "-genes" ]
 			.set_description( "Specific a gff file of genes to load" )
