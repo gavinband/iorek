@@ -112,6 +112,11 @@ public:
 			.set_takes_single_value()
 			.set_default_value( "-" ) ;
 
+		options[ "-os" ]
+			.set_description( "Path of across-reads summary output file." )
+			.set_takes_single_value()
+			.set_default_value( "-" ) ;
+
 		options[ "-op" ]
 			.set_description( "Path of per-position-in-read output file." )
 			.set_takes_single_value()
@@ -439,6 +444,10 @@ namespace {
 			number_of_solid_kmers_at_threshold(0),
 			first_solid_kmer_start(0),
 			last_solid_kmer_end(0),
+			A(0),
+			C(0),
+			G(0),
+			T(0),
 			mean_base_quality(0.0),
 			mean_base_quality2(0.0), // accumulated on the error probability scale
 			number_of_bases_ge_q(10, 0ul ),
@@ -455,6 +464,10 @@ namespace {
 			number_of_solid_kmers_at_threshold( other.number_of_solid_kmers_at_threshold ),
 			first_solid_kmer_start( other.first_solid_kmer_start ),
 			last_solid_kmer_end( other.last_solid_kmer_end ),
+			A( other.A ),
+			C( other.C ),
+			G( other.G ),
+			T( other.T ),
 			mean_base_quality( other.mean_base_quality ),
 			mean_base_quality2( other.mean_base_quality2 ),
 			number_of_bases_ge_q( other.number_of_bases_ge_q ),
@@ -473,6 +486,10 @@ namespace {
 			number_of_solid_kmers_at_threshold = other.number_of_solid_kmers_at_threshold ;
 			first_solid_kmer_start = other.first_solid_kmer_start ;
 			last_solid_kmer_end = other.last_solid_kmer_end ;
+			A = other.A ;
+			C = other.C ;
+			G = other.G ;
+			T = other.T ;
 			mean_base_quality = other.mean_base_quality ;
 			mean_base_quality2 = other.mean_base_quality2 ;
 			number_of_bases_ge_q = other.number_of_bases_ge_q ;
@@ -496,6 +513,7 @@ namespace {
 		uint64_t number_of_solid_kmers_at_threshold ;
 		uint64_t first_solid_kmer_start ;
 		uint64_t last_solid_kmer_end ;
+		double A, C, G, T ;
 		double mean_base_quality ;
 		double mean_base_quality2 ;
 		std::vector< uint64_t > number_of_bases_ge_q ;
@@ -506,6 +524,68 @@ namespace {
 		uint64_t unique_solid_kmers ;
 	} ;
 	
+	struct ReadMetrics {
+	public:
+		// TODO: add kmer metrics
+		ReadMetrics():
+			length(0),
+			number_of_kmers_at_threshold(0),
+			number_of_solid_kmers_at_threshold(0),
+			A(0),
+			C(0),
+			G(0),
+			T(0),
+			mean_base_quality(0.0),
+			number_of_bases_ge_q(10, 0ul ),
+			bases_at_q(94,0)
+		{}
+
+		ReadMetrics( ReadMetrics const& other ):
+			length( other.length ),
+			number_of_kmers_at_threshold( other.number_of_kmers_at_threshold ),
+			number_of_solid_kmers_at_threshold( other.number_of_solid_kmers_at_threshold ),
+			A( other.A ),
+			C( other.C ),
+			G( other.G ),
+			T( other.T ),
+			mean_base_quality( other.mean_base_quality ),
+			number_of_bases_ge_q( other.number_of_bases_ge_q ),
+			bases_at_q( other.bases_at_q )
+		{}
+
+		ReadMetrics& operator+=( ReadResult const& other ) {
+			number_of_kmers_at_threshold += other.number_of_kmers_at_threshold ;
+			number_of_solid_kmers_at_threshold += other.number_of_solid_kmers_at_threshold ;
+			A += other.A ;
+			C += other.C ;
+			G += other.G ;
+			T += other.T ;
+			mean_base_quality = ((mean_base_quality*length)+(other.mean_base_quality*other.length())) / (length + other.length()) ;
+			length += other.length() ;
+			number_of_bases_ge_q = other.number_of_bases_ge_q ;
+			bases_at_q = other.bases_at_q ;
+			for( std::size_t i = 0; i < number_of_bases_ge_q.size(); ++i ) {
+				number_of_bases_ge_q[i] += other.number_of_bases_ge_q[i] ;
+				bases_at_q[i] += other.bases_at_q[i] ;
+			}
+
+			return *this ;
+		}
+
+		std::size_t total_bases() const { return length ; }
+
+	public:
+		uint64_t length ;
+		uint64_t number_of_kmers_at_threshold ;
+		uint64_t number_of_solid_kmers_at_threshold ;
+		uint64_t first_solid_kmer_start ;
+		uint64_t last_solid_kmer_end ;
+		double A, C, G, T ;
+		double mean_base_quality ;
+		std::vector< uint64_t > number_of_bases_ge_q ;
+		std::vector< uint64_t > bases_at_q ;
+	} ;
+
 	struct ReadEndMetrics {
 		ReadEndMetrics( std::size_t length_to_track ):
 			errors( length_to_track, 0 ),
@@ -654,6 +734,8 @@ private:
 			auto by_position_sink = statfile::BuiltInTypeStatSink::open( options().get< std::string >( "-op" ) ) ;
 			// by_read_sink: metrics per each read
 			auto by_read_sink = statfile::BuiltInTypeStatSink::open( options().get< std::string >( "-or" ) ) ;
+			// aggregate_metrics_sink: metrics per each read
+			auto aggregate_metrics_sink = statfile::BuiltInTypeStatSink::open( options().get< std::string >( "-os" ) ) ;
 
 			std::auto_ptr< std::istream >
 				fastq = genfile::open_text_file_for_input( options().get< std::string >( "-reads" ) ) ;
@@ -665,7 +747,8 @@ private:
 				base_quality_threshold,
 				*by_read_sink,
 				*by_position_sink,
-				*by_quality_sink
+				*by_quality_sink,
+				*aggregate_metrics_sink
 			) ;
 			double end_time = timer.elapsed() ;
 			ui().logger() << "++ Ok, processed " << number_of_reads << " reads in " << (end_time - start_time) << " seconds.\n" ;
@@ -757,7 +840,8 @@ private:
 		uint64_t base_quality_threshold,
 		statfile::BuiltInTypeStatSink& read_sink,
 		statfile::BuiltInTypeStatSink& position_sink,
-		statfile::BuiltInTypeStatSink& quality_sink
+		statfile::BuiltInTypeStatSink& quality_sink,
+		statfile::BuiltInTypeStatSink& aggregate_metrics_sink
 	) {
 		std::size_t const number_of_threads = options().get< std::size_t >( "-threads" ) ;
 
@@ -795,6 +879,7 @@ private:
 					&read_sink,
 					&position_sink,
 					&quality_sink,
+					&aggregate_metrics_sink,
 					options().get< std::size_t >( "-length-to-track-5p" ),
 					options().get< std::size_t >( "-length-to-track-3p" ),
 					&quit
@@ -924,7 +1009,6 @@ private:
 		bool have_first = false ;
 		
 		std::size_t i = 0;
-
 		for(
 			;
 			(i+k) <= read.length();
@@ -934,6 +1018,12 @@ private:
 			int base_quality = get_quality_from_char(read.qualities[i]) ;
 			assert( base_quality <= 93 ) ;
 			++(result->bases_at_q[std::size_t(base_quality)]) ;
+
+			result->A += (read.sequence[i] == 'A' || read.sequence[i] == 'a' ) ;
+			result->C += (read.sequence[i] == 'C' || read.sequence[i] == 'c' ) ;
+			result->G += (read.sequence[i] == 'G' || read.sequence[i] == 'g' ) ;
+			result->T += (read.sequence[i] == 'T' || read.sequence[i] == 't' ) ;
+
 			sum_of_base_qualities += double(base_quality) ;
 			// bq = -10 log10 (error probability) so use 
 			// inverse is 10^(-bq/10)
@@ -1098,6 +1188,7 @@ private:
 		statfile::BuiltInTypeStatSink* read_sink,
 		statfile::BuiltInTypeStatSink* read_position_sink,
 		statfile::BuiltInTypeStatSink* quality_sink,
+		statfile::BuiltInTypeStatSink* aggregate_metrics_sink,
 		std::size_t const length_to_track_five_prime,
 		std::size_t const length_to_track_three_prime,
 		std::atomic< int >* quit
@@ -1112,11 +1203,14 @@ private:
 
 		std::size_t count = 0 ;
 		
+		ReadMetrics aggregated ;
 		ReadResult result ;
 		while( !(*quit) ) {
 			bool popped = result_queue->try_dequeue( result ) ;
 			if( popped ) {
 				process_read_result( result, read_sink, include_tags, include_kmer_metrics ) ;
+				aggregated += result ;
+
 				if( result.read.length() >= length_to_track_five_prime + length_to_track_three_prime ) {
 					accumulate_read_end_metrics(
 						result,
@@ -1136,6 +1230,13 @@ private:
 				std::this_thread::sleep_for( std::chrono::microseconds(10) ) ;
 			}
 		}
+
+		ui().logger() << "++ Outputting aggregated metrics...\n" ;
+		write_aggregate_metrics(
+			aggregated,
+			aggregate_metrics_sink
+		) ;
+
 		ui().logger() << "++ Outputting read-end metrics...\n" ;
 		process_read_end_metrics(
 			read_start_metrics,
@@ -1179,7 +1280,10 @@ private:
 		(*output)
 			| "read_length"
 			| "mean_base_quality"
-			| "mean_base_quality2"
+			| "A"
+			| "C"
+			| "G"
+			| "T"
 			| "n_bases_at_q10"
 			| "n_bases_at_q20"
 			| "n_bases_at_q30"
@@ -1234,7 +1338,10 @@ private:
 		(*output)
 			<< uint64_t(read_result.read.length())
 			<< read_result.mean_base_quality
-			<< read_result.mean_base_quality2
+			<< read_result.A
+			<< read_result.C
+			<< read_result.G
+			<< read_result.T
 			<< read_result.number_of_bases_ge_q[1] 				// q10
 			<< read_result.number_of_bases_ge_q[2] 				// q20
 			<< read_result.number_of_bases_ge_q[3] 				// q30
@@ -1283,6 +1390,62 @@ private:
 		}
 		(*output) << statfile::end_row() ;
 	}
+
+	void write_aggregate_metrics(
+		ReadMetrics const& aggregate,
+		statfile::BuiltInTypeStatSink* output
+	) {
+#if DEBUG
+		std::cerr << "++ write_per_read_result(): " << result.id << ".\n" ;
+#endif
+/*		length(0),
+			number_of_kmers_at_threshold(0),
+			number_of_solid_kmers_at_threshold(0),
+			A(0),
+			C(0),
+			G(0),
+			T(0),
+			mean_base_quality(0.0),
+			number_of_bases_ge_q(10, 0ul ),
+			bases_at_q(94,0)
+*/
+
+		(*output)
+			| "total_bases"
+			| "mean_base_quality"
+			| "A" | "C" | "G" | "T"
+			| "n_bases_at_q10"
+			| "n_bases_at_q20"
+			| "n_bases_at_q30"
+			| "n_bases_at_q40"
+			| "n_bases_at_q50"
+			| "n_bases_at_q60"
+			| "n_bases_at_q70"
+			| "n_bases_at_q80"
+			| "n_bases_at_q90"
+		;
+
+		(*output)
+			<< uint64_t(aggregate.total_bases())
+			<< aggregate.mean_base_quality
+			<< aggregate.A
+			<< aggregate.C
+			<< aggregate.G
+			<< aggregate.T
+			<< aggregate.number_of_bases_ge_q[1] 				// q10
+			<< aggregate.number_of_bases_ge_q[2] 				// q20
+			<< aggregate.number_of_bases_ge_q[3] 				// q30
+			<< aggregate.number_of_bases_ge_q[4] 				// q40
+			<< aggregate.number_of_bases_ge_q[5] 				// q50
+			<< aggregate.number_of_bases_ge_q[6] 				// q60
+			<< aggregate.number_of_bases_ge_q[7] 				// q70
+			<< aggregate.number_of_bases_ge_q[8] 				// q80
+			<< aggregate.number_of_bases_ge_q[9] 				// q90
+		;
+
+		(*output) << statfile::end_row() ;
+	}
+
 
 	void accumulate_read_end_metrics(
 		ReadResult const& read_result,
