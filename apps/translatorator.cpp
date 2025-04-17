@@ -40,7 +40,7 @@ namespace seqlib = SeqLib;
 #include "genfile/translate.hpp"
 #include "statfile/BuiltInTypeStatSink.hpp"
 
-// #define DEBUG 1
+#define DEBUG 2
 
 namespace globals {
 	std::string const program_name = "translatorator" ;
@@ -59,7 +59,7 @@ public:
 		
 		options.declare_group( "Input / output file options" ) ;
 		options[ "-sequences" ]
-			.set_description( "Path of bam/cram files to operate on.  Note that this program expects to see "
+			.set_description( "Path of FASTA file, or of BAM/CRAM files to operate on.  Note that this program expects to see "
 			"long DNA sequences that cover the full translated length of the target protain" )
 			.set_takes_values_until_next_option()
 			.set_is_required()
@@ -424,6 +424,7 @@ namespace impl {
 	) {
 		std::string result_sequence ;
 		std::vector< std::pair< std::size_t, std::size_t > > positions ;
+		// 
 		for( std::size_t i = 0; i < kmer_pairs.size(); ++i ) {
 #if DEBUG > 1
 			std::cerr << " sequence: \"" << sequence << "\".\n" ;
@@ -431,9 +432,14 @@ namespace impl {
 #endif
 			std::size_t la = kmer_pairs[i].first().size() ;
 			std::size_t lb = kmer_pairs[i].second().size() ;
-			// ensure kmers are each found exactly once
-			int const a = sequence.find( kmer_pairs[i].first() ) ;
-			int const b = sequence.find( kmer_pairs[i].second() ) ;
+
+			// Structural variants can create extra copies of exons that 
+			// aren't part of transcribed genes. (E.g  exon 6/7 of Pf3D7_1127000 in Pf FUP/H).
+			// Therefore, we only look downstream of the last found kmer pair.
+			std::size_t const search_start_at = ( (i>0) ? positions[i-1].second + 1 : 0 ) ;
+
+			int const a = sequence.find( kmer_pairs[i].first(), search_start_at ) ;
+			int const b = sequence.find( kmer_pairs[i].second(), search_start_at ) ;
 #if DEBUG > 1
 			std::cerr << a << "(" << la << "), " << b << "(" << lb << ").\n" ;
 #endif
