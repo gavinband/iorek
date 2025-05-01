@@ -377,7 +377,7 @@ namespace impl {
 			std::string const& name() const { return m_name ; }
 			std::string const& sequence_name() const { return m_sequence_name ; }
 			Strand const strand() const { return m_strand ; }
-			std::string const& sequence() const { return m_sequence ; }
+			std::string const& matching_sequence() const { return m_sequence ; }
 			MatchRanges const& positions() const { return m_positions ; }
 
 		private:
@@ -570,7 +570,7 @@ private:
 	
 	typedef genfile::GenomePositionRange Region ;
 	typedef std::vector< genfile::GenomePositionRange > Regions ;
-	typedef std::vector< impl::Match > SequencesToReads ;
+	typedef std::vector< impl::Match > SequenceMatches ;
 	typedef impl::KmerPair KmerPair ;
 	struct AlignmentDetail {
 		std::string a ;
@@ -669,22 +669,60 @@ private:
 			kmer_pairs.push_back( impl::KmerPair( impl::to_upper(kmers[i]), impl::to_upper(kmers[i+1]) )) ;
 		}
 
-		SequencesToReads result ;
+		SequenceMatches result ;
 		std::vector< std::string > filenames = options().get_values< std::string >( "-sequences" ) ;
-		load_dna_sequences(
+		find_kmer_pair_matches(
 			filenames,
 			kmer_pairs,
 			&result
 		) ;
 
-		ui().logger() << "++ There were " << result.size() << " total sequences.\n" ;
-		std::vector< std::string > representatives ;
-		typedef std::unordered_map< std::string, AlignmentDetail > BestAlignments ;
-		BestAlignments aligned ;
+		ui().logger() << "++ There were " << result.size() << " total sequences...\n" ;
+
+		std::set< std::string > distinct_sequences ;
+		typedef std::map< std::string, std::vector< impl::Match > > MatchesBySequence ;
+		MatchesBySequence by_sequence ;
+		std::unordered_map< std::string, std::size_t > total_read_counts ;
+		for( auto s: result ) {
+			if( s.strand() == impl::Match::eFwdStrand || s.strand() == impl::Match::eRevStrand ) {
+				MatchesBySequence::iterator where = by_sequence.find( s.matching_sequence() ) ;
+				if( where == by_sequence.end() ) {
+					distinct_sequences.push_back( s.matching_sequence() ) ;
+					by_sequence.insert( where, std::make_pair( s.matching_sequence(), s )) ;
+				} else {
+					where->second.push_back( s ) ;
+				}
+				++total_read_counts[s.name()] ;
+			}
+		}
+		assert( distinct_sequences.size() == by_sequence.size() ) ;
+		std::cerr << "++ ...and " << by_sequence.size() << " distinct sequences.\n" ;
 
 		bool const use_clustering = options().check( "-cluster" ) ;
 		bool const only_translatable = options().check( "-only-translatable" ) ;
 		bool const truncate_at_stops = options().check( "-truncate-at-stops" ) ;
+
+		if( !use_clustering ) {
+			// Just output translated sequences.
+			output_translated_sequences(
+				result,
+				options.get< std::string >( "-o" ),
+				truncate_at_stops
+			) ;
+			return ;
+		}
+
+		// From here on in we are clustering.
+		// Find all pairwise alignments between reads.
+		typedef std::pair< std::size_t, std::size_t > IndexPair ;
+		std::unordered_map< IndexPair, AlignmentDetail > alignments ;
+		for( std::size_t i = 0; i < by_sequence.size()
+
+
+		std::vector< std::string > representatives ;
+		typedef std::unordered_map< std::string, AlignmentDetail > BestAlignments ;
+		BestAlignments aligned ;
+
 		if( use_clustering ) {
 			std::size_t const min_obs_per_sample = options().get_value< std::size_t >( "-min-obs-per-sample" ) ;
 			double const min_fraction_per_sample = options().get_value< double >( "-min-fraction-per-sample" ) ;
@@ -693,15 +731,6 @@ private:
 			// clustering
 			// First, we group everything by sequence and count reads per sample.
 			// by_sequence maps from sequence to sequence matches
-			std::map< std::string, std::vector< impl::Match > > by_sequence ;
-			std::unordered_map< std::string, std::size_t > total_read_counts ;
-			for( auto s: result ) {
-				if( s.strand() == impl::Match::eFwdStrand || s.strand() == impl::Match::eRevStrand ) {
-					by_sequence[s.sequence()].push_back( s ) ;
-					++total_read_counts[s.name()] ;
-				}
-			}
-			std::cerr << "++ There were " << by_sequence.size() << " distinct sequences.\n" ;
 
 			// Now generate candidate sequences for alignment
 			// taken as anything:
@@ -823,7 +852,7 @@ private:
 				<< std::string( 1, s.strand() ) ;
 
 			if( s.strand() == impl::Match::eFwdStrand || s.strand() == impl::Match::eRevStrand ) {
-				BestAlignments::const_iterator where = aligned.find( s.sequence() ) ;
+				BestAlignments::const_iterator where = aligned.find( s.matching_sequence() ) ;
 				for( std::size_t i = 0; i < kmer_pairs.size(); ++i ) {
 					(*output)
 						<< uint64_t(s.positions()[i].first + 1)
@@ -832,7 +861,7 @@ private:
 				if( use_clustering && where != aligned.end() ) {
 					(*output) << where->second.aligned_a ;
 				} else {
-					(*output) << s.sequence() ;
+					(*output) << s.matching_sequence() ;
 				}
 				if( use_clustering ) {
 					if( where != aligned.end() ) {
@@ -851,7 +880,7 @@ private:
 							<< "NA" ;
 					}
 				} else {
-					(*output) << genfile::translate( s.sequence(), truncate_at_stops ) ;
+					(*output) << genfile::translate( s.matching_sequence(), truncate_at_stops ) ;
 				}
 			} else {
 				while( output->current_column() < output->number_of_columns() ) {
@@ -871,7 +900,7 @@ private:
 			std::map< std::string, std::size_t > aa_sequence_counts ;
 			for( auto s: result ) {
 				if( s.strand() == impl::Match::eFwdStrand || s.strand() == impl::Match::eRevStrand ) {
-					BestAlignments::const_iterator where = aligned.find( s.sequence() ) ;
+					BestAlignments::const_iterator where = aligned.find( s.matching_sequence() ) ;
 					if( use_clustering && where != aligned.end() && where->second.identity >= min_identity ) {
 						std::string const& sequence =  where->second.b ;
 						++dna_sequence_summary[s.name()][sequence] ;
@@ -954,6 +983,54 @@ private:
 		}
 	}
 
+	void output_translated_sequences(
+		SequenceMatches const& result,
+		std::string const& filename,
+		bool truncate_at_stops
+	) const {
+		using genfile::string_utils::to_string ;
+		statfile::BuiltInTypeStatSink::UniquePtr
+			output = statfile::BuiltInTypeStatSink::open( filename ) ;
+		{
+			output->write_comment( "Written by translatorator" ) ;
+			output->write_comment( "Kmer pairs are:" ) ;
+			for( std::size_t i = 0; i < kmer_pairs.size(); ++i ) {
+				output->write_comment( to_string(i+1) + ": " + kmer_pairs[i].first() + " / " + kmer_pairs[i].second() ) ;
+			}
+			(*output) | "file" | "read_id" | "strand" ;
+			for( std::size_t i = 0; i < kmer_pairs.size(); ++i ) {
+				(*output) | ("start_" + to_string(i+1)) | ("end_" + to_string(i+1)) ;
+			}
+			(*output) | "dna_sequence" ;
+			(*output) | "aa_sequence" ;
+		}
+
+		for( auto s: result ) {
+#if DEBUG > 1
+			std::cerr << "kmer pairs size: " << kmer_pairs.size() << ".\n" ;
+			std::cerr << s << "\n" ;
+#endif
+			(*output)
+				<< s.name()
+				<< s.sequence_name()
+				<< std::string( 1, s.strand() ) ;
+
+			if( s.strand() == impl::Match::eFwdStrand || s.strand() == impl::Match::eRevStrand ) {
+				for( std::size_t i = 0; i < kmer_pairs.size(); ++i ) {
+					(*output)
+						<< uint64_t(s.positions()[i].first + 1)
+						<< uint64_t(s.positions()[i].second) ;
+				}
+				(*output) << genfile::translate( s.matching_sequence(), truncate_at_stops ) ;
+			} else {
+				while( output->current_column() < output->number_of_columns() ) {
+					(*output) << "NA" ;
+				}
+			}
+
+			(*output) << statfile::end_row() ;
+		}
+
 	Regions get_regions( std::vector< std::string > const& specs ) const {
 		Regions result ;
 		for( auto spec: specs ) {
@@ -970,12 +1047,12 @@ private:
 		return result ;
 	}
 	
-	void load_dna_sequences(
+	void find_kmer_pair_matches(
 		std::vector< std::string > const& filenames,
 		std::vector< impl::KmerPair > const& kmer_pairs,
-		SequencesToReads* result
+		SequenceMatches* result
 	) {
-		using genfile::string_utils::to_string ;\
+		using genfile::string_utils::to_string ;
 		auto progress_context = ui().get_progress_context( "Loading sequences" ) ;
 		std::vector< std::string > const& names = get_names_from_filenames(filenames) ;
 		for( std::size_t i = 0; i < filenames.size(); ++i ) {
@@ -990,7 +1067,7 @@ private:
 				}
 				for( auto const& region: regions ) {
 					sequences->set_region( region ) ;
-					load_dna_sequences(
+					find_kmer_pair_matches(
 						*sequences,
 						names[i],
 						kmer_pairs,
@@ -999,7 +1076,7 @@ private:
 				}
 			} else {
 				impl::SequenceProvider::UniquePtr sequences = impl::SequenceProvider::open( filenames[i] ) ;
-				load_dna_sequences(
+				find_kmer_pair_matches(
 					*sequences,
 					names[i],
 					kmer_pairs,
@@ -1010,24 +1087,24 @@ private:
 		}
 	}
 	
-	void load_dna_sequences(
+	void find_kmer_pair_matches(
 		impl::SequenceProvider& sequences,
 		std::string const& name,
 		std::vector< impl::KmerPair > kmer_pairs,
-		SequencesToReads* result
+		SequenceMatches* result
 	) const {
 		try {
-			load_dna_sequences_unsafe( name, sequences, kmer_pairs, result ) ;
+			find_kmer_pair_matches_unsafe( name, sequences, kmer_pairs, result ) ;
 		} catch( std::exception const& e ) {
 			ui().logger() << "!! Error processing \"" << name << "\", there will be no results for this file.\n" ;
 		}
 	}
 
-	void load_dna_sequences_unsafe(
+	void find_kmer_pair_matches_unsafe(
 		std::string const& name,
 		impl::SequenceProvider& sequences,
 		std::vector< impl::KmerPair > const& kmer_pairs,
-		SequencesToReads* result
+		SequenceMatches* result
 	) const {
 		std::string sequence_name ;
 		std::string sequence ;
