@@ -66,7 +66,12 @@ public:
 		;
 
 		options[ "-o" ]
-			.set_description( "Path of output file." )
+			.set_description( "Path of main output file." )
+			.set_takes_single_value()
+			.set_default_value( "-" ) ;
+
+		options[ "-or" ]
+			.set_description( "Path of per-read output file." )
 			.set_takes_single_value()
 			.set_default_value( "-" ) ;
 
@@ -133,10 +138,15 @@ public:
 			.set_default_value( 1 )
 		;
 		options[ "-only-translatable" ]
-			.set_description( "Only take sequences that are a multiple of 3 in length to cluster." )
+			.set_description( "Only use sequences that are a multiple of 3 in length to cluster." )
 		;
 		options[ "-truncate-at-stops" ]
 			.set_description( "Specify that aa sequences will be truncated at stop codons." )
+		;
+		options[ "-compress-homopolymers-over-length" ]
+			.set_description( "Specify a homopolymer length.  All homopolymers in reads greater than this length "
+			"will be truncated to the specified length before identifying common reads.  Each set of identical reads "
+			"after compression will be used to form a single consensus sequence for the clustering steps." )
 		;
 		options[ "-min-alignment-identity" ]
 			.set_description( "When summarising reads aligned to candidate correct sequences, "
@@ -376,6 +386,25 @@ namespace impl {
 			Strand m_strand ;
 			std::string m_sequence ;
 			MatchRanges m_positions ;
+	} ;
+
+	struct MixtureOfHaplotypes {
+		MixtureOfHaplotypes(): {}
+
+		void add( std::string const& haplotype, double const weight = 1.0 ) ;
+		void remove( std::size_t i ) ;
+		void split( std::size_t to_split, std::string const& haplotype, double const weight ) ;
+
+		std::size_t const number_of_haplotypes() const { return m_haplotypes.size() ; }
+		std::string const& haplotype( std::size_t i ) const { return m_haplotypes[i] ; }
+		double const& weight( std::size_t i ) const { return m_weights[i] ; }
+		bool contains( std::string const& haplotype ) const ;
+		std::size_t find( std::string const& haplotype ) const ;
+
+	private:
+		std::vector< std::string > m_haplotypes ;
+		std::map< std::string, std::size_t > m_haplotype_indices ;
+		std::vector< double > m_weights ;
 	} ;
 
 	std::ostream& operator<<( std::ostream& out, Match const& match ) {
