@@ -13,6 +13,7 @@
 #include <boost/filesystem.hpp>
 #include <boost/noncopyable.hpp>
 #include <boost/optional.hpp>
+#include <boost/function.hpp>
 #include <boost/format.hpp>
 
 // seqlib
@@ -40,7 +41,7 @@ namespace seqlib = SeqLib;
 #include "genfile/translate.hpp"
 #include "statfile/BuiltInTypeStatSink.hpp"
 
-#define DEBUG 2
+#define DEBUG 1
 
 namespace globals {
 	std::string const program_name = "translatorator" ;
@@ -345,14 +346,14 @@ namespace impl {
 		std::string m_end ;
 	} ;
 
-	struct Match {
+	struct Segmentation {
 		public:
 			enum Strand { eAmbiguousStrand = '?', eFwdStrand = '+', eRevStrand = '-', eNeitherStrand = '.' } ;
-			typedef std::vector< std::pair< std::size_t, std::size_t > > MatchRanges ;
+			typedef std::vector< std::pair< std::size_t, std::size_t > > SegmentationRanges ;
 
-			Match() {}
+			Segmentation() {}
 
-			Match(
+			Segmentation(
 				std::string const& name,
 				std::string const& sequence_name,
 				Strand const strand,
@@ -366,7 +367,7 @@ namespace impl {
 				m_positions( positions )
 			{}
 
-			Match( Match const& other ):
+			Segmentation( Segmentation const& other ):
 				m_name( other.m_name ),
 				m_sequence_name( other.m_sequence_name ),
 				m_strand( other.m_strand ),
@@ -374,44 +375,212 @@ namespace impl {
 				m_positions( other.m_positions )
 			{}
 
-			std::string const& name() const { return m_name ; }
-			std::string const& sequence_name() const { return m_sequence_name ; }
+			std::string const& sample_id() const { return m_name ; }
+			std::string const& sequence_id() const { return m_sequence_name ; }
 			Strand const strand() const { return m_strand ; }
 			std::string const& matching_sequence() const { return m_sequence ; }
-			MatchRanges const& positions() const { return m_positions ; }
+			SegmentationRanges const& positions() const { return m_positions ; }
 
 		private:
 			std::string m_name ;
 			std::string m_sequence_name ;
 			Strand m_strand ;
 			std::string m_sequence ;
-			MatchRanges m_positions ;
+			SegmentationRanges m_positions ;
 	} ;
 
-	struct MixtureOfHaplotypes {
-		MixtureOfHaplotypes(): {}
+	struct AlignmentDetail {
+		std::string a ;
+		std::string b ;
+		int score ;
+		double identity ;
+		std::string long_form_cigar ;
+		std::string cigar ;
+		std::string aligned_a ;
+		std::string aligned_b ;
+		std::size_t matches ;
+		std::size_t mismatches ;
+		std::size_t insertions ;
+		std::size_t insertion_extensions ;
+		std::size_t deletions ;
+		std::size_t deletion_extensions ;
+		std::size_t homopolymer_expansions ;
+		std::size_t homopolymer_expansion_extensions ;
+		std::size_t homopolymer_contractions ;
+		std::size_t homopolymer_contraction_extensions ;
 
-		void add( std::string const& haplotype, double const weight = 1.0 ) ;
-		void remove( std::size_t i ) ;
-		void split( std::size_t to_split, std::string const& haplotype, double const weight ) ;
+		AlignmentDetail():
+			score(0),
+			identity(0.0),
+			matches(0),
+			mismatches(0),
+			insertions(0),
+			insertion_extensions(0),
+			deletions(0),
+			deletion_extensions(0),
+			homopolymer_expansions(0),
+			homopolymer_expansion_extensions(0),
+			homopolymer_contractions(0),
+			homopolymer_contraction_extensions(0)
+		 {}
 
-		std::size_t const number_of_haplotypes() const { return m_haplotypes.size() ; }
-		std::string const& haplotype( std::size_t i ) const { return m_haplotypes[i] ; }
-		double const& weight( std::size_t i ) const { return m_weights[i] ; }
-		bool contains( std::string const& haplotype ) const ;
-		std::size_t find( std::string const& haplotype ) const ;
+		AlignmentDetail(
+			std::string const& _a,
+			std::string const& _b,
+			int _score,
+			std::string const& _cigar
+		):
+			a( _a ),
+			b( _b ),
+			score( _score ),
+			identity( 0.0 ),
+			long_form_cigar( _cigar ),
+			cigar( runlength_encode(_cigar) ),
+			matches(0),
+			mismatches(0),
+			insertions(0),
+			insertion_extensions(0),
+			deletions(0),
+			deletion_extensions(0),
+			homopolymer_expansions(0),
+			homopolymer_expansion_extensions(0),
+			homopolymer_contractions(0),
+			homopolymer_contraction_extensions(0)
+		{
+			aligned_a.reserve( a.size() + 25 ) ;
+			aligned_b.reserve( a.size() + 25 ) ;
+			std::size_t sa = 0, sb = 0 ;
+
+			struct HomopolymerTract {
+				HomopolymerTract(): start(0), end(0) {}
+				HomopolymerTract(
+					std::string const& sequence,
+					std::size_t start_
+				):
+					start( start_ ),
+					end( 0 )
+				{
+					for(
+						end = start ;
+						sequence[end] == sequence[start];
+						++end
+					) ;
+				}
+				std::size_t start ;
+				std::size_t end ;
+				std::size_t length() const { return end - start ; }
+			} ;
+			HomopolymerTract left_homopolymer, right_homopolymer( b, 0 ) ;
+			char previous_op = '*' ;
+			for( std::size_t i = 0; i < long_form_cigar.size(); ++i ) {
+				if( b[sb] != b[right_homopolymer.start] ) {
+					left_homopolymer = right_homopolymer ;
+					right_homopolymer = HomopolymerTract( b, sb ) ;
+				}
+				char op = long_form_cigar[i] ;
+				switch( op ) {
+					case 'M':
+					case '=':
+						++matches ;
+						identity += 1.0 ;
+						aligned_a.push_back( a[sa++] ) ;
+						aligned_b.push_back( b[sb++] ) ;
+						break ;
+					case 'X':
+						++mismatches ;
+						aligned_a.push_back( a[sa++] ) ;
+						aligned_b.push_back( b[sb++] ) ;
+						break ;
+					case 'D':
+						if( right_homopolymer.length() > 1 && b[sb] == b[right_homopolymer.start] ) {
+							long_form_cigar[i] = 'd' ;
+							++homopolymer_contractions ;
+							if( previous_op == 'd' ) {
+								++homopolymer_contraction_extensions ;
+							}
+						} else {
+							++deletions ;
+							if( previous_op == 'D' ) {
+								++deletion_extensions ;
+							}
+						}
+						aligned_a.push_back( '-' ) ;
+						aligned_b.push_back( b[sb++] ) ;
+						break ;
+					case 'I':
+						if(
+							(left_homopolymer.length() > 1 && a[sa] == b[left_homopolymer.start])
+							|| (right_homopolymer.length() > 1 && a[sa] == b[right_homopolymer.start])
+						) {
+							long_form_cigar[i] = 'i' ;
+							++homopolymer_expansions ;
+							if( previous_op == 'i' ) {
+								++homopolymer_contraction_extensions ;
+							}
+						} else {
+							if( previous_op == 'I' ) {
+								++insertion_extensions ;
+							}
+							++insertions ;
+						}
+						aligned_a.push_back( a[sa++] ) ;
+						aligned_b.push_back( '-' ) ;
+						break ;
+					default:
+						assert(0) ;
+				}
+				assert( sa <= a.size() ) ;
+				assert( sb <= b.size() ) ;
+			}
+//			identity /= _cigar.size() ;
+			cigar = runlength_encode( long_form_cigar ) ;
+		}
 
 	private:
-		std::vector< std::string > m_haplotypes ;
-		std::map< std::string, std::size_t > m_haplotype_indices ;
-		std::vector< double > m_weights ;
+
+		std::string runlength_encode( std::string const& long_form_cigar ) {
+			std::string result ;
+			if( long_form_cigar.size() == 0 ) {
+				return long_form_cigar ;
+			}
+			char op = long_form_cigar[0] ;
+			std::size_t i = 0 ;
+			std::size_t count = 1 ;
+			using genfile::string_utils::to_string ;
+			for( i = 0; i < long_form_cigar.size(); ++i ) {
+				if( long_form_cigar[i] == op ) {
+					++count ;
+				} else {
+					result += to_string( count ) + op ;
+					op = long_form_cigar[i] ;
+					count = 1 ;
+				}
+			}
+			result += to_string( count ) + op ;
+			return result ;
+		}
 	} ;
 
-	std::ostream& operator<<( std::ostream& out, Match const& match ) {
+	std::ostream& operator<<( std::ostream& out, AlignmentDetail const& a ) {
+		return
+		out << "len(A):" << a.a.size()
+		<< " len(B):" << a.b.size()
+		<< " AS:" << a.score
+		<< " cigar:" << a.cigar
+		<< " identity:" << a.identity
+		<< " matches:" << a.matches
+		<< " mismatches:" << a.mismatches
+		<< " insertions:" << a.insertions
+		<< " deletions:" << a.deletions
+		<< " homopolymer expansions:" << a.homopolymer_expansions
+		<< " homopolymer contractions:" << a.homopolymer_contractions ;
+	}
+
+	std::ostream& operator<<( std::ostream& out, Segmentation const& match ) {
 		out
 		<< "M[ "
-		<< "\"" << match.name() << "\" "
-		<< "\"" << match.sequence_name() << "\" "
+		<< "\"" << match.sample_id() << "\" "
+		<< "\"" << match.sequence_id() << "\" "
 		<< std::string( 1, match.strand()) << " "
 		;
 		for( std::size_t i = 0; i < match.positions().size(); ++i ) {
@@ -570,154 +739,210 @@ private:
 	
 	typedef genfile::GenomePositionRange Region ;
 	typedef std::vector< genfile::GenomePositionRange > Regions ;
-	typedef std::vector< impl::Match > SequenceMatches ;
 	typedef impl::KmerPair KmerPair ;
-	struct AlignmentDetail {
-		std::string a ;
-		std::string b ;
-		int score ;
-		double identity ;
-		std::string cigar ;
-		std::string aligned_a ;
-		std::string aligned_b ;
+	typedef impl::AlignmentDetail AlignmentDetail ;
+	typedef std::string Sequence ;
+	typedef std::string SampleId ;
+	typedef impl::Segmentation Segmentation ;
 
-		AlignmentDetail():
-			score(0),
-			identity(0.0)
-		 {}
-
-		AlignmentDetail(
-			std::string const& _a,
-			std::string const& _b,
-			int _score,
-			std::string const& _cigar
-		):
-			a( _a ),
-			b( _b ),
-			score( _score ),
-			identity( 0.0 ),
-			cigar( runlength_encode(_cigar) )
-		{
-			aligned_a.reserve( a.size() + 25 ) ;
-			aligned_b.reserve( a.size() + 25 ) ;
-			std::size_t sa = 0, sb = 0 ;
-			for( std::size_t i = 0; i < _cigar.size(); ++i ) {
-				switch( _cigar[i] ) {
-					case 'M':
-					case '=':
-						identity += 1.0 ;
-					case 'X':
-						aligned_a.push_back( a[sa++] ) ;
-						aligned_b.push_back( b[sb++] ) ;
-						break ;
-					case 'D':
-						aligned_a.push_back( '-' ) ;
-						aligned_b.push_back( b[sb++] ) ;
-						break ;
-					case 'I':
-						aligned_a.push_back( a[sa++] ) ;
-						aligned_b.push_back( '-' ) ;
-						break ;
-					default:
-						assert(0) ;
-				}
-				assert( sa <= a.size() ) ;
-				assert( sb <= b.size() ) ;
-			}
-			identity /= _cigar.size() ;
-		}
-		private:
-
-		std::string runlength_encode( std::string const& cigar ) {
-			std::string result ;
-			if( cigar.size() == 0 ) {
-				return cigar ;
-			}
-			char op = cigar[0] ;
-			std::size_t i = 0 ;
-			std::size_t count = 1 ;
-			using genfile::string_utils::to_string ;
-			for( i = 0; i < cigar.size(); ++i ) {
-				if( cigar[i] == op ) {
-					++count ;
-				} else {
-					result += to_string( count ) + op ;
-					op = cigar[i] ;
-					count = 1 ;
-				}
-			}
-			result += to_string( count ) + op ;
-			return result ;
-		}
+	typedef std::size_t SequenceIndex ;
+	typedef uint32_t SequenceCount ;
+	struct Totals {
+		Totals(): total(0), matched(0) {}
+		SequenceCount total ;
+		SequenceCount matched ;
 	} ;
-	
+	typedef std::unordered_map< SampleId, Totals > PerSampleTotals ;
+	typedef std::unordered_map< SequenceIndex, SequenceCount > SegmentationCounts ;
+	typedef std::unordered_map< SampleId, std::unordered_map< SequenceIndex, SequenceCount > > PerSampleSequenceCounts ;
+	typedef std::vector< std::vector< impl::Segmentation > > SegmentationsBySequence ;
+
+	struct AlgorithmData {
+		AlgorithmData( std::vector< Segmentation > const& segmentations ) {
+			std::map< std::string, std::vector< impl::Segmentation > > by_sequence_impl ;
+			for( auto s: segmentations ) {
+				++(this->per_sample_totals)[ s.sample_id() ].total ;
+				if( s.strand() == impl::Segmentation::eFwdStrand || s.strand() == impl::Segmentation::eRevStrand ) {
+					++(this->per_sample_totals)[ s.sample_id() ].matched ;
+					by_sequence_impl[ s.matching_sequence() ].push_back( s ) ;
+				}
+			}
+
+			// typedef std::unordered_map<
+			//	 SampleId,
+			// 	 std::unordered_map< SequenceIndex, SequenceCount >
+			// > PerSampleSequenceCounts ;
+
+			this->distinct_sequences.reserve( by_sequence_impl.size() ) ;
+			this->by_sequence.reserve( by_sequence_impl.size() ) ;
+			for( auto const& kv: by_sequence_impl ) {
+				std::size_t const index = this->distinct_sequences.size() ;
+				this->distinct_sequences.push_back( kv.first ) ;
+				this->by_sequence.push_back( kv.second ) ;
+				for( auto s: kv.second ) {
+					++(this->per_sample_sequence_counts)[ s.sample_id() ][ index ] ;
+				}
+			}
+		}
+
+		std::ostream& operator<<( std::ostream& out ) {
+			return out << "AlgorithmData: " << distinct_sequences.size() << " distinct sequences." ;
+		}
+
+		std::vector< Sequence > distinct_sequences ;
+		SegmentationsBySequence by_sequence ;
+		PerSampleTotals per_sample_totals ;
+		PerSampleSequenceCounts per_sample_sequence_counts ;
+	} ;
+
+	struct PairwiseAlignments {
+		struct SequencePair {
+			SequencePair( SequenceIndex from_ = 0, SequenceIndex to_ = 0 ):
+				from( from_ ),
+				to( to_ )
+			{}
+			SequenceIndex from ;
+			SequenceIndex to ;
+
+			bool operator<( SequencePair const& other ) const {
+				return (from < other.from) || (from == other.from && to < other.to) ;
+			}
+		} ;
+		typedef std::map< SequencePair, AlignmentDetail > Alignments ;
+
+		void add_sequences(
+			std::vector< Sequence > sequences,
+			boost::function< bool( std::size_t ) > inclusion_filter,
+			boost::function< void( std::size_t, std::size_t ) > progress = 0
+		) {
+			// These costs are from pbmm2 defaults https://github.com/PacificBiosciences/pbmm2:
+			// - "CCS" or "HIFI" 
+			// --mismatch-score 1
+			// --mismatch-penalty 4 
+			// --gap-open-1 6 
+			// --gap-extend-1 2 
+			// --gap-open-2 26 
+			// --gap-extend-2 1
+			wfa::WFAlignerGapAffine2Pieces aligner(
+				-1, // match
+				4, 	// mismatch
+				6, 	// gap1 open
+				2,	// gap1 extend
+				26, // gap2 open
+				1,	// gap2 extend
+				wfa::WFAligner::Alignment,
+				wfa::WFAligner::MemoryHigh
+			) ;
+			std::size_t alignment_count = 0 ;
+			for( std::size_t j = 0; j < sequences.size(); ++j ) {
+				if( inclusion_filter(j)) {
+					m_targets.push_back(j) ;
+				}
+			}
+			for( std::size_t i = 0; i < sequences.size(); ++i ) {
+				for( std::size_t t = 0; t < m_targets.size(); ++t ) {
+					std::size_t j = m_targets[t] ;
+					auto from   = sequences[i] ;
+					auto to     = sequences[j] ;
+					auto status = aligner.alignEnd2End( to, from ) ;
+					assert( status == WF_STATUS_SUCCESSFUL ) ;
+					int score = aligner.getAlignmentScore() ;
+					m_alignments[ SequencePair(i,j) ] = AlignmentDetail(
+						from,
+						to,
+						score,
+						aligner.getAlignmentCigar()
+					) ;
+					if( progress ) {
+						progress( ++alignment_count, m_targets.size() * sequences.size() ) ;
+					}
+				}
+			}
+		}
+
+		std::vector< SequenceIndex > const& alignment_targets() const { return m_targets ; }
+
+		AlignmentDetail const& alignment(
+			SequenceIndex from,
+			SequenceIndex to
+		) const {
+			Alignments::const_iterator where = m_alignments.find( SequencePair( from, to )) ;
+			assert( where != m_alignments.end() ) ;
+			return where->second ;
+		}
+
+	private:
+		Alignments m_alignments ;
+		std::vector< SequenceIndex > m_targets ;
+	} ;
+
+	struct AlgorithmOptions {
+		bool use_clustering ;
+		bool only_translatable ;
+		bool truncate_at_stops ;
+	} ;
 
 	void unsafe_process() {
-		std::vector< std::string > kmers = options().get_values< std::string >( "-cds-kmers" ) ;
-		{
-			if( kmers.size() % 2 != 0 ) {
-				throw genfile::BadArgumentError(
-					"TranslatoratorApplication::unsafe_process()",
-					"-cda-kmers",
-					"Expected a multiple of two kmers."
-				) ;
-			}
-		}
+		AlgorithmOptions algorithm_options = {
+			options().check( "-cluster" ),
+			options().check( "-only-translatable" ),
+			options().check( "-truncate-at-stops" ),
+		} ;
+		unsafe_process( algorithm_options ) ;
+	}
 
-		std::vector< impl::KmerPair > kmer_pairs ;
-		for( std::size_t i = 0; i < kmers.size(); i += 2 ) {
-			kmer_pairs.push_back( impl::KmerPair( impl::to_upper(kmers[i]), impl::to_upper(kmers[i+1]) )) ;
-		}
+	void unsafe_process( AlgorithmOptions const& algorithm_options ) {
+		std::vector< impl::KmerPair > kmer_pairs = load_kmer_pairs( options().get_values< std::string >( "-cds-kmers" ) ) ;
 
-		SequenceMatches result ;
-		std::vector< std::string > filenames = options().get_values< std::string >( "-sequences" ) ;
-		find_kmer_pair_matches(
-			filenames,
+		// A 'segmentation' means a set of sub-ranges of a sequence
+		// which Segmentation the given kmer pairs.
+		std::vector< Segmentation > segmentations ;
+		find_segmentations(
+			options().get_values< std::string >( "-sequences" ),
 			kmer_pairs,
-			&result
+			&segmentations
 		) ;
 
-		ui().logger() << "++ There were " << result.size() << " total sequences...\n" ;
+		ui().logger() << "++ There were " << segmentations.size() << " total sequences...\n" ;
 
-		std::set< std::string > distinct_sequences ;
-		typedef std::map< std::string, std::vector< impl::Match > > MatchesBySequence ;
-		MatchesBySequence by_sequence ;
-		std::unordered_map< std::string, std::size_t > total_read_counts ;
-		for( auto s: result ) {
-			if( s.strand() == impl::Match::eFwdStrand || s.strand() == impl::Match::eRevStrand ) {
-				MatchesBySequence::iterator where = by_sequence.find( s.matching_sequence() ) ;
-				if( where == by_sequence.end() ) {
-					distinct_sequences.push_back( s.matching_sequence() ) ;
-					by_sequence.insert( where, std::make_pair( s.matching_sequence(), s )) ;
-				} else {
-					where->second.push_back( s ) ;
-				}
-				++total_read_counts[s.name()] ;
-			}
-		}
-		assert( distinct_sequences.size() == by_sequence.size() ) ;
-		std::cerr << "++ ...and " << by_sequence.size() << " distinct sequences.\n" ;
-
-		bool const use_clustering = options().check( "-cluster" ) ;
-		bool const only_translatable = options().check( "-only-translatable" ) ;
-		bool const truncate_at_stops = options().check( "-truncate-at-stops" ) ;
-
-		if( !use_clustering ) {
-			// Just output translated sequences.
+		if( options().check( "-or" )) {
 			output_translated_sequences(
-				result,
-				options.get< std::string >( "-o" ),
-				truncate_at_stops
+				segmentations,
+				options().get< std::string >( "-or" ),
+				kmer_pairs,
+				algorithm_options.truncate_at_stops
 			) ;
+		}
+
+		if( !algorithm_options.use_clustering ) {
 			return ;
 		}
 
+		// Build data structure of sequences and sequence counts per sample
+		// The indices of this vector are used throughout the algorithm.
+
+		// For likelihood computation purposes, we count the number of reads per sample
+		// and also the number of each sequence observed per sample
+		AlgorithmData data( segmentations ) ;
+		std::cerr << "++ ...and " << data.distinct_sequences.size() << " distinct sequences.\n" ;
+		PairwiseAlignments alignments ;
+		{
+			auto progress = ui().get_progress_context( "Pairwise aligning" ) ;
+			alignments.add_sequences(
+				data.distinct_sequences,
+				// Only align to sequences seen at least twice
+				[&data](std::size_t i)->bool { return data.by_sequence[i].size() > 1 ; },
+				[&progress](std::size_t i, std::size_t j)->void { progress(i,j) ; }
+			) ;
+		}
+
+		
+
+		return ;
+
+#if 0
 		// From here on in we are clustering.
 		// Find all pairwise alignments between reads.
-		typedef std::pair< std::size_t, std::size_t > IndexPair ;
-		std::unordered_map< IndexPair, AlignmentDetail > alignments ;
-		for( std::size_t i = 0; i < by_sequence.size()
-
 
 		std::vector< std::string > representatives ;
 		typedef std::unordered_map< std::string, AlignmentDetail > BestAlignments ;
@@ -744,15 +969,15 @@ private:
 				for( auto const& s: kv.second ) {
 					// keep track of the total number of times this sequence
 					// is seen in this sample
-					std::size_t& n = sequence_sample_counts[ s.name() ] ;
+					std::size_t& n = sequence_sample_counts[ s.sample_id() ] ;
 					++n ;
 
 					// Accumulate sample count for this sequence if it has been seen enough times
 					// in this sample.
-					if( n == std::max( min_obs_per_sample, std::size_t(std::ceil( min_fraction_per_sample * total_read_counts[s.name()] )))) {
+					if( n == std::max( min_obs_per_sample, std::size_t(std::ceil( min_fraction_per_sample * total_read_counts[s.sample_id()] )))) {
 						++number_above_threshold ;
 						if( number_above_threshold >= min_obs_samples ) {
-							std::cerr << "!! accepting read with count " << n << " of " << total_read_counts[s.name()] << ".\n" ;
+							std::cerr << "!! accepting read with count " << n << " of " << total_read_counts[s.sample_id()] << ".\n" ;
 							break ;
 						}
 					}
@@ -847,11 +1072,11 @@ private:
 			std::cerr << s << "\n" ;
 #endif
 			(*output)
-				<< s.name()
-				<< s.sequence_name()
+				<< s.sample_id()
+				<< s.sequence_id()
 				<< std::string( 1, s.strand() ) ;
 
-			if( s.strand() == impl::Match::eFwdStrand || s.strand() == impl::Match::eRevStrand ) {
+			if( s.strand() == impl::Segmentation::eFwdStrand || s.strand() == impl::Segmentation::eRevStrand ) {
 				BestAlignments::const_iterator where = aligned.find( s.matching_sequence() ) ;
 				for( std::size_t i = 0; i < kmer_pairs.size(); ++i ) {
 					(*output)
@@ -899,18 +1124,18 @@ private:
 			std::map< std::string, std::size_t > dna_sequence_counts ;
 			std::map< std::string, std::size_t > aa_sequence_counts ;
 			for( auto s: result ) {
-				if( s.strand() == impl::Match::eFwdStrand || s.strand() == impl::Match::eRevStrand ) {
+				if( s.strand() == impl::Segmentation::eFwdStrand || s.strand() == impl::Segmentation::eRevStrand ) {
 					BestAlignments::const_iterator where = aligned.find( s.matching_sequence() ) ;
 					if( use_clustering && where != aligned.end() && where->second.identity >= min_identity ) {
 						std::string const& sequence =  where->second.b ;
-						++dna_sequence_summary[s.name()][sequence] ;
-						++dna_sequence_counts[s.name()] ;
+						++dna_sequence_summary[s.sample_id()][sequence] ;
+						++dna_sequence_counts[s.sample_id()] ;
 						std::string translated = genfile::translate( sequence, truncate_at_stops ) ;
 						if( translated != "?" ) {
-							++aa_sequence_summary[s.name()][translated] ;
-							++aa_sequence_counts[s.name()] ;
+							++aa_sequence_summary[s.sample_id()][translated] ;
+							++aa_sequence_counts[s.sample_id()] ;
 						}
-						//std::cerr << "!! " << s.name() << ": " << where->second.aligned_b << "\n" ;
+						//std::cerr << "!! " << s.sample_id() << ": " << where->second.aligned_b << "\n" ;
 					}
 				}
 			}
@@ -981,11 +1206,31 @@ private:
 				}
 			}
 		}
+		#endif
+	}
+
+	std::vector< impl::KmerPair > load_kmer_pairs( std::vector< std::string > const& kmers ) const {
+		std::vector< impl::KmerPair > result ;
+
+		using genfile::string_utils::to_string ;
+		if( kmers.size() % 2 != 0 ) {
+			throw genfile::BadArgumentError(
+				"TranslatoratorApplication::load_kmer_pairs()",
+				"kmers",
+				"Expected there to be an even number of kmers (found " + to_string(kmers.size()) + ")"
+			) ;
+		}
+
+		for( std::size_t i = 0; i < kmers.size(); i += 2 ) {
+			result.push_back( impl::KmerPair( impl::to_upper(kmers[i]), impl::to_upper(kmers[i+1]) )) ;
+		}
+		return result ;
 	}
 
 	void output_translated_sequences(
-		SequenceMatches const& result,
+		std::vector< Segmentation > const& result,
 		std::string const& filename,
+		std::vector< impl::KmerPair > kmer_pairs,
 		bool truncate_at_stops
 	) const {
 		using genfile::string_utils::to_string ;
@@ -1011,16 +1256,17 @@ private:
 			std::cerr << s << "\n" ;
 #endif
 			(*output)
-				<< s.name()
-				<< s.sequence_name()
+				<< s.sample_id()
+				<< s.sequence_id()
 				<< std::string( 1, s.strand() ) ;
 
-			if( s.strand() == impl::Match::eFwdStrand || s.strand() == impl::Match::eRevStrand ) {
+			if( s.strand() == impl::Segmentation::eFwdStrand || s.strand() == impl::Segmentation::eRevStrand ) {
 				for( std::size_t i = 0; i < kmer_pairs.size(); ++i ) {
 					(*output)
 						<< uint64_t(s.positions()[i].first + 1)
 						<< uint64_t(s.positions()[i].second) ;
 				}
+				(*output) << s.matching_sequence() ;
 				(*output) << genfile::translate( s.matching_sequence(), truncate_at_stops ) ;
 			} else {
 				while( output->current_column() < output->number_of_columns() ) {
@@ -1030,6 +1276,7 @@ private:
 
 			(*output) << statfile::end_row() ;
 		}
+	}
 
 	Regions get_regions( std::vector< std::string > const& specs ) const {
 		Regions result ;
@@ -1047,10 +1294,10 @@ private:
 		return result ;
 	}
 	
-	void find_kmer_pair_matches(
+	void find_segmentations(
 		std::vector< std::string > const& filenames,
 		std::vector< impl::KmerPair > const& kmer_pairs,
-		SequenceMatches* result
+		std::vector< Segmentation >* result
 	) {
 		using genfile::string_utils::to_string ;
 		auto progress_context = ui().get_progress_context( "Loading sequences" ) ;
@@ -1067,7 +1314,7 @@ private:
 				}
 				for( auto const& region: regions ) {
 					sequences->set_region( region ) ;
-					find_kmer_pair_matches(
+					find_segmentations(
 						*sequences,
 						names[i],
 						kmer_pairs,
@@ -1076,7 +1323,7 @@ private:
 				}
 			} else {
 				impl::SequenceProvider::UniquePtr sequences = impl::SequenceProvider::open( filenames[i] ) ;
-				find_kmer_pair_matches(
+				find_segmentations(
 					*sequences,
 					names[i],
 					kmer_pairs,
@@ -1087,39 +1334,39 @@ private:
 		}
 	}
 	
-	void find_kmer_pair_matches(
+	void find_segmentations(
 		impl::SequenceProvider& sequences,
 		std::string const& name,
 		std::vector< impl::KmerPair > kmer_pairs,
-		SequenceMatches* result
+		std::vector< Segmentation >* result
 	) const {
 		try {
-			find_kmer_pair_matches_unsafe( name, sequences, kmer_pairs, result ) ;
+			find_segmentations_unsafe( name, sequences, kmer_pairs, result ) ;
 		} catch( std::exception const& e ) {
 			ui().logger() << "!! Error processing \"" << name << "\", there will be no results for this file.\n" ;
 		}
 	}
 
-	void find_kmer_pair_matches_unsafe(
+	void find_segmentations_unsafe(
 		std::string const& name,
 		impl::SequenceProvider& sequences,
 		std::vector< impl::KmerPair > const& kmer_pairs,
-		SequenceMatches* result
+		std::vector< Segmentation >* result
 	) const {
 		std::string sequence_name ;
 		std::string sequence ;
 		std::string fwd_sequence, rc_sequence ;
-		impl::Match::MatchRanges fwd_positions, rc_positions ;
+		impl::Segmentation::SegmentationRanges fwd_positions, rc_positions ;
 		while( sequences.next( &sequence_name, &sequence )) {
 			impl::to_upper_inplace( sequence ) ;
 			bool fwd = load_fragmented_dna_sequence( sequence, kmer_pairs, &fwd_sequence, &fwd_positions ) ;
 			bool rev = load_fragmented_dna_sequence( genfile::reverse_complement( sequence ), kmer_pairs, &rc_sequence, &rc_positions ) ;
 			if( fwd ) {
 				result->push_back(
-					impl::Match(
+					impl::Segmentation(
 						name,
 						sequence_name,
-						impl::Match::eFwdStrand,
+						impl::Segmentation::eFwdStrand,
 						fwd_sequence,
 						fwd_positions
 					)
@@ -1127,10 +1374,10 @@ private:
 			}
 			if( rev ) {
 				result->push_back(
-					impl::Match(
+					impl::Segmentation(
 						name,
 						sequence_name,
-						impl::Match::eRevStrand,
+						impl::Segmentation::eRevStrand,
 						rc_sequence,
 						rc_positions
 					)
@@ -1138,12 +1385,12 @@ private:
 			}
 			if( !fwd && !rev ) {
 				result->push_back(
-					impl::Match(
+					impl::Segmentation(
 						name,
 						sequence_name,
-						impl::Match::eNeitherStrand,
+						impl::Segmentation::eNeitherStrand,
 						"",
-						impl::Match::MatchRanges()
+						impl::Segmentation::SegmentationRanges()
 					)
 				) ;
 			}
