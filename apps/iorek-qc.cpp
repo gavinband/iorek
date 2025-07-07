@@ -95,6 +95,12 @@ public:
 			.set_is_required()
 		;
 
+		options[ "-max-reads" ]
+			.set_description( "Only process the first N reads in the input files.  Set to 0 to process all reads." )
+			.set_takes_single_value()
+			.set_default_value( std::numeric_limits< std::size_t >::max() )
+		;
+
 		options[ "-read-tags" ]
 			.set_description( "Path of a text file with two (named) columns.  The first column is the "
 			" read id, the second is a string value to associate to the read.  Results will be split over the different tag values." )
@@ -674,6 +680,7 @@ private:
 		std::size_t const number_of_threads = options().get< std::size_t >( "-threads" ) ;
 		uint64_t const multiplicity_threshold = options().get_value< uint64_t >( "-min-kmer-count" ) ;
 		std::size_t const max_kmers = options().get< std::size_t >( "-max-kmers" ) ;
+		std::size_t const max_reads = options().get< std::size_t >( "-max-reads" ) ;
 		int const base_quality_threshold = options().get< std::size_t >( "-min-base-quality" ) ;
 		bool const verbose = options().check( "-verbose" ) ;
 
@@ -745,6 +752,7 @@ private:
 				m_kmers,
 				m_k,
 				base_quality_threshold,
+				max_reads,
 				*by_read_sink,
 				*by_position_sink,
 				*by_quality_sink,
@@ -838,13 +846,14 @@ private:
 		HashSet const& kmers,
 		std::size_t k,
 		uint64_t base_quality_threshold,
+		std::size_t const max_reads,
 		statfile::BuiltInTypeStatSink& read_sink,
 		statfile::BuiltInTypeStatSink& position_sink,
 		statfile::BuiltInTypeStatSink& quality_sink,
 		statfile::BuiltInTypeStatSink& aggregate_metrics_sink
 	) {
 		std::size_t const number_of_threads = options().get< std::size_t >( "-threads" ) ;
-
+		// number of reads is returned from the function, so declared here.
 		std::size_t count = 0 ;
 
 		ui().logger() << "process_read(): constructing " << number_of_threads << " worker threads...\n" ;
@@ -931,6 +940,10 @@ private:
 					++count ;
 					progress( count ) ;
 					l = 0 ;
+
+					if( count >= max_reads ) {
+						break ;
+					}
 				}
 			}
 
@@ -1202,7 +1215,6 @@ private:
 		std::map< std::string, std::vector< uint64_t > > quality_metrics ;
 
 		std::size_t count = 0 ;
-		
 		ReadMetrics aggregated ;
 		ReadResult result ;
 		while( !(*quit) ) {
