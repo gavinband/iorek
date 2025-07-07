@@ -451,8 +451,11 @@ private:
 		std::unique_ptr< seqlib::ThreadPool > thread_pool ;
 		
 		if( options().get< uint32_t >( "-threads" ) > 0 ) {
-			thread_pool.reset( new seqlib::ThreadPool( options().get< int >( "-threads" ) )) ;
-			reader.SetThreadPool( *thread_pool ) ;
+			ui().logger() << "!! Error: the -threads option is currently disabled!\n"
+				<< "!! This is because the htslib threadpool implementation appears to cause problems with hangs and memory usage.\n" ;
+			throw appcontext::HaltProgramWithReturnCode( -1 ) ;
+			// thread_pool.reset( new seqlib::ThreadPool( options().get< int >( "-threads" ) )) ;
+			// reader.SetThreadPool( *thread_pool ) ;
 		}
 		
 		if( options().check( "-reference" )) {
