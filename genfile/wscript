@@ -36,3 +36,10 @@ def build( bld ):
 		use = 'genfile',
 		includes = "./include"
 	)
+
+	bld.program(
+		source = "test/test-gfa.cpp",
+		target = 'test-gfa',
+		use = 'genfile',
+		includes = "./include"
+	)
