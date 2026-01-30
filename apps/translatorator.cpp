@@ -13,10 +13,17 @@
 #include <boost/filesystem.hpp>
 #include <boost/noncopyable.hpp>
 #include <boost/optional.hpp>
+#include <boost/optional/optional_io.hpp>
 #include <boost/function.hpp>
 #include <boost/format.hpp>
 #include <boost/random.hpp>
+#include <boost/bimap.hpp>
+#include <boost/bimap/unordered_set_of.hpp>
+#include <boost/bimap/unordered_multiset_of.hpp>
+
 #include <boost/random/gamma_distribution.hpp>
+
+#include <Eigen/Core>
 
 // seqlib
 #include "SeqLib/RefGenome.h"
@@ -64,16 +71,31 @@ public:
 		// Meta-options
 		options.set_help_option( "-help" ) ;
 		
-		options.declare_group( "Input / output file options" ) ;
+		options.declare_group( "Input file options" ) ;
 		options[ "-sequences" ]
 			.set_description( "Path of FASTA file, or of BAM/CRAM files to operate on.  Note that this program expects to see "
 			"long DNA sequences that cover the full translated length of the target protain" )
 			.set_takes_values_until_next_option()
 			.set_is_required()
 		;
+		options[ "-range" ]
+			.set_description(
+				"Ignore reads that don't overlap the this range of positions (in the form <chromosome>:<position>, or <chromosome>:<start>-<end>). "
+				"(Note " + globals::program_name + " uses 1-based coordinates with closed intervals.)"
+				" This option implies using an indexed BAM, SAM or CRAM file as input to -sequences." )
+			.set_takes_values_until_next_option()
+			.set_minimum_multiplicity( 0 )
+			.set_maximum_multiplicity( 1000 )
+		;
 
-		options[ "-o" ]
-			.set_description( "Path of main output file." )
+		options[ "-reference" ]
+			.set_description( "Specify reference sequence (mandatory when using CRAM files)" )
+			.set_takes_single_value() ;
+		
+
+		options.declare_group( "Output file options" ) ;
+		options[ "-output-clusters" ]
+			.set_description( "Path of main clusters output file." )
 			.set_takes_single_value()
 			.set_default_value( "-" ) ;
 
@@ -102,20 +124,6 @@ public:
 			.set_takes_single_value()
 			.set_default_value( "-" ) ;
 
-		options[ "-range" ]
-			.set_description(
-				"Ignore reads that don't overlap the this range of positions (in the form <chromosome>:<position>, or <chromosome>:<start>-<end>). "
-				"(Note " + globals::program_name + " uses 1-based coordinates with closed intervals.)"
-				" This option implies using an indexed BAM, SAM or CRAM file as input to -sequences." )
-			.set_takes_values_until_next_option()
-			.set_minimum_multiplicity( 0 )
-			.set_maximum_multiplicity( 1000 )
-		;
-
-		options[ "-reference" ]
-			.set_description( "Specify reference sequence (mandatory when using CRAM files)" )
-			.set_takes_single_value() ;
-		
 		options.declare_group( "Coding sequence options" ) ;
 		options[ "-cds-kmers" ]
 			.set_description(
@@ -131,17 +139,22 @@ public:
 			.set_description( "Generate a list of candidate correct sequences, and align all reads back to candidates to cluster them. "
 			"Then output corrected DNA and amino acid sequences" )
 		;
+		options[ "-iterations" ]
+			.set_description( "Number of iterations" )
+			.set_takes_single_value()
+			.set_default_value( 1 )
+		;
 		options[ "-min-obs-per-sample" ]
 			.set_description( "The minimum number of times a sequence must be observed in one sample, "
 			" before it is treated as a candidate for clustering." )
 			.set_takes_single_value()
-			.set_default_value( 5 )
+			.set_default_value( 1 )
 		;
 		options[ "-min-fraction-per-sample" ]
 			.set_description( "The minimum fraction of sequences must be observed in one sample, "
 			" before it is treated as a candidate for clustering." )
 			.set_takes_single_value()
-			.set_default_value( 0.01 )
+			.set_default_value( 0 )
 		;
 		options[ "-min-obs-samples" ]
 			.set_description( "The minimum number of samples a sequence must be observed in,"
@@ -203,7 +216,7 @@ namespace impl {
 		virtual bool next(
 			std::string* name,
 			std::string* sequence,
-			boost::optional< std::string >* qualities = 0
+			std::string* qualities = 0
 		) = 0 ;
 	} ;
 
@@ -249,8 +262,10 @@ namespace impl {
 		bool next(
 			std::string* name,
 			std::string* sequence,
-			boost::optional< std::string >* qualities
+			std::string* qualities
 		) {
+			assert( name ) ;
+			assert( sequence ) ;
 			bool result = false ;
 			while(
 				(result = m_reader.GetNextRecord( m_alignment ))
@@ -265,7 +280,7 @@ namespace impl {
 				name->assign( m_alignment.Qname() ) ;
 				sequence->assign( m_alignment.Sequence() ) ;
 				if( qualities ) {
-					(*qualities) = m_alignment.Qualities() ;
+					qualities->assign( m_alignment.Qualities() ) ;
 				}
 			}
 			return result ;
@@ -308,7 +323,7 @@ namespace impl {
 		bool next(
 			std::string* name,
 			std::string* sequence,
-			boost::optional< std::string >* qualities
+			std::string* qualities
 		) {
 			if( m_i >= m_fasta.number_of_sequences() ) {
 				return false ;
@@ -318,7 +333,9 @@ namespace impl {
 			name->assign( sequence_name ) ;
 			sequence->assign( m_data.begin(), m_data.end() ) ;
 			if( qualities ) {
-				qualities->reset() ;
+				// FASTA format
+				// Make them have very high quality.
+				qualities->assign( sequence->size(), '{' ) ;
 			}
 			++m_i ;
 			return true ;
@@ -376,10 +393,112 @@ namespace impl {
 		std::string m_end ;
 	} ;
 
+	struct SegmentedSequence {
+		public:
+			struct Range {
+				Range(): start(0), end(0) {} ;
+				Range( Range const& other ) = default ;
+				Range( std::size_t _start, std::size_t _end ):
+					start( _start ),
+					end( _end )
+				{}
+
+				bool operator==( Range const& other ) const {
+					return (start == other.start && end == other.end ) ;
+				}
+
+				bool operator<( Range const& other ) const {
+					return ((start < other.start) || ((start == other.start) && (end < other.end) )) ;
+				}
+
+				std::size_t length() const { return end - start ; }
+
+				std::size_t start ;
+				std::size_t end ;
+			} ;
+
+			typedef std::vector< Range > Ranges ;
+
+			SegmentedSequence( SegmentedSequence const& other ):
+				m_sequence( other.m_sequence ),
+				m_ranges( other.m_ranges )
+			{}
+			SegmentedSequence() = default ;
+			SegmentedSequence(
+				std::string const& sequence,
+				Ranges const& ranges
+			):
+				m_sequence( sequence ),
+				m_ranges( ranges )
+			{}
+
+			bool operator==( SegmentedSequence const& b ) const {
+				return (m_sequence == b.m_sequence) && (m_ranges == b.m_ranges) ;
+			}
+
+			bool operator<( SegmentedSequence const& b ) const {
+				return (m_sequence < b.m_sequence) || ((m_sequence == b.m_sequence) && (m_ranges < b.m_ranges)) ;
+			}
+
+			std::string const& matching_sequence() const { return m_sequence ; }
+			std::string hpc_sequence() const {
+				std::string result ;
+				// homopolymer compress, but only within the ranges.
+				result.reserve( m_sequence.size() ) ;
+				std::size_t i = 0 ;
+				for( auto range: m_ranges ) {
+					if( result.size() > 0 ) {
+						result.push_back( '_' ) ;
+					}
+					char last = ' ' ;
+					for( ; range.start != range.end; ++range.start, ++i ) {
+						if( m_sequence[i] != last ) {
+							result.push_back(m_sequence[i]) ;
+							last = result.back() ;
+						}
+					}
+				}
+				return result ;
+			}
+			Ranges const& ranges() const { return m_ranges ; }
+			std::string const& sequence() const { return m_sequence ; }
+
+			private:
+			std::string m_sequence ;
+			Ranges m_ranges ;
+	} ;
+
+	std::ostream& operator<<( std::ostream& out, SegmentedSequence const& ss ) {
+		std::size_t pos = 0 ;
+		for( std::size_t i = 0; i < ss.ranges().size(); ++i ) {
+			std::size_t length = ss.ranges()[i].length() ;
+			if( i > 0 ) {
+				out << "..." ;
+			}
+			out << ss.sequence().substr( pos, length ) ;
+			pos += length ;
+		}
+		return out ;
+	}
+
+	template< typename Elt >
+	std::ostream& operator<<( std::ostream& out, std::vector< Elt > const& v ) {
+		for( std::size_t i = 0; i < v.size(); ++i ) {
+			if( i > 0 ) {
+				out << ";" ;
+			}
+			out << v[i] ;
+		}
+		return out ;
+	}
+
+	// A 'segmentation' is used to keep track of the positions of stated kmers within
+	// an input sequence, such as a read.
 	struct Segmentation {
 		public:
 			enum Strand { eAmbiguousStrand = '?', eFwdStrand = '+', eRevStrand = '-', eNeitherStrand = '.' } ;
-			typedef std::vector< std::pair< std::size_t, std::size_t > > SegmentationRanges ;
+			typedef SegmentedSequence::Range Range ;
+			typedef SegmentedSequence::Ranges Ranges ;
 
 			Segmentation() {}
 
@@ -387,40 +506,54 @@ namespace impl {
 				std::string const& name,
 				std::string const& sequence_name,
 				Strand const strand,
-				std::string const& sequence,
-				std::vector< std::pair< std::size_t, std::size_t > > positions
+				SegmentedSequence const& sequence
 			):
 				m_name( name ),
 				m_sequence_name( sequence_name ),
 				m_strand( strand ),
-				m_sequence( sequence ),
-				m_positions( positions )
+				m_sequence( sequence )
+			{}
+
+			// legacy
+			Segmentation(
+				std::string const& name,
+				std::string const& sequence_name,
+				Strand const strand,
+				std::string const& sequence,
+				std::vector< SegmentedSequence::Range > ranges
+			):
+				m_name( name ),
+				m_sequence_name( sequence_name ),
+				m_strand( strand ),
+				m_sequence( SegmentedSequence( sequence, ranges ))
 			{}
 
 			Segmentation( Segmentation const& other ):
 				m_name( other.m_name ),
 				m_sequence_name( other.m_sequence_name ),
 				m_strand( other.m_strand ),
-				m_sequence( other.m_sequence ),
-				m_positions( other.m_positions )
+				m_sequence( other.m_sequence )
 			{}
 
 			std::string const& sample_id() const { return m_name ; }
 			std::string const& sequence_id() const { return m_sequence_name ; }
+			SegmentedSequence const& sequence() const { return m_sequence ; }
 			Strand const strand() const { return m_strand ; }
-			std::string const& matching_sequence() const { return m_sequence ; }
-			SegmentationRanges const& positions() const { return m_positions ; }
+			bool is_unambiguous() const { return m_strand == eFwdStrand || m_strand == eRevStrand ; }
+			std::string const& matching_sequence() const { return m_sequence.matching_sequence() ; }
+			std::string hpc_sequence() const { return m_sequence.hpc_sequence() ; }
+			Ranges const& ranges() const { return m_sequence.ranges() ; }
 
 		private:
 			std::string m_name ;
 			std::string m_sequence_name ;
 			Strand m_strand ;
-			std::string m_sequence ;
-			SegmentationRanges m_positions ;
+			SegmentedSequence m_sequence ;
 	} ;
 
 	struct AlignmentOpScores {
-		int match ;
+		// match scores, by position in homopolymer, must be size 16.
+		Eigen::VectorXi match ;
 		int mismatch ;
 		int gap1_open ;
 		int gap1_extend ;
@@ -448,7 +581,7 @@ namespace impl {
 		std::string cigar ;
 		std::string aligned_a ;
 		std::string aligned_b ;
-		int matches ;
+		Eigen::RowVectorXi matches ;
 		int mismatches ;
 		int insertions ;
 		int insertion_extensions ;
@@ -463,7 +596,7 @@ namespace impl {
 			op_scores( AlignmentOpScores() ),
 			score(0),
 			identity(0.0),
-			matches(0),
+			matches(Eigen::RowVectorXi::Constant( 16, 0 )),
 			mismatches(0),
 			insertions(0),
 			insertion_extensions(0),
@@ -489,7 +622,7 @@ namespace impl {
 			identity( 0.0 ),
 			long_form_cigar( _cigar ),
 			cigar( runlength_encode(_cigar) ),
-			matches(0),
+			matches(Eigen::RowVectorXi::Constant( 16, 0 )),
 			mismatches(0),
 			insertions(0),
 			insertion_extensions(0),
@@ -522,21 +655,29 @@ namespace impl {
 				std::size_t end ;
 				std::size_t length() const { return end - start ; }
 			} ;
+			// a  = sequence of read (query)
+			// sa = position in a
+			// b  = sequence of template to align to
+			// sb = position in b
 			HomopolymerTract left_homopolymer, right_homopolymer( b, 0 ) ;
-			char previous_op = '*' ;
 			for( std::size_t i = 0; i < long_form_cigar.size(); ) {
 				if( b[sb] != b[right_homopolymer.start] ) {
+					// The base at index sb is in a new homopolymer tract, find it now.
 					left_homopolymer = right_homopolymer ;
 					right_homopolymer = HomopolymerTract( b, sb ) ;
 				}
+				//int const index_in_homopolymer = (sb - right_homopolymer.start) ;
+				//int const max_index = (op_scores.match.size() - 1) ;
 				char op = long_form_cigar[i] ;
 				switch( op ) {
 					case 'M':
 					case '=':
-						++matches ;
+//						++matches( std::min(index_in_homopolymer, max_index )) ;
+						++matches(0) ;
 						identity += 1.0 ;
 						aligned_a.push_back( a[sa++] ) ;
 						aligned_b.push_back( b[sb++] ) ;
+						//long_form_cigar[i] = ( index_in_homopolymer == 0 ) ? 'M' : 'm' ;
 						++i ;
 						break ;
 					case 'X':
@@ -610,21 +751,22 @@ namespace impl {
 				}
 				assert( sa <= a.size() ) ;
 				assert( sb <= b.size() ) ;
-				previous_op = op ;
 			}
-//			identity /= _cigar.size() ;
+			identity /= long_form_cigar.size() ;
 			cigar = runlength_encode( long_form_cigar ) ;
 
 			{
 #if DEBUG
+/*
 				double my_score = (
 					matches * op_scores.match
 					+ mismatches * op_scores.mismatch
 					+ (deletions+homopolymer_contractions+insertions+homopolymer_expansions) * op_scores.gap1_open
 					+ (deletion_extensions+homopolymer_contraction_extensions+insertion_extensions+homopolymer_expansion_extensions) * op_scores.gap1_extend
 				) ;
+
 				if( my_score != score ) {
-					std::cerr << "!! AAARGH!  CIGAR=\"" << cigar << "\", score:" << score << " , my_score:" << my_score << ".\n" ;
+//					std::cerr << "!! AAARGH!  CIGAR=\"" << cigar << "\", score:" << score << " , my_score:" << my_score << ".\n" ;
 					std::cerr << "!! M" << matches << " X" << mismatches
 						<< " D" << (deletions)
 						<< " HPD" << (homopolymer_contractions)
@@ -635,20 +777,22 @@ namespace impl {
 						<< " AL" << aligned_a.size()
 						<< " BL" << aligned_b.size()
 						<< " LFCL" << long_form_cigar.size() << "\n" ;
-					std::cerr
-						<< "   " << long_form_cigar << "\n"
-						<< "   " << aligned_a << "\n"
-						<< "   " << aligned_b << "\n" ;
+//					std::cerr
+//						<< "   " << long_form_cigar << "\n"
+//						<< "   " << aligned_a << "\n"
+//						<< "   " << aligned_b << "\n" ;
 #endif
 // !! AAARGH!  CIGAR="54M1X1507M2d559M", score:2106.0 , my_score:2105.0.
 // !! M2119 X1 D0 HPD1 I0 HPI0 DD2 II0 LFCL2123
 				}
+*/
+#endif
 			}
 		}
 
 		double homopolymer_corrected_score( double homopolymer_weight = 0.0 ) const {
 			return (
-				(matches 																	* op_scores.match)
+				(matches 																	* op_scores.match)(0)
 				+ (mismatches 																* op_scores.mismatch)
 				+ ((deletions+insertions) 													* op_scores.gap1_open)
 				+ ((deletion_extensions+insertion_extensions) 								* op_scores.gap1_extend)
@@ -697,19 +841,19 @@ namespace impl {
 		<< " homopolymer contractions:" << a.homopolymer_contractions ;
 	}
 
-	std::ostream& operator<<( std::ostream& out, Segmentation const& match ) {
+	std::ostream& operator<<( std::ostream& out, Segmentation const& s ) {
 		out
 		<< "M[ "
-		<< "\"" << match.sample_id() << "\" "
-		<< "\"" << match.sequence_id() << "\" "
-		<< std::string( 1, match.strand()) << " "
+		<< "\"" << s.sample_id() << "\" "
+		<< "\"" << s.sequence_id() << "\" "
+		<< std::string( 1, s.strand()) << " "
 		;
-		for( std::size_t i = 0; i < match.positions().size(); ++i ) {
+		for( std::size_t i = 0; i < s.ranges().size(); ++i ) {
 			out
 				<< ((i>0) ? "," : "")
-				<< match.positions()[i].first
+				<< s.ranges()[i].start
 				<< "-"
-				<< match.positions()[i].second
+				<< s.ranges()[i].end
 			;
 		}
 		out << " ]" ;
@@ -739,10 +883,10 @@ namespace impl {
 		std::string const& sequence,
 		std::vector< KmerPair > const& kmer_pairs,
 		std::string* result = 0,
-		std::vector< std::pair< std::size_t, std::size_t > >* ranges = 0
+		Segmentation::Ranges* ranges = 0
 	) {
 		std::string result_sequence ;
-		std::vector< std::pair< std::size_t, std::size_t > > positions ;
+		Segmentation::Ranges positions ;
 		// 
 		for( std::size_t i = 0; i < kmer_pairs.size(); ++i ) {
 #if DEBUG > 1
@@ -755,7 +899,7 @@ namespace impl {
 			// Structural variants can create extra copies of exons that 
 			// aren't part of transcribed genes. (E.g  exon 6/7 of Pf3D7_1127000 in Pf FUP/H).
 			// Therefore, we only look downstream of the last found kmer pair.
-			std::size_t const search_start_at = ( (i>0) ? positions[i-1].second + 1 : 0 ) ;
+			std::size_t const search_start_at = ( (i>0) ? positions[i-1].end + 1 : 0 ) ;
 
 			int const a = sequence.find( kmer_pairs[i].first(), search_start_at ) ;
 			int const b = sequence.find( kmer_pairs[i].second(), search_start_at ) ;
@@ -775,12 +919,12 @@ namespace impl {
 			// and a..b lies to the right of anything seen previously.
 			if(
 				( b < (a+la))
-				|| ((i>0) && a < ( positions[i-1].second ))
+				|| ((i>0) && a < ( positions[i-1].end ))
 			) {
 				return false ;
 			} else {
 				result_sequence += sequence.substr( a, b+lb-a ) ;
-				positions.push_back( std::make_pair( a, b+lb ) ) ;
+				positions.push_back( Segmentation::Range( a, b+lb ) ) ;
 			}
 		}
 		if( result ) {
@@ -800,7 +944,7 @@ namespace impl {
 		std::string sequence = "ACGTAACCGGTTAAACCCGGGTTTAAAACCCCGGGGTTTT" ;
 		std::vector< KmerPair > pairs ;
 		std::string result ;
-		std::vector< std::pair< std::size_t, std::size_t > > positions ;
+		Segmentation::Ranges positions ;
 		pairs.push_back( KmerPair( "CGTA", "GTTA" )) ;
 		assert( !load_fragmented_dna_sequence( "", pairs, &result, &positions ) ) ;
 		assert( !load_fragmented_dna_sequence( "CGTA", pairs, &result, &positions ) ) ;
@@ -844,8 +988,16 @@ namespace impl {
 			}
 		}
 
+		std::vector< SequenceIndex > haplotypes() const {
+			std::vector< SequenceIndex > result ;
+			result.reserve( m_haplotypes.size() ) ;
+			for( auto const kv: m_haplotypes ) {
+				result.push_back( kv.first ) ;
+			}
+			return( result ) ;
+		}
+
 		// perturb all the weights.
-		// A minimum weighting of 1% / 99% is applied.
 		MixtureOfHaplotypes resample_weights(
 			// boost random generator object
 			RNG& rng,
@@ -938,6 +1090,120 @@ namespace impl {
 	std::ostream& operator<<( std::ostream& out, MixtureOfHaplotypes const& state ) {
 		return state.serialise(out) ;
 	}
+
+
+	struct AlgorithmData {
+		struct SegmentationToReads {
+			SegmentationToReads() = default ;
+			SegmentationToReads( SegmentationToReads const& other ) = default ;
+			SegmentationToReads(
+				impl::SegmentedSequence _sequence,
+				std::vector< impl::Segmentation > _reads
+			):
+				sequence( _sequence ),
+				reads( _reads )
+			{}
+			impl::SegmentedSequence sequence ;
+			std::vector< impl::Segmentation > reads ;
+
+			friend std::ostream& operator<<( std::ostream& out, SegmentationToReads const& s ) ;
+		} ;
+		struct SequenceToIds {
+			SequenceToIds() = default ;
+			SequenceToIds( SequenceToIds const& other ) = default ;
+			std::string sequence ;
+			std::vector< std::size_t > sequence_ids ;
+		} ;
+
+		AlgorithmData( std::vector< Segmentation > const& segmentations ):
+			m_unambiguous_read_count(0)
+		{
+			// For this algorithm we need:
+			// 1. the input segmented sequences, ordered by the occurence count.
+			std::map< impl::SegmentedSequence, std::vector< impl::Segmentation > > by_sequence_impl ;
+			for( auto s: segmentations ) {
+				if( s.is_unambiguous() ) {
+					++m_unambiguous_read_count ;
+					by_sequence_impl[ s.sequence() ].push_back( s ) ;
+				} else {
+					m_ambiguous_reads.push_back( s ) ;
+				}
+			}
+
+			// Put sequences in descending order of frequency
+			std::vector< SegmentationToReads > elts ;
+			elts.reserve( by_sequence_impl.size() ) ;
+			for( auto kv: by_sequence_impl ) {
+				elts.push_back( SegmentationToReads( kv.first, kv.second )) ;
+			}
+			std::sort(
+				elts.begin(),
+				elts.end(),
+				[]( SegmentationToReads const& a, SegmentationToReads const& b ) {
+					return (a.reads.size() > b.reads.size()) || ((a.reads.size() == b.reads.size()) && (a.sequence < b.sequence)) ;
+				}
+			) ;
+
+			std::vector< SequenceToIds > by_hpc_sequence ;
+			std::map< std::string, std::size_t > found ;
+			for( std::size_t i = 0; i < elts.size(); ++i ) {
+				std::string hpc_sequence = elts[i].sequence.hpc_sequence() ;
+				auto where = found.find( hpc_sequence ) ;
+				if( where == found.end() ) {
+					found[hpc_sequence] = by_hpc_sequence.size() ;
+					by_hpc_sequence.push_back(
+						SequenceToIds{
+							hpc_sequence,
+							std::vector< std::size_t >(1, i )
+						}
+					) ;
+				} else {
+					by_hpc_sequence[where->second].sequence_ids.push_back(i) ;
+				}
+			}
+
+			m_sequences.swap( elts ) ;
+			m_hpc_sequences.swap( by_hpc_sequence ) ;
+		}
+
+		std::size_t total_reads() const {
+			return m_unambiguous_read_count + m_ambiguous_reads.size() ;
+		}
+
+		std::size_t total_unambiguous_reads() const {
+			return m_unambiguous_read_count ;
+		}
+
+		std::vector< SegmentationToReads > const& sequences() const { return m_sequences ; }
+		std::vector< Segmentation > const& ambigious_sequences() const { return m_ambiguous_reads ; }
+		std::vector< SequenceToIds > const& hpc_sequences() const { return m_hpc_sequences ; }
+
+		std::size_t count_reads_for_hpc_sequence( std::size_t i ) const {
+			std::size_t result = 0 ;
+			for( std::size_t j: m_hpc_sequences[i].sequence_ids ) {
+				result += m_sequences[j].reads.size() ;
+			}
+			return( result ) ;
+		}
+
+
+	private:
+		std::vector< SegmentationToReads > m_sequences ;
+		std::vector< SequenceToIds > m_hpc_sequences ;
+		std::size_t m_unambiguous_read_count ;
+		std::vector< Segmentation > m_ambiguous_reads ;
+	} ;
+
+	std::ostream& operator<<( std::ostream& out, AlgorithmData::SegmentationToReads const& s ) {
+		out << s.sequence << ": " ;
+		for( std::size_t i = 0; i < s.reads.size(); ++i ) {
+			if( i>0 ) {
+				out << "," ;
+			}
+			out << s.reads[i] ;
+		}
+		return( out ) ;
+	}
 }
 
 struct TranslatoratorApplication: public appcontext::ApplicationContext
@@ -988,44 +1254,7 @@ private:
 	typedef std::unordered_map< SequenceIndex, SequenceCount > SegmentationCounts ;
 	typedef std::unordered_map< SampleId, std::unordered_map< SequenceIndex, SequenceCount > > PerSampleSequenceCounts ;
 	typedef std::vector< std::vector< impl::Segmentation > > SegmentationsBySequence ;
-
-	struct AlgorithmData {
-		AlgorithmData( std::vector< Segmentation > const& segmentations ) {
-			std::map< std::string, std::vector< impl::Segmentation > > by_sequence_impl ;
-			for( auto s: segmentations ) {
-				++(this->per_sample_totals)[ s.sample_id() ].total ;
-				if( s.strand() == impl::Segmentation::eFwdStrand || s.strand() == impl::Segmentation::eRevStrand ) {
-					++(this->per_sample_totals)[ s.sample_id() ].matched ;
-					by_sequence_impl[ s.matching_sequence() ].push_back( s ) ;
-				}
-			}
-
-			// typedef std::unordered_map<
-			//	 SampleId,
-			// 	 std::unordered_map< SequenceIndex, SequenceCount >
-			// > PerSampleSequenceCounts ;
-
-			this->distinct_sequences.reserve( by_sequence_impl.size() ) ;
-			this->by_sequence.reserve( by_sequence_impl.size() ) ;
-			for( auto const& kv: by_sequence_impl ) {
-				std::size_t const index = this->distinct_sequences.size() ;
-				this->distinct_sequences.push_back( kv.first ) ;
-				this->by_sequence.push_back( kv.second ) ;
-				for( auto s: kv.second ) {
-					++(this->per_sample_sequence_counts)[ s.sample_id() ][ index ] ;
-				}
-			}
-		}
-
-		std::ostream& operator<<( std::ostream& out ) {
-			return out << "AlgorithmData: " << distinct_sequences.size() << " distinct sequences." ;
-		}
-
-		std::vector< Sequence > distinct_sequences ;
-		SegmentationsBySequence by_sequence ;
-		PerSampleTotals per_sample_totals ;
-		PerSampleSequenceCounts per_sample_sequence_counts ;
-	} ;
+	typedef impl::AlgorithmData AlgorithmData ;
 
 	struct PairwiseAlignments {
 		struct SequencePair {
@@ -1043,7 +1272,8 @@ private:
 		typedef std::map< SequencePair, AlignmentDetail > Alignments ;
 
 		void add_sequences(
-			std::vector< Sequence > sequences,
+			std::vector< AlgorithmData::SequenceToIds > const& sequences,
+			boost::function< std::string ( AlgorithmData::SequenceToIds const& s ) > get_sequence,
 			boost::function< bool( std::size_t ) > inclusion_filter,
 			boost::function< void( std::size_t, std::size_t ) > progress = 0
 		) {
@@ -1055,16 +1285,29 @@ private:
 			// --gap-extend-1 2 
 			// --gap-open-2 26 
 			// --gap-extend-2 1
+			Eigen::VectorXi match_scores = Eigen::VectorXi::Constant( 16, 0 ) ;
+			match_scores(0) = 1 ;
+			match_scores(1) = -1 ;
+			match_scores(2) = -2 ;
+			match_scores(3) = -3 ;
 			AlignmentOpScores op_scores{
-				  1, // match
+				  match_scores, // match
+#if 0
+				 -5, // mismatch
+				 -7, // gap1 open
+				 -3, // gap1 extend
+				-27, // gap2 open
+				 -2, // gap2 extend
+#else
 				 -4, // mismatch
 				 -6, // gap1 open
 				 -2, // gap1 extend
 				-26, // gap2 open
 				 -1, // gap2 extend
+#endif
 			} ;
 			wfa::WFAlignerGapAffine2Pieces aligner(
-				-op_scores.match,
+				-op_scores.match(0),
 				-op_scores.mismatch,
 				-op_scores.gap1_open,
 				-op_scores.gap1_extend,
@@ -1082,8 +1325,8 @@ private:
 			for( std::size_t i = 0; i < sequences.size(); ++i ) {
 				for( std::size_t t = 0; t < m_targets.size(); ++t ) {
 					std::size_t j = m_targets[t] ;
-					auto from   = sequences[i] ;
-					auto to     = sequences[j] ;
+					auto from   = get_sequence( sequences[i] ) ;
+					auto to     = get_sequence( sequences[j] ) ;
 					auto status = aligner.alignEnd2End( to, from ) ;
 					assert( status == WF_STATUS_SUCCESSFUL ) ;
 					int score = aligner.getAlignmentScore() ;
@@ -1101,6 +1344,7 @@ private:
 			}
 		}
 
+		std::size_t size() const { return m_alignments.size() ; }
 		std::vector< SequenceIndex > const& alignment_targets() const { return m_targets ; }
 
 		AlignmentDetail const& alignment(
@@ -1123,15 +1367,26 @@ private:
 		bool truncate_at_stops ;
 		std::size_t number_of_threads ;
 		std::size_t min_obs_per_sample ;
+		std::size_t max_clustering_iterations ;
+		double homopolymer_indel_weight ;
+		double min_identity ;
 	} ;
 
-	void unsafe_process() {
+	struct StateLL {
+		MixtureOfHaplotypes state ;
+		double ll ;
+	} ;
+
+	void unsafe_process() { 
 		AlgorithmOptions algorithm_options = {
 			options().check( "-cluster" ),
 			options().check( "-only-translatable" ),
 			options().check( "-truncate-at-stops" ),
 			options().get< std::size_t >( "-threads" ),
-			options().get< std::size_t >( "-min-obs-per-sample" )
+			options().get< std::size_t >( "-min-obs-per-sample" ),
+			options().get< std::size_t >( "-iterations" ),
+			options().get< double >( "-homopolymer-indel-weight" ),
+			options().get< double >( "-min-alignment-identity" )
 		} ;
 		unsafe_process( algorithm_options ) ;
 	}
@@ -1147,9 +1402,11 @@ private:
 			kmer_pairs,
 			&segmentations
 		) ;
-
-		ui().logger() << "++ There were " << segmentations.size() << " total sequences...\n" ;
-
+		AlgorithmData data ( segmentations ) ;
+		ui().logger() << "++ There were " << data.total_reads() << " total sequences...\n" ;
+		ui().logger() << "++   of which " << data.total_unambiguous_reads() << " were unambiguously segmented.\n" ;
+		ui().logger() << "++ There were " << data.sequences().size() << " distinct segmentations.\n" ;
+		ui().logger() << "++ There were " << data.hpc_sequences().size() << " distinct compressed sequences.\n" ;
 
 		if( !algorithm_options.use_clustering ) {
 			if( options().check( "-output-sequences" )) {
@@ -1163,143 +1420,196 @@ private:
 			return ;
 		}
 
-		// Build data structure of sequences and sequence counts per sample
-		// The indices of this vector are used throughout the algorithm.
-
-		// For likelihood computation purposes, we count the number of reads per sample
-		// and also the number of each sequence observed per sample
-		AlgorithmData data( segmentations ) ;
-		std::cerr << "++ ...and " << data.distinct_sequences.size() << " distinct sequences.\n" ;
 		if( options().check( "-output-sequences" )) {
-			output_algorithm_data(
+			ui().logger() << "++ Outputting sequences...\n" ;
+			output_reads(
 				data,
 				options().get< std::string >( "-output-sequences" ),
-				kmer_pairs,
-				algorithm_options.truncate_at_stops
-			) ;
-		}
-
-		PairwiseAlignments alignments ;
-		std::size_t const min_obs_per_sample = options().get< std::size_t >( "-min-obs-per-sample" ) ;
-
-		{
-			auto progress = ui().get_progress_context( "Pairwise aligning" ) ;
-			alignments.add_sequences(
-				data.distinct_sequences,
-				// Only align to sequences seen at least twice
-				[&data,&algorithm_options](std::size_t i)->bool { return data.by_sequence[i].size() > algorithm_options.min_obs_per_sample ; },
-				[&progress](std::size_t i, std::size_t j)->void { progress(i,j) ; }
-			) ;
-		}
-
-		if( options().check( "-output-alignments" )) {
-			output_alignments(
-				data,
-				alignments,
-				options().get< std::string >( "-output-alignments" ),
 				kmer_pairs
 			) ;
 		}
 
-		double const homopolymer_weight = options().get< double >( "-homopolymer-indel-weight" ) ;
-		auto compute_ll = [&](
-			MixtureOfHaplotypes const& state,                                  // params
-			std::unordered_map< SequenceIndex, SequenceCount > sequence_counts // data
-		) {
-			double result = 0.0 ;
-			std::vector< double > elts ;
-			elts.reserve( state.size() ) ;
-			for( auto kv: sequence_counts ) {
-				SequenceIndex const& observed_sequence = kv.first ;
-				std::size_t const& sequence_count = kv.second ;
-				elts.clear() ;
-				state.visit(
-					[&]( SequenceIndex target_haplotype, double weight ) {
-						AlignmentDetail const& alignment = alignments.alignment( observed_sequence, target_haplotype ) ;
-						elts.push_back( std::log( weight ) + alignment.homopolymer_corrected_score( homopolymer_weight ) ) ;
-//						elts.push_back( std::log( weight ) + alignment.score ) ;
-//						std::cerr << "!! compute_ll: " << alignment.score << ", " << alignment.homopolymer_corrected_score( homopolymer_weight ) << ".\n" ;
-					}
-				) ;
-				result += sequence_count * iorek::log_sum_exp( elts.begin(), elts.end() ) ;
-		 	}
-			if( state.size() == 1 && state.contains( 235 )) {
-				std::cerr << "!! LL: 235, score: " << result << "\n" ;
-			}
-			return result ;
-		} ;
+		ui().logger() << "++ Computing pairwise alignments...\n" ;
 
-		auto compute_log_prior = [&](
-			MixtureOfHaplotypes const& state,
-			double p = 0.1
-		) {
-			// geometric distribution
-			return std::log(1-p) + std::log(p) * (state.size() - 1) ;
-		} ;
-
-		// Shotgun stochastic search to find good haplotype set candidates.
-		typedef moodycamel::ConcurrentQueue< MixtureOfHaplotypes > StateQueue ;
-		struct StateLL {
-			MixtureOfHaplotypes state ;
-			double ll ;
-		} ;
-		typedef moodycamel::ConcurrentQueue< StateLL > StateLLQueue ;
-		StateQueue state_queue ;
-		StateLLQueue result_queue ;
-		assert( data.per_sample_sequence_counts.size() == 1 ) ;
-		std::unordered_map< SequenceIndex, SequenceCount > const& sequence_counts = data.per_sample_sequence_counts.begin()->second ;
-		std::vector< std::thread > threads ;
-		std::atomic< int > quit(0) ;
-
+		PairwiseAlignments alignments ;
 		{
-			for( std::size_t i = 0; i < algorithm_options.number_of_threads; ++i ) {
-				threads.push_back(
-					std::thread(
-						[&]() {
-#if DEBUG
-							std::cerr << "!! THREAD " << std::this_thread::get_id() << ": starting.\n" ;
-#endif
-							MixtureOfHaplotypes state ;
-							while( !quit ) {
-								bool popped = state_queue.try_dequeue( state ) ;
-								if( popped ) {
-									double ll = compute_ll( state, sequence_counts ) ;
-									double lp = compute_log_prior( state ) ;
-									while( !result_queue.try_enqueue( StateLL{ state, ll + lp } )) {
-										std::this_thread::sleep_for( std::chrono::microseconds(10) ) ;
-									}
-								} else {
-									// nothing to pop, sleep to allow queue to fill.
-									std::this_thread::sleep_for( std::chrono::microseconds(10) ) ;
-								}
-							}
-#if DEBUG
-							std::cerr << "!! THREAD " << std::this_thread::get_id() << ": ending.\n" ;
-#endif
-						}
-					)
-				) ;
-			}
-			std::cerr << "process_read(): constructing output thread...\n" ;
+			auto progress = ui().get_progress_context( "Pairwise aligning" ) ;
+			alignments.add_sequences(
+				data.hpc_sequences(),
+				[]( AlgorithmData::SequenceToIds const& elt ) { return elt.sequence ; },
+				// Only align to sequences seen at least twice
+				[&data,&algorithm_options](std::size_t i)->bool { return data.count_reads_for_hpc_sequence(i) > algorithm_options.min_obs_per_sample ; },
+				[&progress](std::size_t i, std::size_t j)->void { progress(i,j) ; }
+			) ;
 		}
 
-		boost::random::mt19937 rng ;
+		ui().logger() << "++ Ok, a total of " << alignments.size() << " alignments to " << alignments.alignment_targets().size() << " targets computed.\n" ;
+		
+		ui().logger() << "++ Computing clusters...\n" ;
+		StateLL const clusters = cluster_haplotypes( data, alignments, algorithm_options ) ;
+		std::vector< SequenceIndex > const final_haplotypes = clusters.state.haplotypes() ;
+		ui().logger() << "++ ...ok, " << clusters.state.size() << " clusters identified.\n" ;
 
-		std::size_t max_iterations = 100 ;
-		std::size_t max_nbhd = 1000 ;
-		double const infinity = std::numeric_limits< double >::infinity() ;
-		StateLL current{MixtureOfHaplotypes(), -infinity } ;
-		std::unordered_map< double, StateLL > evaluations ;
+		ui().logger() << "++ Computing hpc sequence-cluster identity...\n" ;
+		auto const identities = compute_identities( data, alignments, clusters.state, algorithm_options ) ;
 
-		for( std::size_t iteration = 0; iteration < max_iterations; ++iteration ) {
-			auto state = current.state ;			
+		ui().logger() << "++ Assigning hpc sequences to clusters...\n" ;
+		auto hpc_assignments = std::vector< int >( identities.rows(), -1 ) ;
+		for( int i = 0; i < identities.rows(); ++i ) {
+			double max_identity = -1 ;
+			int wmax_identity = 0 ;
+			for( int j = 0; j < identities.cols(); ++j ) {
+				if( identities(i,j) > max_identity ) {
+					max_identity = identities(i,j) ;
+					wmax_identity = j ;
+				} else if( identities(i,j) == max_identity ) {
+					ui().logger() << "!! Uh-oh, matches two states.\n" ;
+					exit(-1) ;
+				}
+			}
+			if( max_identity >= algorithm_options.min_identity ) {
+				hpc_assignments[i] = wmax_identity ;
+			}
+		}
+
+		std::vector< AlgorithmData::SequenceToIds > const dna_consensus = find_most_common_representative_read(
+			final_haplotypes,
+			hpc_assignments,
+			data
+		) ;
+
+		// translate
+		std::vector< AlgorithmData::SequenceToIds > aa_consensus ;
+		{
+			std::map< std::string, std::vector< std::size_t > > by_aa_sequence ;
+			for( auto dna: dna_consensus ) {
+				std::string aa_sequence = genfile::translate( dna.sequence, algorithm_options.truncate_at_stops ) ;
+				std::vector< std::size_t >& v = by_aa_sequence[ aa_sequence ] ;
+				v.insert(
+					v.end(),
+					dna.sequence_ids.begin(),
+					dna.sequence_ids.end()
+				) ;
+			}
+			for( auto kv: by_aa_sequence ) {
+				aa_consensus.push_back(
+					AlgorithmData::SequenceToIds{
+						kv.first,
+						kv.second
+					}
+				) ;
+			}
+			std::sort(
+				aa_consensus.begin(),
+				aa_consensus.end(),
+				[]( AlgorithmData::SequenceToIds const& a, AlgorithmData::SequenceToIds const& b ) { return a.sequence_ids.size() > b.sequence_ids.size() ; }
+			) ;
+		}
+		output_consensus_sequences(
+			dna_consensus,
+			aa_consensus,
+			data,
+			algorithm_options,
+			options().get< std::string >( "-output-clusters" ),
+			kmer_pairs
+		) ;
+
+		return ;
+	}
+
+		StateLL cluster_haplotypes(
+			AlgorithmData const& data,
+			PairwiseAlignments const& alignments,
+			AlgorithmOptions const& algorithm_options
+		) {
+			double const homopolymer_weight = algorithm_options.homopolymer_indel_weight ;
+			auto compute_ll = [&](
+				MixtureOfHaplotypes const& state,                                  // params
+				AlgorithmData const& data
+			) {
+				double result = 0.0 ;
+				std::vector< double > elts ;
+				elts.reserve( state.size() ) ;
+				for( SequenceIndex i = 0; i < data.hpc_sequences().size(); ++i ) {
+					std::size_t const& sequence_count = data.count_reads_for_hpc_sequence(i) ;
+					elts.clear() ;
+					state.visit(
+						[&]( SequenceIndex target_haplotype, double weight ) {
+							AlignmentDetail const& alignment = alignments.alignment( i, target_haplotype ) ;
+							elts.push_back( std::log( weight ) + alignment.homopolymer_corrected_score( homopolymer_weight ) ) ;
+						}
+					) ;
+					result += sequence_count * iorek::log_sum_exp( elts.begin(), elts.end() ) ;
+				}
+				return result ;
+			} ;
+
+			auto compute_log_prior = [&](
+				MixtureOfHaplotypes const& state,
+				double p = 0.1
+			) {
+				// geometric distribution
+				return std::log(1-p) + std::log(p) * (state.size() - 1) ;
+			} ;
+
+			// Shotgun stochastic search to find good haplotype set candidates.
+			typedef moodycamel::ConcurrentQueue< MixtureOfHaplotypes > StateQueue ;
+			typedef moodycamel::ConcurrentQueue< StateLL > StateLLQueue ;
+			StateQueue state_queue ;
+			StateLLQueue result_queue ;
+
+			// Get the sequence counts within that sample.
+			std::vector< std::thread > threads ;
+			std::atomic< int > quit(0) ;
+
+			{
+				for( std::size_t i = 0; i < algorithm_options.number_of_threads; ++i ) {
+					threads.push_back(
+						std::thread(
+							[&]() {
+	#if DEBUG
+								std::cerr << "!! THREAD " << std::this_thread::get_id() << ": starting.\n" ;
+	#endif
+								MixtureOfHaplotypes state ;
+								while( !quit ) {
+									bool popped = state_queue.try_dequeue( state ) ;
+									if( popped ) {
+										double ll = compute_ll( state, data ) ;
+										double lp = compute_log_prior( state, 0.01 ) ;
+										while( !result_queue.try_enqueue( StateLL{ state, ll + lp } )) {
+											std::this_thread::sleep_for( std::chrono::microseconds(10) ) ;
+										}
+									} else {
+										// nothing to pop, sleep to allow queue to fill.
+										std::this_thread::sleep_for( std::chrono::microseconds(10) ) ;
+									}
+								}
+	#if DEBUG
+								std::cerr << "!! THREAD " << std::this_thread::get_id() << ": ending.\n" ;
+	#endif
+							}
+						)
+					) ;
+				}
+				std::cerr << "process_read(): constructing output thread...\n" ;
+			}
+
+			boost::random::mt19937 rng ;
+
+			double const infinity = std::numeric_limits< double >::infinity() ;
+
+			StateLL current{MixtureOfHaplotypes(), -infinity } ;
+			std::unordered_map< double, StateLL > evaluations ;
+
+			for( std::size_t iteration = 0; iteration < algorithm_options.max_clustering_iterations; ++iteration ) {
+				auto state = current.state ;			
 #if DEBUG
 			std::cerr  << "!! iteration " << iteration << ", current state: " << state << " --- \n" ;
 #endif
 			// Re-sample weightings
 			if( state.size() > 1 ) {
 #if DEBUG
-				std::cerr  << "!! sampling weights...\n" ;
+				std::cerr  << "!! trying reweightings...\n" ;
 #endif
 				for( std::size_t k = 0; k < 100; ++k ) {
 					auto reweighted = state.resample_weights( rng ) ;
@@ -1348,7 +1658,6 @@ private:
 			}
 
 			{
-				bool popped = false ;
 				StateLL new_state = current ;
 				while( (state_queue.size_approx() > 0) || (result_queue.size_approx() > 0) ) {
 #if DEBUG > 1
@@ -1362,13 +1671,16 @@ private:
 							<< result.state
 							<< ": " << result.ll << "\n" ;
 #endif
-						if( result.state.contains( 235 )) {
-							std::cerr << "!!235: " << result.state << ": " << result.ll << ".\n" ;
-						}
 						evaluations[ result.ll ] = result ;
 						if( result.ll > new_state.ll ) {
 							new_state = result ;
 						}
+						if( result.state.contains(0)) {
+							std::cerr << "++ 0 state: "
+									  << result.state
+									  << " (" << result.ll << ")...\n" ;
+						}
+
 					} else {
 						// nothing to pop, sleep to allow queue to fill.
 						std::this_thread::sleep_for( std::chrono::microseconds(10) ) ;
@@ -1394,275 +1706,40 @@ private:
 		std::cerr << "-------\n" ;
 		std::cerr << "++ Final state:\n" ;
 		std::cerr << current.state << ": " << current.ll << ".\n" ;
+		return current ;
+	}
 
-		return ;
-#if 0
-		// From here on in we are clustering.
-		// Find all pairwise alignments between reads.
-
-		std::vector< std::string > representatives ;
-		typedef std::unordered_map< std::string, AlignmentDetail > BestAlignments ;
-		BestAlignments aligned ;
-
-		if( use_clustering ) {
-			std::size_t const min_obs_per_sample = options().get_value< std::size_t >( "-min-obs-per-sample" ) ;
-			double const min_fraction_per_sample = options().get_value< double >( "-min-fraction-per-sample" ) ;
-			std::size_t const min_obs_samples = options().get_value< std::size_t >( "-min-obs-samples" ) ;
-
-			// clustering
-			// First, we group everything by sequence and count reads per sample.
-			// by_sequence maps from sequence to sequence matches
-
-			// Now generate candidate sequences for alignment
-			// taken as anything:
-			// - seen at least a certain number of times (min_obs_per_sample)
-			// - seen in at least a certain fraction of reads per sample (min_fraction_per_sample) 
-			for( auto kv: by_sequence ) {
-				// Figure out if this sequence has been seen enough to be a candidate
-				// for clustering
-				std::unordered_map< std::string, std::size_t > sequence_sample_counts ;
-				std::size_t number_above_threshold = 0 ;
-				for( auto const& s: kv.second ) {
-					// keep track of the total number of times this sequence
-					// is seen in this sample
-					std::size_t& n = sequence_sample_counts[ s.sample_id() ] ;
-					++n ;
-
-					// Accumulate sample count for this sequence if it has been seen enough times
-					// in this sample.
-					if( n == std::max( min_obs_per_sample, std::size_t(std::ceil( min_fraction_per_sample * total_read_counts[s.sample_id()] )))) {
-						++number_above_threshold ;
-						if( number_above_threshold >= min_obs_samples ) {
-							std::cerr << "!! accepting read with count " << n << " of " << total_read_counts[s.sample_id()] << ".\n" ;
-							break ;
-						}
-					}
-				}
-				bool sequence_is_candidate = (
-					(number_above_threshold >= min_obs_samples)
-					&& ( (!only_translatable) || (kv.first.size() % 3 == 0) )
+	std::vector< AlgorithmData::SequenceToIds > find_most_common_representative_read(
+		std::vector< std::size_t > const& final_haplotypes,
+		std::vector< int > const& hpc_assignments,
+		AlgorithmData const& data
+	) {
+		typedef AlgorithmData::SequenceToIds SequenceToIds ;
+		std::vector< SequenceToIds > result = std::vector< SequenceToIds >( final_haplotypes.size(), SequenceToIds() ) ;
+		for( int i = 0; i < hpc_assignments.size(); ++i ) {
+			if( hpc_assignments[i] != -1 ) {
+				std::size_t j = hpc_assignments[i] ;
+				result[j].sequence_ids.insert(
+					result[j].sequence_ids.end(),
+					data.hpc_sequences()[i].sequence_ids.begin(),
+					data.hpc_sequences()[i].sequence_ids.end()
 				) ;
-				if( sequence_is_candidate ) {
-					representatives.push_back( kv.first ) ;
-				}
-			}
-			std::cerr << "++ There were " << representatives.size() << " representative sequences\n" ;
-			std::cerr << "++ meeting these conditions:\n" ;
-			std::cerr
-				<< "   - seen in at least "
-				<< min_obs_per_sample
-				<< " sequence(s),\n"
-				<< "   - and at least "
-				<< (min_fraction_per_sample*100)
-				<< "% of reads,\n"
-				<< "   - in at least " << min_obs_samples << " sample(s).\n" ;
-			;
-
-			// Now all reads are mapped to the candidates
-			{
-				auto progress = ui().get_progress_context( "Aligning" ) ;
-				// re-alignment
-				// These costs are from pbmm2 defaults https://github.com/PacificBiosciences/pbmm2:
-				// - "CCS" or "HIFI" --mismatch-score 1 --mismatch-penalty 4 --gap-open-1 6 --gap-extend-1 2 --gap-open-2 26 --gap-extend-2 1
-	//			wfa::WFAlignerGapAffine aligner(
-				wfa::WFAlignerGapAffine2Pieces aligner(
-					-1, // match
-					4, 	// mismatch
-					6, 	// gap1 open
-					2,	// gap1 extend
-					26, // gap2 open
-					1,	// gap2 extend
-					wfa::WFAligner::Alignment,
-					wfa::WFAligner::MemoryHigh
-				) ;
-				std::size_t alignment_count = 0 ;
-				for( auto& kv: by_sequence ) {
-					for( std::size_t i = 0; i < representatives.size(); ++i ) {
-						std::string const& r = representatives[i] ;
-						std::string sequence = kv.first ;
-						std::string reference = r ;
-
-						auto status = aligner.alignEnd2End( reference, sequence ) ;
-						assert( status == WF_STATUS_SUCCESSFUL ) ;
-						int score = aligner.getAlignmentScore() ;
-
-						BestAlignments::iterator where = aligned.find( kv.first ) ;
-						if( where == aligned.end() || score > where->second.score ) {
-							aligned[ kv.first ] = AlignmentDetail(
-								sequence,
-								reference,
-								score,
-								aligner.getAlignmentCigar()
-							) ;
-						}
-					}
-					progress( ++alignment_count, by_sequence.size() ) ;
-				}
 			}
 		}
-
-		// Output reads and 'corrected'' reads
-		using genfile::string_utils::to_string ;
-		statfile::BuiltInTypeStatSink::UniquePtr
-			output = statfile::BuiltInTypeStatSink::open( options().get< std::string >( "-o" ) ) ;
-		{
-			output->write_comment( "Written by translatorator" ) ;
-			output->write_comment( "Kmer pairs are:" ) ;
-			for( std::size_t i = 0; i < kmer_pairs.size(); ++i ) {
-				output->write_comment( to_string(i+1) + ": " + kmer_pairs[i].first() + " / " + kmer_pairs[i].second() ) ;
-			}
-			(*output) | "file" | "read_id" | "strand" ;
-			for( std::size_t i = 0; i < kmer_pairs.size(); ++i ) {
-				(*output) | ("start_" + to_string(i+1)) | ("end_" + to_string(i+1)) ;
-			}
-			(*output) | "dna_sequence" ;
-			if( use_clustering ) {
-				(*output) | "best_alignment_score" | "best_alignment_cigar" | "best_alignment_identity" | "corrected_dna_sequence" ;
-			}
-			(*output) | "aa_sequence" ;
-		}
-		AlignmentDetail const* alignment ;
-		for( auto s: result ) {
-#if DEBUG > 1
-			std::cerr << "kmer pairs size: " << kmer_pairs.size() << ".\n" ;
-			std::cerr << s << "\n" ;
-#endif
-			(*output)
-				<< s.sample_id()
-				<< s.sequence_id()
-				<< std::string( 1, s.strand() ) ;
-
-			if( s.strand() == impl::Segmentation::eFwdStrand || s.strand() == impl::Segmentation::eRevStrand ) {
-				BestAlignments::const_iterator where = aligned.find( s.matching_sequence() ) ;
-				for( std::size_t i = 0; i < kmer_pairs.size(); ++i ) {
-					(*output)
-						<< uint64_t(s.positions()[i].first + 1)
-						<< uint64_t(s.positions()[i].second) ;
+		for( std::size_t i = 0; i < result.size(); ++i ) {
+			// order sequence by read count, descending order
+			std::sort(
+				result[i].sequence_ids.begin(),
+				result[i].sequence_ids.end(),
+				[&data]( std::size_t i, std::size_t j ) {
+					return data.sequences()[i].reads.size() > data.sequences()[j].reads.size() ;
 				}
-				if( use_clustering && where != aligned.end() ) {
-					(*output) << where->second.aligned_a ;
-				} else {
-					(*output) << s.matching_sequence() ;
-				}
-				if( use_clustering ) {
-					if( where != aligned.end() ) {
-						(*output)
-							<< where->second.score
-							<< where->second.cigar
-							<< where->second.identity
-							<< where->second.aligned_b
-							<< genfile::translate( where->second.b, truncate_at_stops ) ;
-					} else {
-						(*output)
-							<< "NA"
-							<< "NA"
-							<< "NA"
-							<< "NA"
-							<< "NA" ;
-					}
-				} else {
-					(*output) << genfile::translate( s.matching_sequence(), truncate_at_stops ) ;
-				}
-			} else {
-				while( output->current_column() < output->number_of_columns() ) {
-					(*output) << "NA" ;
-				}
-			}
-
-			(*output) << statfile::end_row() ;
-		}
-
-		// Now let's work out a per-sample summary of reads
-		if( options().check( "-summary" ) || options().check( "-dna-fasta" ) || options().check( "-aa-fasta" )) {
-			double const min_identity = options().get< double >( "-min-alignment-identity" ) ;
-			std::map< std::string, std::map< std::string, double > > aa_sequence_summary ;
-			std::map< std::string, std::map< std::string, double > > dna_sequence_summary ;
-			std::map< std::string, std::size_t > dna_sequence_counts ;
-			std::map< std::string, std::size_t > aa_sequence_counts ;
-			for( auto s: result ) {
-				if( s.strand() == impl::Segmentation::eFwdStrand || s.strand() == impl::Segmentation::eRevStrand ) {
-					BestAlignments::const_iterator where = aligned.find( s.matching_sequence() ) ;
-					if( use_clustering && where != aligned.end() && where->second.identity >= min_identity ) {
-						std::string const& sequence =  where->second.b ;
-						++dna_sequence_summary[s.sample_id()][sequence] ;
-						++dna_sequence_counts[s.sample_id()] ;
-						std::string translated = genfile::translate( sequence, truncate_at_stops ) ;
-						if( translated != "?" ) {
-							++aa_sequence_summary[s.sample_id()][translated] ;
-							++aa_sequence_counts[s.sample_id()] ;
-						}
-						//std::cerr << "!! " << s.sample_id() << ": " << where->second.aligned_b << "\n" ;
-					}
-				}
-			}
-			if( options().check( "-summary" )) {
-				statfile::BuiltInTypeStatSink::UniquePtr
-					output = statfile::BuiltInTypeStatSink::open( options().get< std::string >( "-summary" ) ) ;
-				{
-					output->write_comment( "Written by translatorator" ) ;
-					output->write_comment( "Kmer pairs are:" ) ;
-					for( std::size_t i = 0; i < kmer_pairs.size(); ++i ) {
-						output->write_comment( to_string(i+1) + ": " + kmer_pairs[i].first() + " / " + kmer_pairs[i].second() ) ;
-					}
-					(*output) | "file" | "type" | "count" | "proportion" | "dna_sequence" ;
-				}
-				for( auto& kv: dna_sequence_summary ) {
-					for( auto& sc: kv.second ) {
-						(*output)
-							<< kv.first
-							<< "dna"
-							<< sc.second
-							<< sc.second / dna_sequence_counts[kv.first]
-							<< sc.first
-							<< statfile::end_row()
-						;
-					}
-				}
-				for( auto& kv: aa_sequence_summary ) {
-					for( auto& sc: kv.second ) {
-						(*output)
-							<< kv.first
-							<< "aa"
-							<< sc.second
-							<< sc.second / aa_sequence_counts[kv.first]
-							<< sc.first
-							<< statfile::end_row()
-						;
-					}
-				}
-			}
-			if( options().check( "-dna-fasta" )) {
-				std::auto_ptr< std::ostream > fasta = genfile::open_text_file_for_output( options().get< std::string >( "-dna-fasta" )) ;
-				for( auto& kv: dna_sequence_summary ) {
-					std::size_t const total = dna_sequence_counts[kv.first] ;
-					std::size_t indicator = 1 ;
-					for( auto& sc: kv.second ) {
-						(*fasta)
-							<< (boost::format( ">%s-%d/%d-%.1f%%-%d" ) % kv.first % sc.second % total % (100.0 * sc.second / total ) % (indicator++) )
-							<< "\n"
-							<< genfile::string_utils::replace_all( sc.first, "-", "" )
-							<< "\n"
-						;
-					}
-				}
-			}
-			if( options().check( "-aa-fasta" )) {
-				std::auto_ptr< std::ostream > fasta = genfile::open_text_file_for_output( options().get< std::string >( "-aa-fasta" )) ;
-				for( auto& kv: aa_sequence_summary ) {
-					std::size_t const total = aa_sequence_counts[kv.first] ;
-					std::size_t indicator = 1 ;
-					for( auto& sc: kv.second ) {
-						(*fasta)
-							<< (boost::format( ">%s-%d/%d-%.1f%%-%d" ) % kv.first % sc.second % total % (100.0 * sc.second / total ) % (indicator++) )
-							<< "\n"
-							<< genfile::string_utils::replace_all( sc.first, "-", "" )
-							<< "\n"
-						;
-					}
-				}
+			) ;
+			if( result[i].sequence_ids.size() > 0 ) {
+				result[i].sequence = data.sequences()[ result[i].sequence_ids.front() ].sequence.matching_sequence() ;
 			}
 		}
-		#endif
+		return result ;
 	}
 
 	std::vector< impl::KmerPair > load_kmer_pairs( std::vector< std::string > const& kmers ) const {
@@ -1679,6 +1756,28 @@ private:
 
 		for( std::size_t i = 0; i < kmers.size(); i += 2 ) {
 			result.push_back( impl::KmerPair( impl::to_upper(kmers[i]), impl::to_upper(kmers[i+1]) )) ;
+		}
+		return result ;
+	}
+
+	Eigen::MatrixXd compute_identities(
+		AlgorithmData const& data,
+		PairwiseAlignments const& alignments,
+		MixtureOfHaplotypes const& haplotypes,
+		AlgorithmOptions const& algorithm_options
+	) {
+		// Assign each read sequence to a target state
+		Eigen::MatrixXd result(
+			data.hpc_sequences().size(),
+			haplotypes.size()
+		) ;
+		for( SequenceIndex i = 0; i < data.hpc_sequences().size(); ++i ) {
+			std::vector< SequenceIndex > target_haplotypes = haplotypes.haplotypes() ;
+			for( std::size_t j = 0; j < target_haplotypes.size(); ++j ) {
+				SequenceIndex target = target_haplotypes[j] ;
+				AlignmentDetail const& alignment = alignments.alignment( i, target ) ;
+				result(i,j) = double( alignment.identity ) ;
+			}
 		}
 		return result ;
 	}
@@ -1719,8 +1818,8 @@ private:
 			if( s.strand() == impl::Segmentation::eFwdStrand || s.strand() == impl::Segmentation::eRevStrand ) {
 				for( std::size_t i = 0; i < kmer_pairs.size(); ++i ) {
 					(*output)
-						<< uint64_t(s.positions()[i].first + 1)
-						<< uint64_t(s.positions()[i].second) ;
+						<< uint64_t(s.ranges()[i].start + 1)
+						<< uint64_t(s.ranges()[i].end) ;
 				}
 				(*output) << s.matching_sequence() ;
 				(*output) << genfile::translate( s.matching_sequence(), truncate_at_stops ) ;
@@ -1734,11 +1833,10 @@ private:
 		}
 	}
 
-	void output_algorithm_data(
+	void output_reads(
 		AlgorithmData const& data,
 		std::string const& filename,
-		std::vector< impl::KmerPair > kmer_pairs,
-		bool truncate_at_stops
+		std::vector< impl::KmerPair > kmer_pairs
 	) const {
 		using genfile::string_utils::to_string ;
 		statfile::BuiltInTypeStatSink::UniquePtr
@@ -1749,34 +1847,134 @@ private:
 			for( std::size_t i = 0; i < kmer_pairs.size(); ++i ) {
 				output->write_comment( to_string(i+1) + ": " + kmer_pairs[i].first() + " / " + kmer_pairs[i].second() ) ;
 			}
-			(*output) | "sequence_id" ;
-			for( auto kv: data.per_sample_sequence_counts ) {
-				(*output) | kv.first ;
+			(*output) | "read_id" | "sequence_id" | "compressed_id" | "sequence_count" | "hpc_sequence_count" ;
+			for( std::size_t i = 0; i < kmer_pairs.size(); ++i ) {
+				(*output)
+					| (boost::format( "start_%d" ) % (i+1)).str()
+					| (boost::format( "end_%d" ) % (i+1)).str()
+				;
 			}
-			(*output) | "dna_sequence" | "aa_sequence" ;
+			(*output) | "dna_sequence" | "compressed_dna_sequence" ;
 		}
 
-		for( std::size_t i = 0; i < data.distinct_sequences.size(); ++i ) {
-			(*output) << uint64_t(i) ;
-			//typedef std::unordered_map< SampleId, std::unordered_map< SequenceIndex, SequenceCount > > PerSampleSequenceCounts ;
-			for( auto kv: data.per_sample_sequence_counts ) {
-				auto where = kv.second.find( i ) ;
-				if( where == kv.second.end() ) {
-					(*output) << "0" ;
-				} else {
-					(*output) << uint64_t(where->second) ;
+		auto NA = genfile::MissingValue() ;
+		for( std::size_t i = 0; i < data.hpc_sequences().size(); ++i ) {
+			auto const& hpc = data.hpc_sequences()[i] ;
+			for( std::size_t j = 0; j < hpc.sequence_ids.size(); ++j ) {
+				std::size_t sequence_id = hpc.sequence_ids[j] ;
+				auto const& segmentations = data.sequences()[sequence_id] ;
+				for( auto read: segmentations.reads ) {
+					(*output)
+						<< read.sequence_id()
+						<< uint64_t(sequence_id)
+						<< uint64_t(i)
+						<< uint64_t(segmentations.reads.size())
+						<< uint64_t(hpc.sequence_ids.size()) ;
+					for( std::size_t k = 0; k < kmer_pairs.size(); ++k ) {
+						(*output)
+							<< uint64_t( read.ranges()[k].start )
+							<< uint64_t( read.ranges()[k].end ) ;
+					}
+					
+					(*output)
+						<< segmentations.sequence.matching_sequence()
+						<< hpc.sequence
+						<< statfile::end_row()
+					;
 				}
 			}
+		}
+
+		for( auto read: data.ambigious_sequences() ) {
 			(*output)
-				<< data.distinct_sequences[i]
-				<< genfile::translate( data.distinct_sequences[i], truncate_at_stops )
-				<< statfile::end_row() ;
+				<< read.sequence_id()
+				<< NA
+				<< NA
+				<< NA
+				<< NA ;
+			for( std::size_t k = 0; k < kmer_pairs.size(); ++k ) {
+				(*output) << NA << NA ;
+			}
+			(*output) << NA << NA << statfile::end_row() ;
 		}
 	}
-	
+
+	void output_consensus_sequences(
+		std::vector< AlgorithmData::SequenceToIds > const& dna,
+		std::vector< AlgorithmData::SequenceToIds > const& aa,
+		AlgorithmData const& data,
+		AlgorithmOptions const& algorithm_options,
+		std::string const& filename,
+		std::vector< impl::KmerPair > kmer_pairs
+	) {
+		using genfile::string_utils::to_string ;
+		statfile::BuiltInTypeStatSink::UniquePtr
+			output = statfile::BuiltInTypeStatSink::open( filename ) ;
+		{
+			output->write_comment( "Written by translatorator" ) ;
+			output->write_comment( "Kmer pairs are:" ) ;
+			for( std::size_t i = 0; i < kmer_pairs.size(); ++i ) {
+				output->write_comment( to_string(i+1) + ": " + kmer_pairs[i].first() + " / " + kmer_pairs[i].second() ) ;
+			}
+			(*output) | "file" | "type" | "supporting_reads" | "exact_reads" | "total_informative_reads" | "proportion" | "total_reads" | "sequence" ;
+		}
+
+		std::size_t total_informative_reads = 0 ;
+		for( auto x: dna ) {
+			total_informative_reads += x.sequence_ids.size() ;
+		}
+
+		for( auto x: dna ) {
+			auto total_exact = 0ul ;
+			for( auto i: x.sequence_ids ) {
+				auto const& y = data.sequences()[i] ;
+				auto const& sequence = y.sequence.matching_sequence() ;
+				if( sequence == x.sequence) {
+					total_exact += y.reads.size() ;
+				}
+			} ;
+			(*output)
+				<< "NA"
+				<< "dna"
+				<< int64_t( x.sequence_ids.size() )
+				<< int64_t( total_exact )
+				<< int64_t( total_informative_reads )
+				<< double(x.sequence_ids.size()) / double(total_informative_reads)
+				<< int64_t( data.total_reads() )
+				<< x.sequence
+				<< statfile::end_row()
+			;
+		}
+
+		for( auto x: aa ) {
+			auto total_exact = 0ul ;
+			for( auto i: x.sequence_ids ) {
+				auto const& y = data.sequences()[i] ;
+				auto const sequence = genfile::translate( y.sequence.matching_sequence(), algorithm_options.truncate_at_stops ) ;
+				if( sequence == x.sequence ) {
+					total_exact += y.reads.size() ;
+				}
+			} ;
+			(*output)
+				<< "NA"
+				<< "aa"
+				<< int64_t( x.sequence_ids.size() )
+				<< int64_t( total_exact )
+				<< int64_t( total_informative_reads )
+				<< double(x.sequence_ids.size()) / double(total_informative_reads)
+				<< int64_t( data.total_reads() )
+				<< x.sequence
+				<< statfile::end_row()
+			;
+		}
+
+	}
+
+	#if 0
 	void output_alignments(
 		AlgorithmData const& data,
 		PairwiseAlignments const& alignments,
+		std::function< boost::optional< std::size_t >( std::size_t const& ) > read_cluster_assignment,
 		std::string const& filename,
 		std::vector< impl::KmerPair > kmer_pairs
 	) const {
@@ -1791,30 +1989,40 @@ private:
 			}
 			(*output)
 				| "sequence_id" | "target_sequence_id"
+				| "assigned"
 				| "sequence_length" | "target_sequence_length"
 				| "alignment_length" | "alignment_score"
 				| "hp_adjusted_alignment_score" | "cigar"
+				| "alignment_identity"
 			;
 			for( auto kv: data.per_sample_sequence_counts ) {
-				(*output) | kv.first ;
+				(*output) | ("n:" + kv.first) ;
 			}
 		}
 
 		auto alignment_targets = alignments.alignment_targets() ;
-
+		auto NA = genfile::MissingValue() ;
 		double homopolymer_weight = options().get< double >( "-homopolymer-indel-weight" ) ;
 		for( SequenceIndex i = 0; i < data.distinct_sequences.size(); ++i ) {
+			auto assigned_cluster = read_cluster_assignment( i ) ;
 			for( auto j: alignment_targets ) {
 				auto alignment = alignments.alignment(i,j) ;
 				(*output)
 					<< uint32_t(i)
-					<< uint32_t(j)
+					<< uint32_t(j) ;
+				if( assigned_cluster.is_initialized() ) {
+					(*output) << (*assigned_cluster == j) ;
+				} else {
+					(*output) << NA ;
+				}
+				(*output)
 					<< uint32_t(alignment.a.size())
 					<< uint32_t(alignment.b.size())
 					<< uint32_t(alignment.long_form_cigar.size())
 					<< alignment.score
 					<< alignment.homopolymer_corrected_score( homopolymer_weight )
-					<< alignment.cigar ;
+					<< alignment.cigar
+					<< alignment.identity ;
 				for( auto kv: data.per_sample_sequence_counts ) {
 					auto where = kv.second.find( i ) ;
 					if( where == kv.second.end() ) {
@@ -1828,6 +2036,7 @@ private:
 			}
 		}
 	}
+	#endif
 
 	Regions get_regions( std::vector< std::string > const& specs ) const {
 		Regions result ;
@@ -1844,7 +2053,6 @@ private:
 		}
 		return result ;
 	}
-	
 	void find_segmentations(
 		std::vector< std::string > const& filenames,
 		std::vector< impl::KmerPair > const& kmer_pairs,
@@ -1907,8 +2115,9 @@ private:
 		std::string sequence_name ;
 		std::string sequence ;
 		std::string fwd_sequence, rc_sequence ;
-		impl::Segmentation::SegmentationRanges fwd_positions, rc_positions ;
-		while( sequences.next( &sequence_name, &sequence )) {
+		impl::Segmentation::Ranges fwd_positions, rc_positions ;
+		std::string qualities ;
+		while( sequences.next( &sequence_name, &sequence, &qualities )) {
 			impl::to_upper_inplace( sequence ) ;
 			bool fwd = load_fragmented_dna_sequence( sequence, kmer_pairs, &fwd_sequence, &fwd_positions ) ;
 			bool rev = load_fragmented_dna_sequence( genfile::reverse_complement( sequence ), kmer_pairs, &rc_sequence, &rc_positions ) ;
@@ -1941,7 +2150,7 @@ private:
 						sequence_name,
 						impl::Segmentation::eNeitherStrand,
 						"",
-						impl::Segmentation::SegmentationRanges()
+						impl::Segmentation::Ranges()
 					)
 				) ;
 			}
@@ -1957,7 +2166,6 @@ private:
 		return result ;
 	}
 } ;
-
 
 int main( int argc, char** argv )
 {
