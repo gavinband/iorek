@@ -1,7 +1,7 @@
 import os.path
 import glob
 
-VERSION = '0.9'
+VERSION = '0.9.1'
 
 subdirs = [ '3rd_party', 'appcontext', 'apps', 'statfile', 'genfile', 'qcdb', 'lib' ]
 
@@ -21,7 +21,7 @@ def configure( cfg ):
 		'-std=c++11',
 		'-Wall',
 		'-pedantic',
-		'-Wno-unused-local-typedefs', '-Wno-c++11-long-long', '-Wno-deprecated-declarations', '-Wno-long-long',
+		'-Wno-unused-local-typedefs', '-Wno-c++11-long-long', '-Wno-deprecated-declarations', '-Wno-long-long', '-Wno-deprecated-builtins',
 		'-Wno-c11-extensions',
 		'-Wno-int-in-bool-context',
 		'-fPIC'
@@ -30,7 +30,7 @@ def configure( cfg ):
 		'-std=c99',
 		'-Wall',
 		'-pedantic',
-		'-Wno-unused-local-typedefs', '-Wno-c++11-long-long', 'Wno-deprecated-declarations', '-Wno-long-long',
+		'-Wno-unused-local-typedefs', '-Wno-c++11-long-long', 'Wno-deprecated-declarations', '-Wno-long-long', '-Wno-deprecated-builtins',
 		'-Wno-c11-extensions',
 		'-Wno-int-in-bool-context',
 		 '-fPIC'
@@ -45,6 +45,7 @@ def configure( cfg ):
 	else:
 			raise Exception( "Unknown value for mode, please specify debug or release" )
 
+	cfg.env[ 'VERSION' ] = VERSION ;
 	cfg.env['CXXFLAGS'] = flags['CXXFLAGS']
 	cfg.env['CFLAGS'] = flags['CFLAGS']
 	cfg.env['LINKFLAGS'] = flags['LINKFLAGS']
