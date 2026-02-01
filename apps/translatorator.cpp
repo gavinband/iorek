@@ -49,6 +49,7 @@ namespace seqlib = SeqLib;
 #include "genfile/string_utils/slice.hpp"
 #include "genfile/Error.hpp"
 #include "genfile/Fasta.hpp"
+#include "genfile/FileUtils.hpp"
 #include "genfile/reverse_complement.hpp"
 #include "genfile/translate.hpp"
 #include "statfile/BuiltInTypeStatSink.hpp"
@@ -92,6 +93,10 @@ public:
 			.set_description( "Specify reference sequence (mandatory when using CRAM files)" )
 			.set_takes_single_value() ;
 		
+		options[ "-exclude-reads" ]
+			.set_description( "Specify a file of read IDs to exclude from the analysis" )
+			.set_takes_single_value()
+		;
 
 		options.declare_group( "Output file options" ) ;
 		options[ "-output-clusters" ]
@@ -496,7 +501,15 @@ namespace impl {
 	// an input sequence, such as a read.
 	struct Segmentation {
 		public:
-			enum Strand { eAmbiguousStrand = '?', eFwdStrand = '+', eRevStrand = '-', eNeitherStrand = '.' } ;
+			enum Strand {
+				eAmbiguousStrand = '?',
+				eFwdStrand       = '+',
+				eRevStrand       = '-',
+				eNeitherStrand   = 'n',
+				// TODO: Conceptually, excluded reads should be handled elsewhere, but at
+				// the moment it is convenient to allow them to be handled here.
+				eExcluded        = 'x'
+			} ;
 			typedef SegmentedSequence::Range Range ;
 			typedef SegmentedSequence::Ranges Ranges ;
 
@@ -1175,7 +1188,7 @@ namespace impl {
 		}
 
 		std::vector< SegmentationToReads > const& sequences() const { return m_sequences ; }
-		std::vector< Segmentation > const& ambigious_sequences() const { return m_ambiguous_reads ; }
+		std::vector< Segmentation > const& ambiguous_sequences() const { return m_ambiguous_reads ; }
 		std::vector< SequenceToIds > const& hpc_sequences() const { return m_hpc_sequences ; }
 
 		std::size_t count_reads_for_hpc_sequence( std::size_t i ) const {
@@ -1393,12 +1406,18 @@ private:
 
 	void unsafe_process( AlgorithmOptions const& algorithm_options ) {
 		std::vector< impl::KmerPair > kmer_pairs = load_kmer_pairs( options().get_values< std::string >( "-cds-kmers" ) ) ;
-
+		std::unordered_set< std::string > excluded_reads ;
+		if( options().check( "-exclude-reads" )) {
+			load_excluded_reads( options().get< std::string >( "-exclude-reads" ), &excluded_reads ) ;
+		}
 		// A 'segmentation' means a set of sub-ranges of a sequence
 		// which Segmentation the given kmer pairs.
 		std::vector< Segmentation > segmentations ;
 		find_segmentations(
 			options().get_values< std::string >( "-sequences" ),
+			[&excluded_reads]( std::string const& name, std::string const&, std::string const& ) {
+				return excluded_reads.find( name ) == excluded_reads.end() ;
+			},
 			kmer_pairs,
 			&segmentations
 		) ;
@@ -1760,6 +1779,14 @@ private:
 		return result ;
 	}
 
+	void load_excluded_reads( std::string const& filename, std::unordered_set< std::string >* result ) const {
+		auto stream = genfile::open_text_file_for_input( filename ) ;
+		std::string line ;
+		while( std::getline( *stream, line )) {
+			result->insert( line ) ;
+		}
+	}
+
 	Eigen::MatrixXd compute_identities(
 		AlgorithmData const& data,
 		PairwiseAlignments const& alignments,
@@ -1815,7 +1842,7 @@ private:
 				<< s.sequence_id()
 				<< std::string( 1, s.strand() ) ;
 
-			if( s.strand() == impl::Segmentation::eFwdStrand || s.strand() == impl::Segmentation::eRevStrand ) {
+			if( s.is_unambiguous() ) {
 				for( std::size_t i = 0; i < kmer_pairs.size(); ++i ) {
 					(*output)
 						<< uint64_t(s.ranges()[i].start + 1)
@@ -1847,7 +1874,7 @@ private:
 			for( std::size_t i = 0; i < kmer_pairs.size(); ++i ) {
 				output->write_comment( to_string(i+1) + ": " + kmer_pairs[i].first() + " / " + kmer_pairs[i].second() ) ;
 			}
-			(*output) | "read_id" | "sequence_id" | "compressed_id" | "sequence_count" | "hpc_sequence_count" ;
+			(*output) | "read_id" | "sequence_id" | "compressed_id" | "sequence_count" | "strand" | "hpc_sequence_count" ;
 			for( std::size_t i = 0; i < kmer_pairs.size(); ++i ) {
 				(*output)
 					| (boost::format( "start_%d" ) % (i+1)).str()
@@ -1869,7 +1896,8 @@ private:
 						<< uint64_t(sequence_id)
 						<< uint64_t(i)
 						<< uint64_t(segmentations.reads.size())
-						<< uint64_t(hpc.sequence_ids.size()) ;
+						<< uint64_t(hpc.sequence_ids.size())
+						<< std::string( 1, char(read.strand()) ) ;
 					for( std::size_t k = 0; k < kmer_pairs.size(); ++k ) {
 						(*output)
 							<< uint64_t( read.ranges()[k].start )
@@ -1885,17 +1913,21 @@ private:
 			}
 		}
 
-		for( auto read: data.ambigious_sequences() ) {
+		for( auto read: data.ambiguous_sequences() ) {
 			(*output)
 				<< read.sequence_id()
 				<< NA
 				<< NA
 				<< NA
-				<< NA ;
-			for( std::size_t k = 0; k < kmer_pairs.size(); ++k ) {
+				<< NA
+				<< std::string( 1, char(read.strand()) ) ;
+			(*output)
+				<< uint64_t( read.ranges()[0].start )
+				<< uint64_t( read.ranges()[0].end ) ;
+			for( std::size_t k = 1; k < kmer_pairs.size(); ++k ) {
 				(*output) << NA << NA ;
 			}
-			(*output) << NA << NA << statfile::end_row() ;
+			(*output) << read.matching_sequence() << NA << statfile::end_row() ;
 		}
 	}
 
@@ -1970,74 +2002,6 @@ private:
 
 	}
 
-	#if 0
-	void output_alignments(
-		AlgorithmData const& data,
-		PairwiseAlignments const& alignments,
-		std::function< boost::optional< std::size_t >( std::size_t const& ) > read_cluster_assignment,
-		std::string const& filename,
-		std::vector< impl::KmerPair > kmer_pairs
-	) const {
-		using genfile::string_utils::to_string ;
-		statfile::BuiltInTypeStatSink::UniquePtr
-		output = statfile::BuiltInTypeStatSink::open( filename ) ;
-		{
-			output->write_comment( "Written by translatorator" ) ;
-			output->write_comment( "Kmer pairs are:" ) ;
-			for( std::size_t i = 0; i < kmer_pairs.size(); ++i ) {
-				output->write_comment( to_string(i+1) + ": " + kmer_pairs[i].first() + " / " + kmer_pairs[i].second() ) ;
-			}
-			(*output)
-				| "sequence_id" | "target_sequence_id"
-				| "assigned"
-				| "sequence_length" | "target_sequence_length"
-				| "alignment_length" | "alignment_score"
-				| "hp_adjusted_alignment_score" | "cigar"
-				| "alignment_identity"
-			;
-			for( auto kv: data.per_sample_sequence_counts ) {
-				(*output) | ("n:" + kv.first) ;
-			}
-		}
-
-		auto alignment_targets = alignments.alignment_targets() ;
-		auto NA = genfile::MissingValue() ;
-		double homopolymer_weight = options().get< double >( "-homopolymer-indel-weight" ) ;
-		for( SequenceIndex i = 0; i < data.distinct_sequences.size(); ++i ) {
-			auto assigned_cluster = read_cluster_assignment( i ) ;
-			for( auto j: alignment_targets ) {
-				auto alignment = alignments.alignment(i,j) ;
-				(*output)
-					<< uint32_t(i)
-					<< uint32_t(j) ;
-				if( assigned_cluster.is_initialized() ) {
-					(*output) << (*assigned_cluster == j) ;
-				} else {
-					(*output) << NA ;
-				}
-				(*output)
-					<< uint32_t(alignment.a.size())
-					<< uint32_t(alignment.b.size())
-					<< uint32_t(alignment.long_form_cigar.size())
-					<< alignment.score
-					<< alignment.homopolymer_corrected_score( homopolymer_weight )
-					<< alignment.cigar
-					<< alignment.identity ;
-				for( auto kv: data.per_sample_sequence_counts ) {
-					auto where = kv.second.find( i ) ;
-					if( where == kv.second.end() ) {
-						(*output) << "0" ;
-					} else {
-						(*output) << uint64_t(where->second) ;
-					}
-				}
-
-				(*output) <<  statfile::end_row() ;
-			}
-		}
-	}
-	#endif
-
 	Regions get_regions( std::vector< std::string > const& specs ) const {
 		Regions result ;
 		for( auto spec: specs ) {
@@ -2053,8 +2017,10 @@ private:
 		}
 		return result ;
 	}
+	typedef std::function< bool( std::string const& name, std::string const& sequence, std::string const& qualities ) > ReadFilter ;
 	void find_segmentations(
 		std::vector< std::string > const& filenames,
+		ReadFilter include_read,
 		std::vector< impl::KmerPair > const& kmer_pairs,
 		std::vector< Segmentation >* result
 	) {
@@ -2077,6 +2043,7 @@ private:
 						*sequences,
 						names[i],
 						kmer_pairs,
+						include_read,
 						result
 					) ;
 				}
@@ -2086,6 +2053,7 @@ private:
 					*sequences,
 					names[i],
 					kmer_pairs,
+					include_read,
 					result
 				) ;
 			}
@@ -2097,19 +2065,21 @@ private:
 		impl::SequenceProvider& sequences,
 		std::string const& name,
 		std::vector< impl::KmerPair > kmer_pairs,
+		ReadFilter include_read,
 		std::vector< Segmentation >* result
 	) const {
 		try {
-			find_segmentations_unsafe( name, sequences, kmer_pairs, result ) ;
+			find_segmentations_unsafe( sequences, name, kmer_pairs, include_read, result ) ;
 		} catch( std::exception const& e ) {
 			ui().logger() << "!! Error processing \"" << name << "\", there will be no results for this file.\n" ;
 		}
 	}
 
 	void find_segmentations_unsafe(
-		std::string const& name,
 		impl::SequenceProvider& sequences,
+		std::string const& name,
 		std::vector< impl::KmerPair > const& kmer_pairs,
+		ReadFilter include_read,
 		std::vector< Segmentation >* result
 	) const {
 		std::string sequence_name ;
@@ -2118,41 +2088,52 @@ private:
 		impl::Segmentation::Ranges fwd_positions, rc_positions ;
 		std::string qualities ;
 		while( sequences.next( &sequence_name, &sequence, &qualities )) {
-			impl::to_upper_inplace( sequence ) ;
-			bool fwd = load_fragmented_dna_sequence( sequence, kmer_pairs, &fwd_sequence, &fwd_positions ) ;
-			bool rev = load_fragmented_dna_sequence( genfile::reverse_complement( sequence ), kmer_pairs, &rc_sequence, &rc_positions ) ;
-			if( fwd ) {
-				result->push_back(
-					impl::Segmentation(
-						name,
-						sequence_name,
-						impl::Segmentation::eFwdStrand,
-						fwd_sequence,
-						fwd_positions
-					)
-				) ;
-			}
-			if( rev ) {
-				result->push_back(
-					impl::Segmentation(
-						name,
-						sequence_name,
-						impl::Segmentation::eRevStrand,
-						rc_sequence,
-						rc_positions
-					)
-				) ;
-			}
-			if( !fwd && !rev ) {
-				result->push_back(
-					impl::Segmentation(
-						name,
-						sequence_name,
-						impl::Segmentation::eNeitherStrand,
-						"",
-						impl::Segmentation::Ranges()
-					)
-				) ;
+			if( include_read( sequence_name, sequence, qualities )) {
+				impl::to_upper_inplace( sequence ) ;
+				bool fwd = load_fragmented_dna_sequence( sequence, kmer_pairs, &fwd_sequence, &fwd_positions ) ;
+				bool rev = load_fragmented_dna_sequence( genfile::reverse_complement( sequence ), kmer_pairs, &rc_sequence, &rc_positions ) ;
+				if( fwd & rev ) {
+					result->push_back(
+						impl::Segmentation(
+							name,
+							sequence_name,
+							impl::Segmentation::eAmbiguousStrand,
+							sequence,
+							impl::Segmentation::Ranges( 1, impl::SegmentedSequence::Range( 0, sequence.size() ))
+						)
+					) ;
+				} else if( fwd ) {
+					result->push_back(
+						impl::Segmentation(
+							name,
+							sequence_name,
+							impl::Segmentation::eFwdStrand,
+							fwd_sequence,
+							fwd_positions
+						)
+					) ;
+				} else if( rev ) {
+					result->push_back(
+						impl::Segmentation(
+							name,
+							sequence_name,
+							impl::Segmentation::eRevStrand,
+							rc_sequence,
+							rc_positions
+						)
+					) ;
+				}
+				if( !fwd && !rev ) {
+					result->push_back(
+						impl::Segmentation(
+							name,
+							sequence_name,
+							impl::Segmentation::eNeitherStrand,
+							sequence,
+							impl::Segmentation::Ranges( 1, impl::SegmentedSequence::Range( 0, sequence.size() ))
+						)
+					) ;
+				}
 			}
 		}
 	}
