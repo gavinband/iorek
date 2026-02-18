@@ -180,12 +180,7 @@ public:
 				"A value of one treats homopolymer contractions/expansions like any other insertion/deletion."
 			)
 			.set_takes_single_value()
-			.set_default_value(0.1) ;
-		options[ "-compress-homopolymers-over-length" ]
-			.set_description( "Specify a homopolymer length.  All homopolymers in reads greater than this length "
-			"will be truncated to the specified length before identifying common reads.  Each set of identical reads "
-			"after compression will be used to form a single consensus sequence for the clustering steps." )
-		;
+			.set_default_value(0.0) ;
 		options[ "-min-alignment-identity" ]
 			.set_description( "When summarising reads aligned to candidate correct sequences, "
 			" only accept alignments with this minimum proportion of matching bases compared to alignment length" )
