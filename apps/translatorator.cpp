@@ -2017,6 +2017,7 @@ private:
 			}
 		}
 
+		auto sample_id = data.sequences()[0].reads[0].sample_id() ;
 		for( auto x: dna ) {
 			auto total_reads = 0ul ;
 			auto total_exact = 0ul ;
@@ -2029,7 +2030,7 @@ private:
 				}
 			} ;
 			(*output)
-				<< "NA"
+				<< sample_id
 				<< "dna"
 				<< int64_t( total_reads )
 				<< int64_t( total_exact )
@@ -2051,7 +2052,7 @@ private:
 				}
 			} ;
 			(*output)
-				<< "NA"
+				<< sample_id
 				<< "aa"
 				<< int64_t( x.sequence_ids.size() )
 				<< int64_t( total_exact )
