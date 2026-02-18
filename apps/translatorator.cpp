@@ -1464,6 +1464,15 @@ private:
 
 		ui().logger() << "++ Ok, a total of " << alignments.size() << " alignments to " << alignments.alignment_targets().size() << " targets computed.\n" ;
 		
+		if( options().check( "-output-alignments" )) {
+			output_alignments(
+				data,
+				alignments,
+				options().get< std::string >( "-output-alignments" ),
+				kmer_pairs
+			) ;
+		}
+
 		ui().logger() << "++ Computing clusters...\n" ;
 		StateLL const clusters = cluster_haplotypes( data, alignments, algorithm_options ) ;
 		std::vector< SequenceIndex > const final_haplotypes = clusters.state.haplotypes() ;
@@ -1931,6 +1940,60 @@ private:
 		}
 	}
 
+	void output_alignments(
+		AlgorithmData const& data,
+		PairwiseAlignments const& alignments,
+		std::string const& filename,
+		std::vector< impl::KmerPair > kmer_pairs
+	) const {
+		using genfile::string_utils::to_string ;
+		statfile::BuiltInTypeStatSink::UniquePtr
+		output = statfile::BuiltInTypeStatSink::open( filename ) ;
+		{
+			output->write_comment( "Written by translatorator" ) ;
+			output->write_comment( "Kmer pairs are:" ) ;
+			for( std::size_t i = 0; i < kmer_pairs.size(); ++i ) {
+				output->write_comment( to_string(i+1) + ": " + kmer_pairs[i].first() + " / " + kmer_pairs[i].second() ) ;
+			}
+			(*output)
+				| "compressed_id" | "read_count" | "target_id"
+				| "sequence_length" | "target_sequence_length"
+				| "alignment_length" | "alignment_score"
+				| "hp_adjusted_alignment_score" | "cigar"
+			;
+		}
+
+		auto count_reads_for_hpc_sequence = [&data]( std::size_t i ) {
+			auto result = 0ul ;
+			auto uncompressed_sequences = data.hpc_sequences()[i].sequence_ids ;
+			for( auto j: data.hpc_sequences()[i].sequence_ids ) {
+				result += data.sequences()[j].reads.size() ;
+			}
+			return result ;
+		} ;
+		auto alignment_targets = alignments.alignment_targets() ;
+
+		double homopolymer_weight = options().get< double >( "-homopolymer-indel-weight" ) ;
+		for( SequenceIndex i = 0; i < data.hpc_sequences().size(); ++i ) {
+			auto const read_count = count_reads_for_hpc_sequence(i) ;
+			for( auto j: alignment_targets ) {
+				auto alignment = alignments.alignment(i,j) ;
+				(*output)
+					<< uint32_t(i)
+					<< uint32_t(read_count)
+					<< uint32_t(j)
+					<< uint32_t(alignment.a.size())
+					<< uint32_t(alignment.b.size())
+					<< uint32_t(alignment.long_form_cigar.size())
+					<< alignment.score
+					<< alignment.homopolymer_corrected_score( homopolymer_weight )
+					<< alignment.cigar
+					<< statfile::end_row() ;
+			}
+
+		}
+	}
+
 	void output_consensus_sequences(
 		std::vector< AlgorithmData::SequenceToIds > const& dna,
 		std::vector< AlgorithmData::SequenceToIds > const& aa,
@@ -1953,14 +2016,19 @@ private:
 
 		std::size_t total_informative_reads = 0 ;
 		for( auto x: dna ) {
-			total_informative_reads += x.sequence_ids.size() ;
+			for( auto i: x.sequence_ids ) {
+				auto const& y = data.sequences()[i] ;
+				total_informative_reads += y.reads.size() ;
+			}
 		}
 
 		for( auto x: dna ) {
+			auto total_reads = 0ul ;
 			auto total_exact = 0ul ;
 			for( auto i: x.sequence_ids ) {
 				auto const& y = data.sequences()[i] ;
 				auto const& sequence = y.sequence.matching_sequence() ;
+				total_reads += y.reads.size() ;
 				if( sequence == x.sequence) {
 					total_exact += y.reads.size() ;
 				}
@@ -1968,7 +2036,7 @@ private:
 			(*output)
 				<< "NA"
 				<< "dna"
-				<< int64_t( x.sequence_ids.size() )
+				<< int64_t( total_reads )
 				<< int64_t( total_exact )
 				<< int64_t( total_informative_reads )
 				<< double(x.sequence_ids.size()) / double(total_informative_reads)
