@@ -114,6 +114,11 @@ public:
 			.set_takes_single_value()
 			.set_default_value( "-" ) ;
 
+		options[ "-output-identities" ]
+			.set_description( "Path of hpc-to-cluster identities output file." )
+			.set_takes_single_value()
+			.set_default_value( "-" ) ;
+
 		options[ "-summary" ]
 			.set_description( "Path to per-sample summary output file." )
 			.set_takes_single_value()
@@ -1436,15 +1441,6 @@ private:
 			return ;
 		}
 
-		if( options().check( "-output-sequences" )) {
-			ui().logger() << "++ Outputting sequences...\n" ;
-			output_reads(
-				data,
-				options().get< std::string >( "-output-sequences" ),
-				kmer_pairs
-			) ;
-		}
-
 		ui().logger() << "++ Computing pairwise alignments...\n" ;
 
 		PairwiseAlignments alignments ;
@@ -1514,7 +1510,25 @@ private:
 			}
 		}
 
-		ui().logger() << "++ Computing consensus DNA sequence...\n" ;
+		output_hpc_assignments(
+			identities,
+			hpc_assignments,
+			clusters.state,
+			alignments,
+			options().get< std::string >( "-output-identities" )
+		) ;
+
+		if( options().check( "-output-sequences" )) {
+			ui().logger() << "++ Outputting sequences...\n" ;
+			output_reads(
+				data,
+				hpc_assignments,
+				options().get< std::string >( "-output-sequences" ),
+				kmer_pairs
+			) ;
+		}
+
+		ui().logger() << "++ Computing representative DNA sequences...\n" ;
 		std::vector< AlgorithmData::SequenceToIds > const dna_consensus = find_most_common_representative_read(
 			final_haplotypes,
 			hpc_assignments,
@@ -1838,6 +1852,43 @@ private:
 		return result ;
 	}
 
+	void output_hpc_assignments(
+		Eigen::MatrixXd const& identities,
+		std::vector< int > const& assignments,
+		MixtureOfHaplotypes const& state,
+		PairwiseAlignments const& alignments,
+		std::string const& filename
+	) const {
+		using genfile::string_utils::to_string ;
+		statfile::BuiltInTypeStatSink::UniquePtr
+			output = statfile::BuiltInTypeStatSink::open( filename ) ;
+		{
+			output->write_comment( "Written by translatorator" ) ;
+//			output->write_comment( "Kmer pairs are:" ) ;
+//			for( std::size_t i = 0; i < kmer_pairs.size(); ++i ) {
+//				output->write_comment( to_string(i+1) + ": " + kmer_pairs[i].first() + " / " + kmer_pairs[i].second() ) ;
+//			}
+			(*output) | "hpc_id" | "assigned_cluster_id" | "alignment_score" | "cigar" ;
+			for( int j = 0; j < identities.cols(); ++j ) {
+				(*output) | ("identity:cluster_" + to_string(j)) ;
+			}
+		}
+		std::vector< SequenceIndex > target_haplotypes = state.haplotypes() ;
+		double homopolymer_weight = options().get< double >( "-homopolymer-indel-weight" ) ;
+		for( int i = 0; i < identities.rows(); ++i ) {
+			(*output)
+				<< int64_t(i)
+				<< int64_t( assignments[i] )
+				<< alignments.alignment( i, target_haplotypes[assignments[i]] ).homopolymer_corrected_score( homopolymer_weight )
+				<< alignments.alignment( i, target_haplotypes[assignments[i]] ).cigar
+			;
+			for( int j = 0; j < identities.cols(); ++j ) {
+				(*output) << identities(i,j) ;
+			}
+			(*output) << statfile::end_row() ;
+		}
+	}
+
 	void output_translated_sequences(
 		std::vector< Segmentation > const& result,
 		std::string const& filename,
@@ -1891,6 +1942,7 @@ private:
 
 	void output_reads(
 		AlgorithmData const& data,
+		std::vector< int > const& assignments,
 		std::string const& filename,
 		std::vector< impl::KmerPair > kmer_pairs
 	) const {
@@ -1903,14 +1955,14 @@ private:
 			for( std::size_t i = 0; i < kmer_pairs.size(); ++i ) {
 				output->write_comment( to_string(i+1) + ": " + kmer_pairs[i].first() + " / " + kmer_pairs[i].second() ) ;
 			}
-			(*output) | "read_id" | "sequence_id" | "compressed_id" | "sequence_count" | "strand" | "hpc_sequence_count" ;
+			(*output) | "read_id" | "sequence_id" | "hpc_id" | "cluster_id" | "sequence_count" | "strand" | "hpc_sequence_count" ;
 			for( std::size_t i = 0; i < kmer_pairs.size(); ++i ) {
 				(*output)
 					| (boost::format( "start_%d" ) % (i+1)).str()
 					| (boost::format( "end_%d" ) % (i+1)).str()
 				;
 			}
-			(*output) | "dna_sequence" | "compressed_dna_sequence" ;
+			(*output) | "sequence" | "hpc_sequence" ;
 		}
 
 		auto NA = genfile::MissingValue() ;
@@ -1924,9 +1976,10 @@ private:
 						<< read.sequence_id()
 						<< uint64_t(sequence_id)
 						<< uint64_t(i)
-						<< uint64_t(segmentations.reads.size())
-						<< uint64_t(hpc.sequence_ids.size())
-						<< std::string( 1, char(read.strand()) ) ;
+						<< ((assignments[i] >= 0) ? to_string(assignments[i]) : "NA" )
+						<< uint64_t( segmentations.reads.size() )
+						<< std::string( 1, char(read.strand()) )
+						<< uint64_t(hpc.sequence_ids.size()) ;
 					for( std::size_t k = 0; k < kmer_pairs.size(); ++k ) {
 						(*output)
 							<< uint64_t( read.ranges()[k].start )
@@ -1949,7 +2002,8 @@ private:
 				<< NA
 				<< NA
 				<< NA
-				<< std::string( 1, char(read.strand()) ) ;
+				<< std::string( 1, char(read.strand()) )
+				<< NA ;
 			(*output)
 				<< uint64_t( read.ranges()[0].start )
 				<< uint64_t( read.ranges()[0].end ) ;
@@ -1976,7 +2030,7 @@ private:
 				output->write_comment( to_string(i+1) + ": " + kmer_pairs[i].first() + " / " + kmer_pairs[i].second() ) ;
 			}
 			(*output)
-				| "compressed_id" | "read_count" | "target_id"
+				| "hpc_id" | "read_count" | "target_id"
 				| "sequence_length" | "target_sequence_length"
 				| "alignment_length" | "alignment_score"
 				| "hp_adjusted_alignment_score" | "cigar"
@@ -2031,7 +2085,7 @@ private:
 			for( std::size_t i = 0; i < kmer_pairs.size(); ++i ) {
 				output->write_comment( to_string(i+1) + ": " + kmer_pairs[i].first() + " / " + kmer_pairs[i].second() ) ;
 			}
-			(*output) | "file" | "type" | "compressed_id" | "supporting_reads" | "exact_reads" | "total_informative_reads" | "proportion" | "total_reads" | "sequence" ;
+			(*output) | "file" | "type" | "cluster_id" | "hpc_id" | "supporting_reads" | "exact_reads" | "total_informative_reads" | "proportion" | "total_reads" | "sequence" ;
 		}
 
 		std::size_t total_informative_reads = 0 ;
@@ -2046,7 +2100,8 @@ private:
 		if( data.sequences().size() > 0 ) {
 			sample_id = data.sequences()[0].reads[0].sample_id() ;
 		}
-		for( auto x: dna ) {
+		for( std::size_t i = 0; i < dna.size(); ++i ) {
+			auto x = dna[i] ;
 			auto total_reads = 0ul ;
 			auto total_exact = 0ul ;
 			for( auto i: x.sequence_ids ) {
@@ -2060,6 +2115,7 @@ private:
 			(*output)
 				<< sample_id
 				<< "dna"
+				<< int64_t(i)
 				<< int64_t( x.sequence_ids[0] )
 				<< int64_t( total_reads )
 				<< int64_t( total_exact )
@@ -2071,7 +2127,8 @@ private:
 			;
 		}
 
-		for( auto x: aa ) {
+		for( std::size_t i = 0; i < aa.size(); ++i ) {
+			auto x = aa[i] ;
 			auto total_reads = 0ul ;
 			auto total_exact = 0ul ;
 			for( auto i: x.sequence_ids ) {
@@ -2085,6 +2142,7 @@ private:
 			(*output)
 				<< sample_id
 				<< "aa"
+				<< int64_t(i)
 				<< int64_t( x.sequence_ids[0] )
 				<< int64_t( x.sequence_ids.size() )
 				<< int64_t( total_exact )
