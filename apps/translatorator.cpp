@@ -1375,6 +1375,7 @@ private:
 		bool truncate_at_stops ;
 		std::size_t number_of_threads ;
 		std::size_t min_obs_per_sample ;
+		double min_fraction_per_sample ;
 		std::size_t max_clustering_iterations ;
 		double homopolymer_indel_weight ;
 		double min_identity ;
@@ -1392,6 +1393,7 @@ private:
 			options().check( "-truncate-at-stops" ),
 			options().get< std::size_t >( "-threads" ),
 			options().get< std::size_t >( "-min-obs-per-sample" ),
+			options().get< double >( "-min-fraction-per-sample" ),
 			options().get< std::size_t >( "-iterations" ),
 			options().get< double >( "-homopolymer-indel-weight" ),
 			options().get< double >( "-min-alignment-identity" )
@@ -1448,11 +1450,26 @@ private:
 		PairwiseAlignments alignments ;
 		{
 			auto progress = ui().get_progress_context( "Pairwise aligning" ) ;
+			std::size_t total_reads = ([&data]() -> std::size_t {
+				std::size_t result = 0 ;
+				for( std::size_t i = 0; i < data.hpc_sequences().size(); ++i ) {
+					result += data.count_reads_for_hpc_sequence(i) ;
+				}
+				return result ;
+			})() ;
+			auto filter_candidates = [&data,&algorithm_options,total_reads](std::size_t i)->bool {
+				auto count = data.count_reads_for_hpc_sequence(i) ;
+				return
+					(count >= algorithm_options.min_obs_per_sample)
+					&&
+					(double(count) / double(total_reads) >= algorithm_options.min_fraction_per_sample)
+				;
+			} ;
 			alignments.add_sequences(
 				data.hpc_sequences(),
 				[]( AlgorithmData::SequenceToIds const& elt ) { return elt.sequence ; },
-				// Only align to sequences seen at least twice
-				[&data,&algorithm_options](std::size_t i)->bool { return data.count_reads_for_hpc_sequence(i) > algorithm_options.min_obs_per_sample ; },
+				// Only align to sequences seen in enough samples
+				filter_candidates,
 				[&progress](std::size_t i, std::size_t j)->void { progress(i,j) ; }
 			) ;
 		}
@@ -1487,7 +1504,9 @@ private:
 					wmax_identity = j ;
 				} else if( identities(i,j) == max_identity ) {
 					ui().logger() << "!! Uh-oh, matches two states.\n" ;
-					exit(-1) ;
+					max_identity = -1 ;
+					wmax_identity = 0 ;
+					break ;
 				}
 			}
 			if( max_identity >= algorithm_options.min_identity ) {
@@ -1495,13 +1514,14 @@ private:
 			}
 		}
 
+		ui().logger() << "++ Computing consensus DNA sequence...\n" ;
 		std::vector< AlgorithmData::SequenceToIds > const dna_consensus = find_most_common_representative_read(
 			final_haplotypes,
 			hpc_assignments,
 			data
 		) ;
 
-		// translate
+		ui().logger() << "++ Translating sequence...\n" ;
 		std::vector< AlgorithmData::SequenceToIds > aa_consensus ;
 		{
 			std::map< std::string, std::vector< std::size_t > > by_aa_sequence ;
@@ -1528,6 +1548,7 @@ private:
 				[]( AlgorithmData::SequenceToIds const& a, AlgorithmData::SequenceToIds const& b ) { return a.sequence_ids.size() > b.sequence_ids.size() ; }
 			) ;
 		}
+		ui().logger() << "++ Outputting clusters...\n" ;
 		output_consensus_sequences(
 			dna_consensus,
 			aa_consensus,
@@ -1545,6 +1566,10 @@ private:
 			PairwiseAlignments const& alignments,
 			AlgorithmOptions const& algorithm_options
 		) {
+			if( data.hpc_sequences().size() == 0 ) {
+				return StateLL{MixtureOfHaplotypes(), 0 } ;
+			}
+
 			double const homopolymer_weight = algorithm_options.homopolymer_indel_weight ;
 			auto compute_ll = [&](
 				MixtureOfHaplotypes const& state,                                  // params
@@ -2006,7 +2031,7 @@ private:
 			for( std::size_t i = 0; i < kmer_pairs.size(); ++i ) {
 				output->write_comment( to_string(i+1) + ": " + kmer_pairs[i].first() + " / " + kmer_pairs[i].second() ) ;
 			}
-			(*output) | "file" | "type" | "supporting_reads" | "exact_reads" | "total_informative_reads" | "proportion" | "total_reads" | "sequence" ;
+			(*output) | "file" | "type" | "compressed_id" | "supporting_reads" | "exact_reads" | "total_informative_reads" | "proportion" | "total_reads" | "sequence" ;
 		}
 
 		std::size_t total_informative_reads = 0 ;
@@ -2017,7 +2042,10 @@ private:
 			}
 		}
 
-		auto sample_id = data.sequences()[0].reads[0].sample_id() ;
+		std::string sample_id = "" ;
+		if( data.sequences().size() > 0 ) {
+			sample_id = data.sequences()[0].reads[0].sample_id() ;
+		}
 		for( auto x: dna ) {
 			auto total_reads = 0ul ;
 			auto total_exact = 0ul ;
@@ -2032,10 +2060,11 @@ private:
 			(*output)
 				<< sample_id
 				<< "dna"
+				<< int64_t( x.sequence_ids[0] )
 				<< int64_t( total_reads )
 				<< int64_t( total_exact )
 				<< int64_t( total_informative_reads )
-				<< double(x.sequence_ids.size()) / double(total_informative_reads)
+				<< double( total_reads ) / double( total_informative_reads )
 				<< int64_t( data.total_reads() )
 				<< x.sequence
 				<< statfile::end_row()
@@ -2043,10 +2072,12 @@ private:
 		}
 
 		for( auto x: aa ) {
+			auto total_reads = 0ul ;
 			auto total_exact = 0ul ;
 			for( auto i: x.sequence_ids ) {
 				auto const& y = data.sequences()[i] ;
 				auto const sequence = genfile::translate( y.sequence.matching_sequence(), algorithm_options.truncate_at_stops ) ;
+				total_reads += y.reads.size() ;
 				if( sequence == x.sequence ) {
 					total_exact += y.reads.size() ;
 				}
@@ -2054,10 +2085,11 @@ private:
 			(*output)
 				<< sample_id
 				<< "aa"
+				<< int64_t( x.sequence_ids[0] )
 				<< int64_t( x.sequence_ids.size() )
 				<< int64_t( total_exact )
 				<< int64_t( total_informative_reads )
-				<< double(x.sequence_ids.size()) / double(total_informative_reads)
+				<< double( total_reads ) / double( total_informative_reads )
 				<< int64_t( data.total_reads() )
 				<< x.sequence
 				<< statfile::end_row()
