@@ -1510,6 +1510,7 @@ private:
 			}
 		}
 
+		ui().logger() << "++ Outputting hpc alignment identities to \"" << options().get< std::string >( "-output-identities" ) << "\"...\n" ;
 		output_hpc_assignments(
 			identities,
 			hpc_assignments,
@@ -1876,17 +1877,26 @@ private:
 				(*output) | ("identity:cluster_" + to_string(j)) ;
 			}
 		}
+		auto NA = genfile::MissingValue() ;
 		std::vector< SequenceIndex > target_haplotypes = state.haplotypes() ;
 		double homopolymer_weight = options().get< double >( "-homopolymer-indel-weight" ) ;
 		for( int i = 0; i < identities.rows(); ++i ) {
 			(*output)
 				<< int64_t(i)
-				<< int64_t( assignments[i] )
-				<< alignments.alignment( i, target_haplotypes[assignments[i]] ).homopolymer_corrected_score( homopolymer_weight )
-				<< alignments.alignment( i, target_haplotypes[assignments[i]] ).cigar
-			;
-			for( int j = 0; j < identities.cols(); ++j ) {
-				(*output) << alignments.alignment( i, target_haplotypes[j] ).homopolymer_corrected_score( homopolymer_weight ) ;
+				<< int64_t( assignments[i] ) ;
+			if( assignments[i] >= 0 ) {
+				(*output)
+					<< alignments.alignment( i, target_haplotypes[assignments[i]] ).homopolymer_corrected_score( homopolymer_weight )
+					<< alignments.alignment( i, target_haplotypes[assignments[i]] ).cigar
+				;
+				for( int j = 0; j < identities.cols(); ++j ) {
+					(*output) << alignments.alignment( i, target_haplotypes[j] ).homopolymer_corrected_score( homopolymer_weight ) ;
+				}
+			} else {
+				(*output) << NA << NA ;
+				for( int j = 0; j < identities.cols(); ++j ) {
+					(*output) << NA ;
+				}
 			}
 			for( int j = 0; j < identities.cols(); ++j ) {
 				(*output) << identities(i,j) ;
