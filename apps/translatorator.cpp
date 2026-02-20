@@ -1868,7 +1868,10 @@ private:
 //			for( std::size_t i = 0; i < kmer_pairs.size(); ++i ) {
 //				output->write_comment( to_string(i+1) + ": " + kmer_pairs[i].first() + " / " + kmer_pairs[i].second() ) ;
 //			}
-			(*output) | "hpc_id" | "assigned_cluster_id" | "alignment_score" | "cigar" ;
+			(*output) | "hpc_id" | "best_cluster_id" | "best_alignment_score" | "best_alignment_cigar" ;
+			for( int j = 0; j < identities.cols(); ++j ) {
+				(*output) | ("alignment_score:cluster_" + to_string(j)) ;
+			}
 			for( int j = 0; j < identities.cols(); ++j ) {
 				(*output) | ("identity:cluster_" + to_string(j)) ;
 			}
@@ -1882,6 +1885,9 @@ private:
 				<< alignments.alignment( i, target_haplotypes[assignments[i]] ).homopolymer_corrected_score( homopolymer_weight )
 				<< alignments.alignment( i, target_haplotypes[assignments[i]] ).cigar
 			;
+			for( int j = 0; j < identities.cols(); ++j ) {
+				(*output) << alignments.alignment( i, target_haplotypes[j] ).homopolymer_corrected_score( homopolymer_weight ) ;
+			}
 			for( int j = 0; j < identities.cols(); ++j ) {
 				(*output) << identities(i,j) ;
 			}
