@@ -137,6 +137,12 @@ private:
 	struct ContigSubsequenceSpec {
 		typedef enum { eForward = 0, eReverse = 1 } Orientation ;
 		
+		ContigSubsequenceSpec():
+			m_spec(""),
+			m_id(""),
+			m_range( genfile::Chromosome(), 0, 0 )
+		{}
+
 		// Spec should be of the form:
 		// contig:start-end
 		// and we expect one-based, closed coordinates.
@@ -172,8 +178,10 @@ private:
 			return (m_range.start().position() >= m_range.end().position()) ? eForward : eReverse ;
 		}
 
-	private:
-		ContigSubsequenceSpec() ;
+		void add_suffix( std::string suffix ) {
+			m_id = m_id + "-" + suffix ;
+		}
+
 		
 	private:
 		std::string m_spec ;
@@ -354,11 +362,13 @@ private:
 	
 	std::vector< ContigSubsequenceSpec > parse_sequence_ids( genfile::Fasta const& fasta ) const {
 		std::vector< ContigSubsequenceSpec > result ;
-		fasta.sequence_ids( [&result,&fasta]( std::string const& id ) {
+		std::vector< std::string > IDs ;
+		fasta.sequence_ids( [&result,&IDs,&fasta]( std::string const& id ) {
+			ContigSubsequenceSpec spec ;
 			try {
 				// Try to match sequence ID of the form contig:start-end
 				// e.g. as output by samtools view with a range.
-				result.push_back( ContigSubsequenceSpec( id )) ;
+				spec = ContigSubsequenceSpec( id ) ;
 			}
 			catch( genfile::string_utils::StringConversionError const& e ) {
 				// if that failed, assume the range is 1-length
@@ -371,15 +381,20 @@ private:
 					}
 				} ;
 				
-				result.push_back( 
-					ContigSubsequenceSpec(
-						id,
-						genfile::GenomePositionRange(
-							id, 1, length
-						)
+				spec = ContigSubsequenceSpec(
+					id,
+					genfile::GenomePositionRange(
+						id, 1, length
 					)
 				) ;
 			}
+			IDs.push_back( spec.id() ) ;
+			std::size_t n = std::count( IDs.begin(), IDs.end(), spec.id() ) ;
+			if( n > 1 ) {
+				spec.add_suffix( genfile::string_utils::to_string(n) ) ;
+			}
+			result.push_back( spec ) ;
+			
 		}) ;
 
 		return result ;
