@@ -145,6 +145,12 @@ public:
 			.set_minimum_multiplicity(1000) ;
 
 		options.declare_group( "Algorithm options" ) ;
+		options[ "-mode" ]
+			.set_description( "Mode of operation.  Either 'asm' or 'hifi'" )
+			.set_takes_single_value()
+			.set_is_required()
+		;
+
 		options[ "-cluster" ]
 			.set_description( "Generate a list of candidate correct sequences, and align all reads back to candidates to cluster them. "
 			"Then output corrected DNA and amino acid sequences" )
@@ -165,12 +171,6 @@ public:
 			" before it is treated as a candidate for clustering." )
 			.set_takes_single_value()
 			.set_default_value( 0 )
-		;
-		options[ "-min-obs-samples" ]
-			.set_description( "The minimum number of samples a sequence must be observed in,"
-			" before it is treated as a candidate for clustering." )
-			.set_takes_single_value()
-			.set_default_value( 1 )
 		;
 		options[ "-only-translatable" ]
 			.set_description( "Only use sequences that are a multiple of 3 in length to cluster." )
@@ -193,10 +193,8 @@ public:
 			.set_default_value( 0.95 )
 		;
 
-		options.option_implies_option( "-min-obs-per-sample", "-cluster" ) ;
-		options.option_implies_option( "-min-obs-samples", "-cluster" ) ;
-		options.option_implies_option( "-min-fraction-per-sample", "-cluster" ) ;
-
+//		options.option_implies_option( "-min-obs-per-sample", "-cluster" ) ;
+//		options.option_implies_option( "-min-fraction-per-sample", "-cluster" ) ;
 		options.option_excludes_option( "-only-translatable", "-truncate-at-stops" ) ;
 
 		options.declare_group( "Other options" ) ;
@@ -993,6 +991,12 @@ namespace impl {
 		typedef boost::random::mt19937 RNG ;
 		MixtureOfHaplotypes() {}
 
+		MixtureOfHaplotypes( std::vector< SequenceIndex > const& haplotypes ) {
+			for( auto i: haplotypes ) {
+				m_haplotypes[haplotypes[i]] = 1.0 / haplotypes.size() ;
+			}
+		}
+
 		std::size_t size() const { return m_haplotypes.size() ; }
 
 		void visit( boost::function< void( SequenceIndex, double ) > callback ) const {
@@ -1375,6 +1379,7 @@ private:
 	} ;
 
 	struct AlgorithmOptions {
+		std::string mode ;
 		bool use_clustering ;
 		bool only_translatable ;
 		bool truncate_at_stops ;
@@ -1393,6 +1398,7 @@ private:
 
 	void unsafe_process() { 
 		AlgorithmOptions algorithm_options = {
+			options().get< std::string >( "-mode" ),
 			options().check( "-cluster" ),
 			options().check( "-only-translatable" ),
 			options().check( "-truncate-at-stops" ),
@@ -1403,6 +1409,12 @@ private:
 			options().get< double >( "-homopolymer-indel-weight" ),
 			options().get< double >( "-min-alignment-identity" )
 		} ;
+		if( algorithm_options.mode != "hifi" && algorithm_options.mode != "asm" ) {
+			throw genfile::BadArgumentError( "TranslatoratorApplication::unsafe_process()", "-mode=\"" + algorithm_options.mode + "\"", "Expected 'asm' or 'hifi'" ) ;
+		}
+		if( algorithm_options.mode == "asm" && algorithm_options.use_clustering ) {
+			throw genfile::BadArgumentError( "TranslatoratorApplication::unsafe_process()", "-mode=\"" + algorithm_options.mode + "\"", "-cluster specified, but clustering doesn't make sense for assembly data." ) ;
+		}
 		unsafe_process( algorithm_options ) ;
 	}
 
@@ -1429,7 +1441,7 @@ private:
 		ui().logger() << "++ There were " << data.sequences().size() << " distinct segmentations.\n" ;
 		ui().logger() << "++ There were " << data.hpc_sequences().size() << " distinct compressed sequences.\n" ;
 
-		if( !algorithm_options.use_clustering ) {
+		if( algorithm_options.mode == "asm" ) {
 			if( options().check( "-output-sequences" )) {
 				output_translated_sequences(
 					segmentations,
@@ -1440,6 +1452,7 @@ private:
 			}
 			return ;
 		}
+		assert( algorithm_options.mode == "hifi" ) ;
 
 		ui().logger() << "++ Computing pairwise alignments...\n" ;
 
@@ -1481,8 +1494,12 @@ private:
 			) ;
 		}
 
-		ui().logger() << "++ Computing clusters...\n" ;
-		StateLL const clusters = cluster_haplotypes( data, alignments, algorithm_options ) ;
+		ui().logger() << (algorithm_options.use_clustering ? "++ Computing clusters...\n" : "++ Using all thresholded haplotypes as clusters...\n") ;
+		StateLL const clusters = (
+			algorithm_options.use_clustering
+			? cluster_haplotypes( data, alignments, algorithm_options )
+			: take_all_haplotypes( data, alignments )
+		) ;
 		std::vector< SequenceIndex > const final_haplotypes = clusters.state.haplotypes() ;
 		ui().logger() << "++ ...ok, " << clusters.state.size() << " clusters identified.\n" ;
 
@@ -1576,96 +1593,109 @@ private:
 		return ;
 	}
 
-		StateLL cluster_haplotypes(
-			AlgorithmData const& data,
-			PairwiseAlignments const& alignments,
-			AlgorithmOptions const& algorithm_options
+	StateLL take_all_haplotypes(
+		AlgorithmData const& data,
+		PairwiseAlignments const& alignments
+	) {
+		return StateLL{
+			MixtureOfHaplotypes( alignments.alignment_targets() ),
+			1.0
+		} ;
+	}
+
+
+	StateLL cluster_haplotypes(
+		AlgorithmData const& data,
+		PairwiseAlignments const& alignments,
+		AlgorithmOptions const& algorithm_options
+	) {
+		if( data.hpc_sequences().size() == 0 ) {
+			return StateLL{MixtureOfHaplotypes(), 0 } ;
+		}
+
+		double const homopolymer_weight = algorithm_options.homopolymer_indel_weight ;
+		auto compute_ll = [&](
+			MixtureOfHaplotypes const& state,                                  // params
+			AlgorithmData const& data
 		) {
-			if( data.hpc_sequences().size() == 0 ) {
-				return StateLL{MixtureOfHaplotypes(), 0 } ;
+			double result = 0.0 ;
+			std::vector< double > elts ;
+			elts.reserve( state.size() ) ;
+			for( SequenceIndex i = 0; i < data.hpc_sequences().size(); ++i ) {
+				std::size_t const& sequence_count = data.count_reads_for_hpc_sequence(i) ;
+				elts.clear() ;
+				state.visit(
+					[&]( SequenceIndex target_haplotype, double weight ) {
+						AlignmentDetail const& alignment = alignments.alignment( i, target_haplotype ) ;
+						elts.push_back( std::log( weight ) + alignment.homopolymer_corrected_score( homopolymer_weight ) ) ;
+					}
+				) ;
+				result += sequence_count * iorek::log_sum_exp( elts.begin(), elts.end() ) ;
 			}
+			return result ;
+		} ;
 
-			double const homopolymer_weight = algorithm_options.homopolymer_indel_weight ;
-			auto compute_ll = [&](
-				MixtureOfHaplotypes const& state,                                  // params
-				AlgorithmData const& data
-			) {
-				double result = 0.0 ;
-				std::vector< double > elts ;
-				elts.reserve( state.size() ) ;
-				for( SequenceIndex i = 0; i < data.hpc_sequences().size(); ++i ) {
-					std::size_t const& sequence_count = data.count_reads_for_hpc_sequence(i) ;
-					elts.clear() ;
-					state.visit(
-						[&]( SequenceIndex target_haplotype, double weight ) {
-							AlignmentDetail const& alignment = alignments.alignment( i, target_haplotype ) ;
-							elts.push_back( std::log( weight ) + alignment.homopolymer_corrected_score( homopolymer_weight ) ) ;
-						}
-					) ;
-					result += sequence_count * iorek::log_sum_exp( elts.begin(), elts.end() ) ;
-				}
-				return result ;
-			} ;
+		auto compute_log_prior = [&](
+			MixtureOfHaplotypes const& state,
+			double p = 0.1
+		) {
+			// geometric distribution
+			// We use this switch to avoid -Inf * number == NaN when p==0 and state.size()==1.
+			return std::log( 1.0 - p ) + (state.size() == 1ul ? 0.0 : std::log(p) * (state.size() - 1)) ;
+		} ;
 
-			auto compute_log_prior = [&](
-				MixtureOfHaplotypes const& state,
-				double p = 0.1
-			) {
-				// geometric distribution
-				return std::log(1-p) + std::log(p) * (state.size() - 1) ;
-			} ;
+		// Shotgun stochastic search to find good haplotype set candidates.
+		typedef moodycamel::ConcurrentQueue< MixtureOfHaplotypes > StateQueue ;
+		typedef moodycamel::ConcurrentQueue< StateLL > StateLLQueue ;
+		StateQueue state_queue ;
+		StateLLQueue result_queue ;
 
-			// Shotgun stochastic search to find good haplotype set candidates.
-			typedef moodycamel::ConcurrentQueue< MixtureOfHaplotypes > StateQueue ;
-			typedef moodycamel::ConcurrentQueue< StateLL > StateLLQueue ;
-			StateQueue state_queue ;
-			StateLLQueue result_queue ;
+		// Get the sequence counts within that sample.
+		std::vector< std::thread > threads ;
+		std::atomic< int > quit(0) ;
 
-			// Get the sequence counts within that sample.
-			std::vector< std::thread > threads ;
-			std::atomic< int > quit(0) ;
-
-			{
-				for( std::size_t i = 0; i < algorithm_options.number_of_threads; ++i ) {
-					threads.push_back(
-						std::thread(
-							[&]() {
-	#if DEBUG
-								std::cerr << "!! THREAD " << std::this_thread::get_id() << ": starting.\n" ;
-	#endif
-								MixtureOfHaplotypes state ;
-								while( !quit ) {
-									bool popped = state_queue.try_dequeue( state ) ;
-									if( popped ) {
-										double ll = compute_ll( state, data ) ;
-										double lp = compute_log_prior( state, 0.01 ) ;
-										while( !result_queue.try_enqueue( StateLL{ state, ll + lp } )) {
-											std::this_thread::sleep_for( std::chrono::microseconds(10) ) ;
-										}
-									} else {
-										// nothing to pop, sleep to allow queue to fill.
+		{
+			for( std::size_t i = 0; i < algorithm_options.number_of_threads; ++i ) {
+				threads.push_back(
+					std::thread(
+						[&]() {
+#if DEBUG
+							std::cerr << "!! THREAD " << std::this_thread::get_id() << ": starting.\n" ;
+#endif
+							MixtureOfHaplotypes state ;
+							while( !quit ) {
+								bool popped = state_queue.try_dequeue( state ) ;
+								if( popped ) {
+									double ll = compute_ll( state, data ) ;
+									double lp = compute_log_prior( state, 1E-10 ) ;
+//									std::cerr << "!!!!! state.size() == " << state.size() << ", log prior = " << lp << "!!\n" ;
+									while( !result_queue.try_enqueue( StateLL{ state, ll + lp } )) {
 										std::this_thread::sleep_for( std::chrono::microseconds(10) ) ;
 									}
+								} else {
+									// nothing to pop, sleep to allow queue to fill.
+									std::this_thread::sleep_for( std::chrono::microseconds(10) ) ;
 								}
-	#if DEBUG
-								std::cerr << "!! THREAD " << std::this_thread::get_id() << ": ending.\n" ;
-	#endif
 							}
-						)
-					) ;
-				}
-				std::cerr << "process_read(): constructing output thread...\n" ;
+#if DEBUG
+							std::cerr << "!! THREAD " << std::this_thread::get_id() << ": ending.\n" ;
+#endif
+						}
+					)
+				) ;
 			}
+			std::cerr << "process_read(): constructing output thread...\n" ;
+		}
 
-			boost::random::mt19937 rng ;
+		boost::random::mt19937 rng ;
 
-			double const infinity = std::numeric_limits< double >::infinity() ;
+		double const infinity = std::numeric_limits< double >::infinity() ;
 
-			StateLL current{MixtureOfHaplotypes(), -infinity } ;
-			std::unordered_map< double, StateLL > evaluations ;
+		StateLL current{MixtureOfHaplotypes(), -infinity } ;
+		std::unordered_map< double, StateLL > evaluations ;
 
-			for( std::size_t iteration = 0; iteration < algorithm_options.max_clustering_iterations; ++iteration ) {
-				auto state = current.state ;			
+		for( std::size_t iteration = 0; iteration < algorithm_options.max_clustering_iterations; ++iteration ) {
+			auto state = current.state ;			
 #if DEBUG
 			std::cerr  << "!! iteration " << iteration << ", current state: " << state << " --- \n" ;
 #endif
@@ -1738,18 +1768,16 @@ private:
 						if( result.ll > new_state.ll ) {
 							new_state = result ;
 						}
-						if( result.state.contains(0)) {
-							std::cerr << "++ 0 state: "
-									  << result.state
-									  << " (" << result.ll << ")...\n" ;
-						}
-
+//						if( result.state.contains(0)) {
+//							std::cerr << "++ 0 state: "
+//										<< result.state
+//										<< " (" << result.ll << ")...\n" ;
+//						}
 					} else {
 						// nothing to pop, sleep to allow queue to fill.
 						std::this_thread::sleep_for( std::chrono::microseconds(10) ) ;
 					}
 				}
-
 				std::cerr << "++ new state: "
 					<< new_state.state
 					<< " (" << new_state.ll << ")...\n" ;
