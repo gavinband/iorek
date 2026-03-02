@@ -993,7 +993,7 @@ namespace impl {
 
 		MixtureOfHaplotypes( std::vector< SequenceIndex > const& haplotypes ) {
 			for( auto i: haplotypes ) {
-				m_haplotypes[haplotypes[i]] = 1.0 / haplotypes.size() ;
+				m_haplotypes[i] = 1.0 / haplotypes.size() ;
 			}
 		}
 
@@ -1502,6 +1502,7 @@ private:
 		) ;
 		std::vector< SequenceIndex > const final_haplotypes = clusters.state.haplotypes() ;
 		ui().logger() << "++ ...ok, " << clusters.state.size() << " clusters identified.\n" ;
+		ui().logger() << "++ " << clusters.state << ".\n" ;
 
 		ui().logger() << "++ Computing hpc sequence-cluster identity...\n" ;
 		auto const identities = compute_identities( data, alignments, clusters.state, algorithm_options ) ;
@@ -1870,9 +1871,10 @@ private:
 			data.hpc_sequences().size(),
 			haplotypes.size()
 		) ;
+		std::vector< SequenceIndex > target_haplotypes = haplotypes.haplotypes() ;
 		for( SequenceIndex i = 0; i < data.hpc_sequences().size(); ++i ) {
-			std::vector< SequenceIndex > target_haplotypes = haplotypes.haplotypes() ;
 			for( std::size_t j = 0; j < target_haplotypes.size(); ++j ) {
+				std::cerr << "!!!! " << i << " -- " << j << " (" << target_haplotypes[j] << ").\n" ;
 				SequenceIndex target = target_haplotypes[j] ;
 				AlignmentDetail const& alignment = alignments.alignment( i, target ) ;
 				result(i,j) = double( alignment.identity ) ;
