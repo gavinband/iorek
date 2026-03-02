@@ -1766,7 +1766,7 @@ namespace {
 
 int main( int argc, char** argv )
 {
-	alignment_test() ;
+	// alignment_test() ;
 	std::ios_base::sync_with_stdio( false ) ;
 	try {
 		IorekQCApplication app( argc, argv ) ;
