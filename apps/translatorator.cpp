@@ -1512,18 +1512,17 @@ private:
 		for( int i = 0; i < identities.rows(); ++i ) {
 			double max_identity = -1 ;
 			int wmax_identity = 0 ;
+			bool matched_two = false ;
 			for( int j = 0; j < identities.cols(); ++j ) {
 				if( identities(i,j) > max_identity ) {
 					max_identity = identities(i,j) ;
 					wmax_identity = j ;
+					matched_two = false ;
 				} else if( identities(i,j) == max_identity ) {
-					ui().logger() << "!! Uh-oh, matches two states.\n" ;
-					max_identity = -1 ;
-					wmax_identity = 0 ;
-					break ;
+					matched_two = true ;
 				}
 			}
-			if( max_identity >= algorithm_options.min_identity ) {
+			if( max_identity >= algorithm_options.min_identity && !matched_two ) {
 				hpc_assignments[i] = wmax_identity ;
 			}
 		}
