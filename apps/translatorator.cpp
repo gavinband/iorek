@@ -396,7 +396,7 @@ namespace impl {
 		std::string m_end ;
 	} ;
 
-	struct SegmentedSequence {
+	struct MatchedSequence {
 		public:
 			struct Range {
 				Range(): start(0), end(0) {} ;
@@ -422,12 +422,20 @@ namespace impl {
 
 			typedef std::vector< Range > Ranges ;
 
-			SegmentedSequence( SegmentedSequence const& other ):
+			MatchedSequence( MatchedSequence const& other ):
 				m_sequence( other.m_sequence ),
 				m_ranges( other.m_ranges )
-			{}
-			SegmentedSequence() = default ;
-			SegmentedSequence(
+			{
+				// sanity check
+				assert( m_ranges.size() > 0 ) ;
+				assert( m_ranges.front().start == 0 ) ;
+				assert( m_ranges.back().end == m_sequence.size() ) ;
+				for( std::size_t i = 1; i < m_ranges.size(); ++i ) {
+					assert( m_ranges[i].start == m_ranges[i-1].end ) ;
+				}
+			}
+			MatchedSequence() = default ;
+			MatchedSequence(
 				std::string const& sequence,
 				Ranges const& ranges
 			):
@@ -435,15 +443,34 @@ namespace impl {
 				m_ranges( ranges )
 			{}
 
-			bool operator==( SegmentedSequence const& b ) const {
+			bool operator==( MatchedSequence const& b ) const {
 				return (m_sequence == b.m_sequence) && (m_ranges == b.m_ranges) ;
 			}
 
-			bool operator<( SegmentedSequence const& b ) const {
+			bool operator<( MatchedSequence const& b ) const {
 				return (m_sequence < b.m_sequence) || ((m_sequence == b.m_sequence) && (m_ranges < b.m_ranges)) ;
 			}
 
-			std::string const& matching_sequence() const { return m_sequence ; }
+			std::string const sequence( std::string const& separator = "" ) const {
+				if( separator == "" ) {
+					return m_sequence ;
+				}
+				std::string result ;
+				result.reserve( m_sequence.size() + 20 ) ;
+				std::size_t i = 0 ;
+				for( auto range: m_ranges ) {
+					if( result.size() > 0 ) {
+						result.insert( result.end(), separator.begin(), separator.end() ) ;
+					}
+					result.insert(
+						result.end(),
+						m_sequence.begin() + range.start,
+						m_sequence.begin() + range.end
+					) ;
+				}
+				return result ;
+			}
+
 			std::string hpc_sequence() const {
 				std::string result ;
 				// homopolymer compress, but only within the ranges.
@@ -456,22 +483,22 @@ namespace impl {
 					char last = ' ' ;
 					for( ; range.start != range.end; ++range.start, ++i ) {
 						if( m_sequence[i] != last ) {
-							result.push_back(m_sequence[i]) ;
+							result.push_back( m_sequence[i])  ;
 							last = result.back() ;
 						}
 					}
 				}
 				return result ;
 			}
-			Ranges const& ranges() const { return m_ranges ; }
-			std::string const& sequence() const { return m_sequence ; }
 
-			private:
+			Ranges const& ranges() const { return m_ranges ; }
+
+		private:
 			std::string m_sequence ;
 			Ranges m_ranges ;
 	} ;
 
-	std::ostream& operator<<( std::ostream& out, SegmentedSequence const& ss ) {
+	std::ostream& operator<<( std::ostream& out, MatchedSequence const& ss ) {
 		std::size_t pos = 0 ;
 		for( std::size_t i = 0; i < ss.ranges().size(); ++i ) {
 			std::size_t length = ss.ranges()[i].length() ;
@@ -495,8 +522,8 @@ namespace impl {
 		return out ;
 	}
 
-	// A 'segmentation' is used to keep track of the positions of stated kmers within
-	// an input sequence, such as a read.
+	// A segmentation reflects a transcript (or similar set of non-overlapping chained sub-ranges)
+	// of an input sequence or read, identified in either positive or negative orientation.
 	struct Segmentation {
 		public:
 			enum Strand {
@@ -508,8 +535,8 @@ namespace impl {
 				// the moment it is convenient to allow them to be handled here.
 				eExcluded        = 'x'
 			} ;
-			typedef SegmentedSequence::Range Range ;
-			typedef SegmentedSequence::Ranges Ranges ;
+			typedef MatchedSequence::Range Range ;
+			typedef MatchedSequence::Ranges Ranges ;
 
 			Segmentation() {}
 
@@ -517,50 +544,50 @@ namespace impl {
 				std::string const& name,
 				std::string const& sequence_name,
 				Strand const strand,
-				SegmentedSequence const& sequence
-			):
-				m_name( name ),
-				m_sequence_name( sequence_name ),
-				m_strand( strand ),
-				m_sequence( sequence )
-			{}
-
-			// legacy
-			Segmentation(
-				std::string const& name,
-				std::string const& sequence_name,
-				Strand const strand,
 				std::string const& sequence,
-				std::vector< SegmentedSequence::Range > ranges
+				std::vector< MatchedSequence::Range > ranges
 			):
 				m_name( name ),
 				m_sequence_name( sequence_name ),
 				m_strand( strand ),
-				m_sequence( SegmentedSequence( sequence, ranges ))
+				m_ranges( ranges ),
+				m_match( compute_match( sequence, ranges ))
 			{}
 
 			Segmentation( Segmentation const& other ):
 				m_name( other.m_name ),
 				m_sequence_name( other.m_sequence_name ),
 				m_strand( other.m_strand ),
-				m_sequence( other.m_sequence )
+				m_ranges( other.m_ranges ),
+				m_match( other.m_match )
 			{}
 
 			std::string const& sample_id() const { return m_name ; }
 			std::string const& sequence_id() const { return m_sequence_name ; }
-			SegmentedSequence const& sequence() const { return m_sequence ; }
+			MatchedSequence const& match() const { return m_match ; }
 			Strand const strand() const { return m_strand ; }
 			bool is_unambiguous() const { return m_strand == eFwdStrand || m_strand == eRevStrand ; }
-			std::string const& matching_sequence() const { return m_sequence.matching_sequence() ; }
-			std::string hpc_sequence() const { return m_sequence.hpc_sequence() ; }
-			Ranges const& ranges() const { return m_sequence.ranges() ; }
+
+			Ranges const& ranges() const { return m_ranges ; }
 
 		private:
 			std::string m_name ;
 			std::string m_sequence_name ;
 			Strand m_strand ;
-			SegmentedSequence m_sequence ;
-	} ;
+			Ranges m_ranges ;
+			MatchedSequence m_match ;
+
+			MatchedSequence const compute_match( std::string const& sequence, Ranges const& ranges ) const {
+				Ranges subsequence_ranges ;
+				subsequence_ranges.reserve( ranges.size() ) ;
+				std::size_t pos = 0 ;
+				for( auto r: ranges ) {
+					subsequence_ranges.push_back( Range( pos, pos + r.length() ) ) ;
+					pos += r.length() ;
+				}
+				return MatchedSequence( sequence, subsequence_ranges ) ;
+			}
+		} ;
 
 	struct AlignmentOpScores {
 		// match scores, by position in homopolymer, must be size 16.
@@ -1110,20 +1137,20 @@ namespace impl {
 
 
 	struct AlgorithmData {
-		struct SegmentationToReads {
-			SegmentationToReads() = default ;
-			SegmentationToReads( SegmentationToReads const& other ) = default ;
-			SegmentationToReads(
-				impl::SegmentedSequence _sequence,
+		struct MatchToReads {
+			MatchToReads() = default ;
+			MatchToReads( MatchToReads const& other ) = default ;
+			MatchToReads(
+				impl::MatchedSequence _match,
 				std::vector< impl::Segmentation > _reads
 			):
-				sequence( _sequence ),
+				match( _match ),
 				reads( _reads )
 			{}
-			impl::SegmentedSequence sequence ;
+			impl::MatchedSequence match ;
 			std::vector< impl::Segmentation > reads ;
 
-			friend std::ostream& operator<<( std::ostream& out, SegmentationToReads const& s ) ;
+			friend std::ostream& operator<<( std::ostream& out, MatchToReads const& s ) ;
 		} ;
 		struct SequenceToIds {
 			SequenceToIds() = default ;
@@ -1137,34 +1164,35 @@ namespace impl {
 		{
 			// For this algorithm we need:
 			// 1. the input segmented sequences, ordered by the occurence count.
-			std::map< impl::SegmentedSequence, std::vector< impl::Segmentation > > by_sequence_impl ;
+			std::map< impl::MatchedSequence, std::vector< impl::Segmentation > > by_sequence_impl ;
+			//std::map< std::string, std::vector< impl::Segmentation > > by_sequence_impl ;
 			for( auto s: segmentations ) {
 				if( s.is_unambiguous() ) {
 					++m_unambiguous_read_count ;
-					by_sequence_impl[ s.sequence() ].push_back( s ) ;
+					by_sequence_impl[ s.match() ].push_back( s ) ;
 				} else {
 					m_ambiguous_reads.push_back( s ) ;
 				}
 			}
 
 			// Put sequences in descending order of frequency
-			std::vector< SegmentationToReads > elts ;
+			std::vector< MatchToReads > elts ;
 			elts.reserve( by_sequence_impl.size() ) ;
 			for( auto kv: by_sequence_impl ) {
-				elts.push_back( SegmentationToReads( kv.first, kv.second )) ;
+				elts.push_back( MatchToReads( kv.first, kv.second )) ;
 			}
 			std::sort(
 				elts.begin(),
 				elts.end(),
-				[]( SegmentationToReads const& a, SegmentationToReads const& b ) {
-					return (a.reads.size() > b.reads.size()) || ((a.reads.size() == b.reads.size()) && (a.sequence < b.sequence)) ;
+				[]( MatchToReads const& a, MatchToReads const& b ) {
+					return (a.reads.size() > b.reads.size()) || ((a.reads.size() == b.reads.size()) && (a.match < b.match)) ;
 				}
 			) ;
 
 			std::vector< SequenceToIds > by_hpc_sequence ;
 			std::map< std::string, std::size_t > found ;
 			for( std::size_t i = 0; i < elts.size(); ++i ) {
-				std::string hpc_sequence = elts[i].sequence.hpc_sequence() ;
+				std::string hpc_sequence = elts[i].match.hpc_sequence() ;
 				auto where = found.find( hpc_sequence ) ;
 				if( where == found.end() ) {
 					found[hpc_sequence] = by_hpc_sequence.size() ;
@@ -1191,7 +1219,7 @@ namespace impl {
 			return m_unambiguous_read_count ;
 		}
 
-		std::vector< SegmentationToReads > const& sequences() const { return m_sequences ; }
+		std::vector< MatchToReads > const& sequences() const { return m_sequences ; }
 		std::vector< Segmentation > const& ambiguous_sequences() const { return m_ambiguous_reads ; }
 		std::vector< SequenceToIds > const& hpc_sequences() const { return m_hpc_sequences ; }
 
@@ -1205,14 +1233,14 @@ namespace impl {
 
 
 	private:
-		std::vector< SegmentationToReads > m_sequences ;
+		std::vector< MatchToReads > m_sequences ;
 		std::vector< SequenceToIds > m_hpc_sequences ;
 		std::size_t m_unambiguous_read_count ;
 		std::vector< Segmentation > m_ambiguous_reads ;
 	} ;
 
-	std::ostream& operator<<( std::ostream& out, AlgorithmData::SegmentationToReads const& s ) {
-		out << s.sequence << ": " ;
+	std::ostream& operator<<( std::ostream& out, AlgorithmData::MatchToReads const& s ) {
+		out << s.match << ": " ;
 		for( std::size_t i = 0; i < s.reads.size(); ++i ) {
 			if( i>0 ) {
 				out << "," ;
@@ -1802,14 +1830,15 @@ private:
 
 	std::vector< AlgorithmData::SequenceToIds > find_most_common_representative_read(
 		std::vector< std::size_t > const& final_haplotypes,
-		std::vector< int > const& hpc_assignments,
+		std::vector< int > const& hpc_to_cluster_assignments,
 		AlgorithmData const& data
 	) {
 		typedef AlgorithmData::SequenceToIds SequenceToIds ;
+		assert( hpc_to_cluster_assignments.size() == data.hpc_sequences().size() ) ;
 		std::vector< SequenceToIds > result = std::vector< SequenceToIds >( final_haplotypes.size(), SequenceToIds() ) ;
-		for( int i = 0; i < hpc_assignments.size(); ++i ) {
-			if( hpc_assignments[i] != -1 ) {
-				std::size_t j = hpc_assignments[i] ;
+		for( int i = 0; i < data.hpc_sequences().size(); ++i ) {
+			if( hpc_to_cluster_assignments[i] != -1 ) {
+				std::size_t j = hpc_to_cluster_assignments[i] ;
 				result[j].sequence_ids.insert(
 					result[j].sequence_ids.end(),
 					data.hpc_sequences()[i].sequence_ids.begin(),
@@ -1822,12 +1851,12 @@ private:
 			std::sort(
 				result[i].sequence_ids.begin(),
 				result[i].sequence_ids.end(),
-				[&data]( std::size_t i, std::size_t j ) {
-					return data.sequences()[i].reads.size() > data.sequences()[j].reads.size() ;
+				[&data]( std::size_t a, std::size_t b ) {
+					return data.sequences()[a].reads.size() > data.sequences()[b].reads.size() ;
 				}
 			) ;
 			if( result[i].sequence_ids.size() > 0 ) {
-				result[i].sequence = data.sequences()[ result[i].sequence_ids.front() ].sequence.matching_sequence() ;
+				result[i].sequence = data.sequences()[ result[i].sequence_ids.front() ].match.sequence() ;
 			}
 		}
 		return result ;
@@ -1973,8 +2002,8 @@ private:
 						<< uint64_t(s.ranges()[i].start + 1)
 						<< uint64_t(s.ranges()[i].end) ;
 				}
-				(*output) << s.matching_sequence() ;
-				(*output) << genfile::translate( s.matching_sequence(), truncate_at_stops ) ;
+				(*output) << s.match().sequence() ;
+				(*output) << genfile::translate( s.match().sequence(), truncate_at_stops ) ;
 			} else {
 				while( output->current_column() < output->number_of_columns() ) {
 					(*output) << "NA" ;
@@ -2032,7 +2061,7 @@ private:
 					}
 					
 					(*output)
-						<< segmentations.sequence.matching_sequence()
+						<< segmentations.match.sequence()
 						<< hpc.sequence
 						<< statfile::end_row()
 					;
@@ -2055,7 +2084,7 @@ private:
 			for( std::size_t k = 1; k < kmer_pairs.size(); ++k ) {
 				(*output) << NA << NA ;
 			}
-			(*output) << read.matching_sequence() << NA << statfile::end_row() ;
+			(*output) << read.match().sequence() << NA << statfile::end_row() ;
 		}
 	}
 
@@ -2151,7 +2180,7 @@ private:
 			auto total_exact = 0ul ;
 			for( auto i: x.sequence_ids ) {
 				auto const& y = data.sequences()[i] ;
-				auto const& sequence = y.sequence.matching_sequence() ;
+				auto const& sequence = y.match.sequence() ;
 				total_reads += y.reads.size() ;
 				if( sequence == x.sequence) {
 					total_exact += y.reads.size() ;
@@ -2178,7 +2207,7 @@ private:
 			auto total_exact = 0ul ;
 			for( auto i: x.sequence_ids ) {
 				auto const& y = data.sequences()[i] ;
-				auto const sequence = genfile::translate( y.sequence.matching_sequence(), algorithm_options.truncate_at_stops ) ;
+				auto const sequence = genfile::translate( y.match.sequence(), algorithm_options.truncate_at_stops ) ;
 				total_reads += y.reads.size() ;
 				if( sequence == x.sequence ) {
 					total_exact += y.reads.size() ;
@@ -2298,7 +2327,7 @@ private:
 							sequence_name,
 							impl::Segmentation::eAmbiguousStrand,
 							sequence,
-							impl::Segmentation::Ranges( 1, impl::SegmentedSequence::Range( 0, sequence.size() ))
+							impl::Segmentation::Ranges( 1, impl::MatchedSequence::Range( 0, sequence.size() ))
 						)
 					) ;
 				} else if( fwd ) {
@@ -2329,7 +2358,7 @@ private:
 							sequence_name,
 							impl::Segmentation::eNeitherStrand,
 							sequence,
-							impl::Segmentation::Ranges( 1, impl::SegmentedSequence::Range( 0, sequence.size() ))
+							impl::Segmentation::Ranges( 1, impl::MatchedSequence::Range( 0, sequence.size() ))
 						)
 					) ;
 				}
