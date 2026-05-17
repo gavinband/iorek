@@ -1011,9 +1011,6 @@ namespace impl {
 				return false ;
 			}
 			for( std::size_t x = 0; i != end_i; ++i, ++x ) {
-				if( (kmer[x] != 'N') && (kmer[x] != sequence[i]) ) {
-					return false ;
-				}
 				// IUPAC codes
 				// From https://www.bioinformatics.org/sms/iupac.html
 				bool ok = false ;
