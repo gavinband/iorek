@@ -139,6 +139,7 @@ public:
 			.set_description(
 				"Specify a pair of DNA kmers, on the *translation strand*, that represent the start and end of a CDS segment."
 				" If the gene has multiple exons, specify this option multiple times."
+				" The kmers should be specified in upper-case letters and can include IUPAC SNP (but not indel) codes to allow for known variation."
 			)
 			.set_takes_values_until_next_option()
 			.set_minimum_multiplicity(1)
