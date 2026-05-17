@@ -55,7 +55,7 @@ namespace seqlib = SeqLib;
 #include "statfile/BuiltInTypeStatSink.hpp"
 #include "iorek/log_sum_exp.hpp"
 
-#define DEBUG 1
+#define DEBUG 2
 
 namespace globals {
 	std::string const program_name = "translatorator" ;
@@ -158,7 +158,7 @@ public:
 		options[ "-iterations" ]
 			.set_description( "Number of iterations" )
 			.set_takes_single_value()
-			.set_default_value( 1 )
+			.set_default_value( 10 )
 		;
 		options[ "-min-obs-per-sample" ]
 			.set_description( "The minimum number of times a sequence must be observed in one sample, "
@@ -457,7 +457,6 @@ namespace impl {
 				}
 				std::string result ;
 				result.reserve( m_sequence.size() + 20 ) ;
-				std::size_t i = 0 ;
 				for( auto range: m_ranges ) {
 					if( result.size() > 0 ) {
 						result.insert( result.end(), separator.begin(), separator.end() ) ;
@@ -917,7 +916,17 @@ namespace impl {
 		return( result ) ;
 	}
 
-	bool load_fragmented_dna_sequence(
+	// find_spliced_match looks for linear chains of the given pairs of kmers (A1,B1), (A2,B2), ... in the given input sequence.
+	// a match is found if:
+	// - A1, B1, ..., An, Bn appear in the input sequence in the given order, without overlaps.
+	// 
+	// the kmer pairs must appear in order, be non-overlapping, and must be unique matches.
+	// Return value; true if a match is found, false otherwise.
+	// Side effects: the result is populated with the matching piece of sequence (omitting the
+	// bits between different pairs of kmers) and the ranges are populated with the positions in
+	// the input sequence of the matching kmers.
+	// 
+	bool find_spliced_match_original(
 		std::string const& sequence,
 		std::vector< KmerPair > const& kmer_pairs,
 		std::string* result = 0,
@@ -934,7 +943,7 @@ namespace impl {
 			std::size_t la = kmer_pairs[i].first().size() ;
 			std::size_t lb = kmer_pairs[i].second().size() ;
 
-			// Structural variants can create extra copies of exons that 
+			// Structural variants can create extra copies of exons that
 			// aren't part of transcribed genes. (E.g  exon 6/7 of Pf3D7_1127000 in Pf FUP/H).
 			// Therefore, we only look downstream of the last found kmer pair.
 			std::size_t const search_start_at = ( (i>0) ? positions[i-1].end + 1 : 0 ) ;
@@ -978,38 +987,193 @@ namespace impl {
 		return true ;
 	}
 
-	void test_load_fragmented_dna_sequence() {
+	// find_spliced_match looks for linear chains of the given pairs of kmers (A1,B1), (A2,B2), ... in the given input sequence.
+	// a match is found if:
+	// It first finds all such linear chains and returns true (populating the sequence and ranges) if there is exactly one such chain.
+	// 
+	bool find_spliced_match(
+		std::string const& sequence,
+		std::vector< KmerPair > const& kmer_pairs,
+		std::string* result = 0,
+		Segmentation::Ranges* ranges = 0
+	) {
+		if( kmer_pairs.size() == 0 ) {
+			return false ;
+		}
+		// compare sequence starting at position i to kmer
+		// Ns in kmer are ignored.
+		// returns true if the sequence matches the kmer at position i (ignoring Ns in kmer)
+		// or false if there is a mismatch, or the kmer.size() + i > sequence length.
+		auto subsequence_matches = [&]( std::string const& sequence, std::size_t i, std::string const& kmer ) -> bool {
+			auto end_i = i + kmer.size() ;
+			if( end_i > sequence.size() ) {
+				return false ;
+			}
+			for( std::size_t x = 0; i != end_i; ++i, ++x ) {
+				if( (kmer[x] != 'N') && (kmer[x] != sequence[i]) ) {
+					return false ;
+				}
+				// IUPAC codes
+				// From https://www.bioinformatics.org/sms/iupac.html
+				bool ok = false ;
+				switch( kmer[x] ) {
+					case 'A': ok = ( sequence[i] == 'A' ) ; break ;
+					case 'C': ok = ( sequence[i] == 'C' ) ; break ;
+					case 'G': ok = ( sequence[i] == 'G' ) ; break ;
+					case 'T': ok = ( sequence[i] == 'T' ) ; break ;
+					case 'R': ok = ( sequence[i] == 'A' || sequence[i] == 'G' ); break ;
+					case 'Y': ok = ( sequence[i] == 'C' || sequence[i] == 'T' ); break ;
+					case 'S': ok = ( sequence[i] == 'G' || sequence[i] == 'C' ); break ;
+					case 'W': ok = ( sequence[i] == 'A' || sequence[i] == 'T' ); break ;
+					case 'K': ok = ( sequence[i] == 'G' || sequence[i] == 'T' ); break ;
+					case 'M': ok = ( sequence[i] == 'A' || sequence[i] == 'C' ); break ;
+					case 'B': ok = ( sequence[i] == 'C' || sequence[i] == 'G' || sequence[i] == 'T' ); break ;
+					case 'D': ok = ( sequence[i] == 'A' || sequence[i] == 'G' || sequence[i] == 'T' ); break ;
+					case 'H': ok = ( sequence[i] == 'A' || sequence[i] == 'C' || sequence[i] == 'T' ); break ;
+					case 'V': ok = ( sequence[i] == 'A' || sequence[i] == 'C' || sequence[i] == 'G' ); break ;
+					case 'N': ok = true ; break ;
+					default: ok = false ; break ;
+				}
+				if( !ok ) { 
+					return false ;
+				}
+			}
+			return true ;
+		} ;
+
+		// Find all matching locations of all kmers
+		std::vector< std::vector< std::size_t > > matches( kmer_pairs.size() * 2 ) ;
+		for( std::size_t p = 0; p < sequence.size(); ++p ) {
+			for( std::size_t k = 0; k < kmer_pairs.size(); ++k ) {
+				auto const& kmer_pair = kmer_pairs[k] ;
+				if( subsequence_matches( sequence, p, kmer_pair.first() ) ) {
+					matches[2*k].push_back(p) ;
+				}
+				if( subsequence_matches( sequence, p, kmer_pair.second() ) ) {
+					matches[2*k+1].push_back(p) ;
+				}
+			}
+		}
+
+		// Bail out if there are no matches for some kmers
+		for( std::size_t j = 0; j < matches.size(); ++j ) {
+			if( matches[j].size() == 0 ) {
+				return false ;
+			}
+		}
+
+		// Find all chains covering all kmer ranges in linear order
+		std::vector< std::vector< std::size_t > > chains ;
+		std::vector< std::size_t > current( matches.size(), 0 ) ;
+		while( current[0] < matches[0].size() ) {
+			{
+				// check if current set of matches is a linear chain
+				// in which the kmers do not overlap
+				bool is_linear_chain = true ;
+				for( std::size_t j = 1; j < matches.size(); ++j ) {
+					// 'matches' is linearised (kmer1, kmer2, etc.) whereas kmer_pairs isn't
+					// so we have to undo this here:
+					auto const& previous_kmer = (j % 2 == 0) ? kmer_pairs[(j-1)/2].second() : kmer_pairs[(j-1)/2].first() ;
+					if( matches[j][current[j]] < matches[j-1][current[j-1]] + previous_kmer.size() ) {
+						is_linear_chain = false ;
+						break ;
+					}
+				}
+				if( is_linear_chain ) {
+					chains.push_back( current ) ;
+				}
+			}
+			{
+				std::size_t j = matches.size() ;
+				for( ; j > 0; --j ) {
+					current[j-1] = (current[j-1]+1) % matches[j-1].size() ;
+					if( current[j-1] > 0 ) {
+						break ;
+					}
+				}
+				if( j == 0 ) {
+					break ;
+				}
+			}
+		}
+
+		if( chains.size() == 1 ) {
+			auto chain = chains[0] ;
+			std::string final_sequence ;
+			Segmentation::Ranges final_ranges ;
+			std::size_t length = 0 ;
+			for( std::size_t j = 0; j < matches.size(); j += 2 ) {
+				auto p1 = matches[j]  [ chain[j]   ] ;
+				auto p2 = matches[j+1][ chain[j+1] ] + kmer_pairs[j/2].second().size() ;
+				final_ranges.push_back( Segmentation::Range( p1, p2 )) ;
+				length += p2-p1 ;
+			}
+			final_sequence.reserve(length) ;
+			for( std::size_t j = 0; j < matches.size(); j += 2 ) {
+				auto p1 = matches[j]  [ chain[j]   ] ;
+				auto p2 = matches[j+1][ chain[j+1] ] + kmer_pairs[j/2].second().size() ;
+				final_sequence.append( sequence, p1, p2-p1 ) ;
+			}
+			if( result ) {
+				result->swap( final_sequence ) ;
+			}
+			if( ranges ) {
+				ranges->swap( final_ranges ) ;
+			}
+			return true ;
+		} else {
+			return false ;
+		}
+	}
+
+	void test_find_spliced_match() {
 		std::string sequence = "ACGTAACCGGTTAAACCCGGGTTTAAAACCCCGGGGTTTT" ;
 		std::vector< KmerPair > pairs ;
 		std::string result ;
 		Segmentation::Ranges positions ;
 		pairs.push_back( KmerPair( "CGTA", "GTTA" )) ;
-		assert( !load_fragmented_dna_sequence( "", pairs, &result, &positions ) ) ;
-		assert( !load_fragmented_dna_sequence( "CGTA", pairs, &result, &positions ) ) ;
-		assert( load_fragmented_dna_sequence( "CGTAGTTA", pairs, &result, &positions ) ) ;
+		assert( !find_spliced_match( "", pairs, &result, &positions ) ) ;
+		assert( !find_spliced_match( "CGTA", pairs, &result, &positions ) ) ;
+		assert( find_spliced_match( "CGTAGTTA", pairs, &result, &positions ) ) ;
 		assert( result.size() == 8 ) ;
 		assert( positions.size() == 1 ) ;
-		assert( load_fragmented_dna_sequence( "CGTAGTTAAAAA", pairs, &result, &positions ) ) ;
+		assert( find_spliced_match( "CGTAGTTAAAAA", pairs, &result, &positions ) ) ;
 		assert( result.size() == 8 ) ;
 		assert( positions.size() == 1 ) ;
-		assert( load_fragmented_dna_sequence( "CGTAGCGCGCGCGGTTA", pairs, &result, &positions ) ) ;
+		assert( find_spliced_match( "CGTAGCGCGCGCGGTTA", pairs, &result, &positions ) ) ;
 		assert( result.size() == 17 ) ;
 		assert( positions.size() == 1 ) ;
-		assert( load_fragmented_dna_sequence( "CGTAGCGCGCGCGGTTAAAAA", pairs, &result, &positions ) ) ;
+		assert( find_spliced_match( "CGTAGCGCGCGCGGTTAAAAA", pairs, &result, &positions ) ) ;
 		assert( result.size() == 17 ) ;
 		assert( positions.size() == 1 ) ;
-		assert( !load_fragmented_dna_sequence( "CGTACGTAGTTA", pairs, &result, &positions ) ) ;
-		assert( !load_fragmented_dna_sequence( "CGTAGTTAGTTA", pairs, &result, &positions ) ) ;
-		assert( !load_fragmented_dna_sequence( "GTTACGTA", pairs, &result, &positions ) ) ;
+		assert( !find_spliced_match( "CGTACGTAGTTA", pairs, &result, &positions ) ) ;
+		assert( !find_spliced_match( "CGTAGTTAGTTA", pairs, &result, &positions ) ) ;
+		assert( !find_spliced_match( "GTTACGTA", pairs, &result, &positions ) ) ;
 
 		pairs.push_back( KmerPair( "GGTA", "GCTA" )) ;
-		assert( !load_fragmented_dna_sequence( "CGTANGTTA", pairs, &result, &positions ) ) ;
-		assert( !load_fragmented_dna_sequence( "CGTANGTTANGGTA", pairs, &result, &positions ) ) ;
-		assert( load_fragmented_dna_sequence( "CGTANGTTANGGTANGCTA", pairs, &result, &positions ) ) ;
+		assert( !find_spliced_match( "CGTANGTTA", pairs, &result, &positions ) ) ;
+		assert( !find_spliced_match( "CGTANGTTANGGTA", pairs, &result, &positions ) ) ;
+		assert( find_spliced_match( "CGTANGTTANGGTANGCTA", pairs, &result, &positions ) ) ;
 		assert( result.size() == 18 ) ;
 		assert( positions.size() == 2 ) ;
-		assert( !load_fragmented_dna_sequence( "CGTAGGTAGTTAGCTA", pairs, &result, &positions ) ) ;
-		assert( !load_fragmented_dna_sequence( "CGTAGCTAGTTAGGTA", pairs, &result, &positions ) ) ;
+		assert( !find_spliced_match( "CGTAGGTAGTTAGCTA", pairs, &result, &positions ) ) ;
+		assert( !find_spliced_match( "CGTAGCTAGTTAGGTA", pairs, &result, &positions ) ) ;
+
+		pairs.clear() ;
+		pairs.push_back( KmerPair( "CGNA", "GTTA" )) ;
+		assert(  find_spliced_match( "CGTANNGTTA", pairs, &result, &positions ) ) ;
+		assert(  find_spliced_match( "CGAANNGTTA", pairs, &result, &positions ) ) ;
+		assert(  find_spliced_match( "CGGANNGTTA", pairs, &result, &positions ) ) ;
+		assert(  find_spliced_match( "CGCANNGTTA", pairs, &result, &positions ) ) ;
+		assert( !find_spliced_match( "CCTANNGTTA", pairs, &result, &positions ) ) ;
+
+		pairs.clear() ;
+		pairs.push_back( KmerPair( "CGTA", "GTNA" )) ;
+		assert(  find_spliced_match( "CGTANNGTTA", pairs, &result, &positions ) ) ;
+		assert(  find_spliced_match( "CGTANNGTAA", pairs, &result, &positions ) ) ;
+		assert(  find_spliced_match( "CGTANNGTCA", pairs, &result, &positions ) ) ;
+		assert(  find_spliced_match( "CGTANNGTGA", pairs, &result, &positions ) ) ;
+		assert( !find_spliced_match( "CGTANNGATA", pairs, &result, &positions ) ) ;
 	}
 
 	struct MixtureOfHaplotypes {
@@ -1267,7 +1431,7 @@ public:
 	
 	void run() {
 		try {
-			impl::test_load_fragmented_dna_sequence() ;
+			impl::test_find_spliced_match() ;
 			unsafe_process() ;
 		}
 		catch( genfile::InputError const& e ) {
@@ -1755,16 +1919,21 @@ private:
 
 			// Try all ways to add entries
 #if DEBUG
-			std::cerr  << "!! trying additions...\n" ;
+			std::cerr  << "!! trying additions across " << alignments.alignment_targets().size() << " targets...\n" ;
 #endif
 			for( auto haplotype: alignments.alignment_targets() ) {
+				std::cerr << "Adding " << haplotype << ".\n" ;
+
 				if( !state.contains( haplotype )) {
+					std::cerr << "...not currently in.\n" ;
 					state_queue.enqueue(
 						state.add(
 							haplotype,
 							(state.size() == 0) ? 1.0 : 0.1
 						)
 					) ;
+				} else {
+					std::cerr << "...already in.\n" ;
 				}
 			}
 
@@ -2318,8 +2487,8 @@ private:
 		while( sequences.next( &sequence_name, &sequence, &qualities )) {
 			if( include_read( sequence_name, sequence, qualities )) {
 				impl::to_upper_inplace( sequence ) ;
-				bool fwd = load_fragmented_dna_sequence( sequence, kmer_pairs, &fwd_sequence, &fwd_positions ) ;
-				bool rev = load_fragmented_dna_sequence( genfile::reverse_complement( sequence ), kmer_pairs, &rc_sequence, &rc_positions ) ;
+				bool fwd = find_spliced_match( sequence, kmer_pairs, &fwd_sequence, &fwd_positions ) ;
+				bool rev = find_spliced_match( genfile::reverse_complement( sequence ), kmer_pairs, &rc_sequence, &rc_positions ) ;
 				if( fwd & rev ) {
 					result->push_back(
 						impl::Segmentation(
