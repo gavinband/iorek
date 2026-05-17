@@ -1011,9 +1011,6 @@ namespace impl {
 				return false ;
 			}
 			for( std::size_t x = 0; i != end_i; ++i, ++x ) {
-				if( (kmer[x] != 'N') && (kmer[x] != sequence[i]) ) {
-					return false ;
-				}
 				// IUPAC codes
 				// From https://www.bioinformatics.org/sms/iupac.html
 				bool ok = false ;
@@ -1057,6 +1054,11 @@ namespace impl {
 		}
 
 		// Bail out if there are no matches for some kmers
+#if DEBUG
+		for( std::size_t j = 0; j < matches.size(); ++j ) {
+			std::cerr << "Matches: " << j << ": " << matches[j].size() << ".\n" ;
+		}
+#endif
 		for( std::size_t j = 0; j < matches.size(); ++j ) {
 			if( matches[j].size() == 0 ) {
 				return false ;
