@@ -1,8 +1,9 @@
 #!/bin/bash
 
 mkdir -p tmp
+rm -f tmp/PfCRT.sequences.tsv
 
-../../build/apps/translatorator_v0.9.1 \
+../../build/apps/translatorator_v0.9.2 \
 -sequences PfCRT.fa.gz \
 -mode asm \
 -cds-kmers  \
