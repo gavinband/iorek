@@ -1174,6 +1174,87 @@ namespace impl {
 		assert(  find_spliced_match( "CGTANNGTCA", pairs, &result, &positions ) ) ;
 		assert(  find_spliced_match( "CGTANNGTGA", pairs, &result, &positions ) ) ;
 		assert( !find_spliced_match( "CGTANNGATA", pairs, &result, &positions ) ) ;
+
+		// R	A or G
+		pairs.clear() ;
+		pairs.push_back( KmerPair( "CRTA", "GTTA" )) ; // A or G
+		assert(  find_spliced_match( "CATANNGTTA", pairs, &result, &positions ) ) ;
+		assert(  find_spliced_match( "CGTANNGTTA", pairs, &result, &positions ) ) ;
+		assert( !find_spliced_match( "CTTANNGTTA", pairs, &result, &positions ) ) ;
+		assert( !find_spliced_match( "CCTANNGTTA", pairs, &result, &positions ) ) ;
+
+		// Y	C or T
+		pairs.clear() ;
+		pairs.push_back( KmerPair( "CYTA", "GTTA" )) ; // A or G
+		assert( !find_spliced_match( "CATANNGTTA", pairs, &result, &positions ) ) ;
+		assert( !find_spliced_match( "CGTANNGTTA", pairs, &result, &positions ) ) ;
+		assert(  find_spliced_match( "CTTANNGTTA", pairs, &result, &positions ) ) ;
+		assert(  find_spliced_match( "CCTANNGTTA", pairs, &result, &positions ) ) ;
+
+		// S	G or C
+		pairs.clear() ;
+		pairs.push_back( KmerPair( "CSTA", "GTTA" )) ; // A or G
+		assert( !find_spliced_match( "CATANNGTTA", pairs, &result, &positions ) ) ;
+		assert(  find_spliced_match( "CGTANNGTTA", pairs, &result, &positions ) ) ;
+		assert( !find_spliced_match( "CTTANNGTTA", pairs, &result, &positions ) ) ;
+		assert(  find_spliced_match( "CCTANNGTTA", pairs, &result, &positions ) ) ;
+
+		// W	A or T
+		pairs.clear() ;
+		pairs.push_back( KmerPair( "CWTA", "GTTA" )) ; // A or G
+		assert(  find_spliced_match( "CATANNGTTA", pairs, &result, &positions ) ) ;
+		assert( !find_spliced_match( "CGTANNGTTA", pairs, &result, &positions ) ) ;
+		assert(  find_spliced_match( "CTTANNGTTA", pairs, &result, &positions ) ) ;
+		assert( !find_spliced_match( "CCTANNGTTA", pairs, &result, &positions ) ) ;
+		// K	G or T
+		pairs.clear() ;
+		pairs.push_back( KmerPair( "CKTA", "GTTA" )) ; // A or G
+		assert( !find_spliced_match( "CATANNGTTA", pairs, &result, &positions ) ) ;
+		assert(  find_spliced_match( "CGTANNGTTA", pairs, &result, &positions ) ) ;
+		assert(  find_spliced_match( "CTTANNGTTA", pairs, &result, &positions ) ) ;
+		assert( !find_spliced_match( "CCTANNGTTA", pairs, &result, &positions ) ) ;
+		// M	A or C
+		pairs.clear() ;
+		pairs.push_back( KmerPair( "CMTA", "GTTA" )) ; // A or G
+		assert(  find_spliced_match( "CATANNGTTA", pairs, &result, &positions ) ) ;
+		assert( !find_spliced_match( "CGTANNGTTA", pairs, &result, &positions ) ) ;
+		assert( !find_spliced_match( "CTTANNGTTA", pairs, &result, &positions ) ) ;
+		assert(  find_spliced_match( "CCTANNGTTA", pairs, &result, &positions ) ) ;
+		// B	C or G or T
+		pairs.clear() ;
+		pairs.push_back( KmerPair( "CBTA", "GTTA" )) ; // A or G
+		assert( !find_spliced_match( "CATANNGTTA", pairs, &result, &positions ) ) ;
+		assert(  find_spliced_match( "CGTANNGTTA", pairs, &result, &positions ) ) ;
+		assert(  find_spliced_match( "CTTANNGTTA", pairs, &result, &positions ) ) ;
+		assert(  find_spliced_match( "CCTANNGTTA", pairs, &result, &positions ) ) ;
+		// D	A or G or T
+		pairs.clear() ;
+		pairs.push_back( KmerPair( "CDTA", "GTTA" )) ; // A or G
+		assert(  find_spliced_match( "CATANNGTTA", pairs, &result, &positions ) ) ;
+		assert(  find_spliced_match( "CGTANNGTTA", pairs, &result, &positions ) ) ;
+		assert(  find_spliced_match( "CTTANNGTTA", pairs, &result, &positions ) ) ;
+		assert( !find_spliced_match( "CCTANNGTTA", pairs, &result, &positions ) ) ;
+		// H	A or C or T
+		pairs.clear() ;
+		pairs.push_back( KmerPair( "CHTA", "GTTA" )) ; // A or G
+		assert(  find_spliced_match( "CATANNGTTA", pairs, &result, &positions ) ) ;
+		assert( !find_spliced_match( "CGTANNGTTA", pairs, &result, &positions ) ) ;
+		assert(  find_spliced_match( "CTTANNGTTA", pairs, &result, &positions ) ) ;
+		assert(  find_spliced_match( "CCTANNGTTA", pairs, &result, &positions ) ) ;
+		// V	A or C or G
+		pairs.clear() ;
+		pairs.push_back( KmerPair( "CVTA", "GTTA" )) ; // A or G
+		assert(  find_spliced_match( "CATANNGTTA", pairs, &result, &positions ) ) ;
+		assert(  find_spliced_match( "CGTANNGTTA", pairs, &result, &positions ) ) ;
+		assert( !find_spliced_match( "CTTANNGTTA", pairs, &result, &positions ) ) ;
+		assert(  find_spliced_match( "CCTANNGTTA", pairs, &result, &positions ) ) ;
+		// N	any base
+		pairs.clear() ;
+		pairs.push_back( KmerPair( "CNTA", "GTTA" )) ; // A or G
+		assert(  find_spliced_match( "CATANNGTTA", pairs, &result, &positions ) ) ;
+		assert(  find_spliced_match( "CGTANNGTTA", pairs, &result, &positions ) ) ;
+		assert(  find_spliced_match( "CTTANNGTTA", pairs, &result, &positions ) ) ;
+		assert(  find_spliced_match( "CCTANNGTTA", pairs, &result, &positions ) ) ;
 	}
 
 	struct MixtureOfHaplotypes {
