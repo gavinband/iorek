@@ -7,17 +7,6 @@ A key use case is extracting the coding sequence of a gene based on kmers identi
 
 **Note** `translatorator` is under development and its feature set, design, and usage miught change.
 
-
-## Features:
-
-* Can work with FASTA input or with aligned BAM/SAM/CRAM files
-* Finds sub-sequences of input sequences based on the presence of specific kmer pairs in the specific order given
-* In `asm` mode, outputs one sequence per input sequence (provided the kmers match).
-* In `hifi` mode, allows for read errors and so outputs a representation of the sequences that are in the sample and their frequency amongst the reads.
-* Examines sequences in both forward and reverse orientation
-* Allows for IUPAC codes in specified kmers, to allow for known genetic variants
-* Outputs matching sequences and their translation into amino acid sequence
-
 ## Diagram
 
 With input conceptually like this:
@@ -48,6 +37,17 @@ cluster number_of_reads total_informative_reads exact_reads proportion sequence
       0               4                       6           3 0.666      CGTGGTCACCGTCGGTAAGTCATA
       1               2                       6           2 0.333      CGTGGTCACCGTCGGTAAGCATA
 ```
+
+## Features:
+
+* Can work with FASTA input or with aligned BAM/SAM/CRAM files
+* Finds sub-sequences of input sequences based on the presence of specific kmer pairs in the specific order given
+* In `asm` mode, outputs one sequence per input sequence (provided the kmers match).
+* In `hifi` mode, allows for read errors and so outputs a representation of the sequences that are in the sample and their frequency amongst the reads.
+* Examines sequences in both forward and reverse orientation
+* Allows for IUPAC codes in specified kmers, to allow for known genetic variants
+* Outputs matching sequences and their translation into amino acid sequence
+
 
 ## Running translatorator
 
