@@ -24,8 +24,11 @@ With input conceptually like this:
 ```
     kmer pairs:    CGTG      GTCG  GTAA  CATA
 read1 sequence  GCACGTGGT-ACCGTCGTCGTAAGTCATAC
-read2 sequence   CACGTGGTCACCGTCGTCGTAAGTCATACGCC
-read3 sequence    ACGTGGTCACCGTCGTTGTAAGGCATA
+read2 sequence  GCACGTGGTCACCGTCGTCGTAAGTCATA
+read3 sequence   CACGTGGTCACCGTCGTCGTAAGTCATACGCC
+read4 sequence   CACGTGGTCACCGTCGTCGTAAGTCATACGCCGGC
+read5 sequence    ACGTGGTCACCGTCGTTGTAAG-CATA
+read6 sequence    ACGTGGTCACCGTCGTTGTAAG-CATACGCCGG
 ```
 
 You get output conceptually like this (`-mode asm`):
@@ -33,14 +36,17 @@ You get output conceptually like this (`-mode asm`):
  read sequence
 read1 CGTGGTACCGTCGGTAAGTCATA
 read2 CGTGGTCACCGTCGGTAAGTCATA
-read3 CGTGGTCACCGTCGGTAAGGCATA
+read3 CGTGGTCACCGTCGGTAAGTCATA
+read4 CGTGGTCACCGTCGGTAAGTCATA
+read5 CGTGGTCACCGTCGGTAAGCATA
+read6 CGTGGTCACCGTCGGTAAGCATA
 ```
 
 Or like this (`-mode hifi`):
 ```
-cluster number_of_reads total_informative_reads proportion sequence
-      0               2                       3      0.666 CGTGGTACCGTCGGTAAGTCATA
-      1               1                       3      0.333 CGTGGTCACCGTCGGTAAGGCATA
+cluster number_of_reads total_informative_reads exact_reads proportion sequence
+      0               4                       6           3 0.666      CGTGGTCACCGTCGGTAAGTCATA
+      1               2                       6           2 0.333      CGTGGTCACCGTCGGTAAGCATA
 ```
 
 ## Running translatorator
