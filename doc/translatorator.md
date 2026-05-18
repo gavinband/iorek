@@ -27,7 +27,7 @@ A key use case is extracting the coding sequence of a gene based on kmers identi
 
 Use `translatorator -help` to see all options.
 
-### Kmer matching notes
+### Kmer matching notes
 
 `translatorator` only considers an input sequence to match a set of kmers `(k1,k2), (k3,k4), ...` if
 
