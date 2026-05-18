@@ -7,7 +7,7 @@ fi
 echo "HPC weight =  ${HPC_WEIGHT}"
 
 mkdir -p tmp
-../../build/apps/translatorator_v0.9.1 \
+../../build/apps/translatorator_v0.9.2 \
 -mode hifi \
 -sequences EdT-Pon-nDi.bam \
 -exclude-reads EdT-Pon-nDi.excluded_reads.txt \
@@ -29,7 +29,7 @@ TTAACAAAAATAGACCAAGTGTAA \
 -output-clusters tmp/EdT-Pon-nDi.clusters.tsv \
 -output-identities tmp/EdT-Pon-nDi.identities.tsv
 
-../../build/apps/translatorator_v0.9.1 \
+../../build/apps/translatorator_v0.9.2 \
 -mode hifi \
 -cluster \
 -sequences EdT-Pon-nDi.bam \
