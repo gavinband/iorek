@@ -1813,7 +1813,7 @@ private:
 		) ;
 
 		if( options().check( "-output-sequences" )) {
-			ui().logger() << "++ Outputting sequences...\n" ;
+			ui().logger() << "++ Outputting sequences to \"" << options().get< std::string >( "-output-sequences" ) << "\"...\n" ;
 			output_reads(
 				data,
 				hpc_assignments,
@@ -1856,7 +1856,7 @@ private:
 				[]( AlgorithmData::SequenceToIds const& a, AlgorithmData::SequenceToIds const& b ) { return a.sequence_ids.size() > b.sequence_ids.size() ; }
 			) ;
 		}
-		ui().logger() << "++ Outputting clusters...\n" ;
+		ui().logger() << "++ Outputting clusters to \"" << options().get< std::string >( "-output-clusters" ) << "\"...\n" ;
 		output_consensus_sequences(
 			dna_consensus,
 			aa_consensus,
@@ -2155,7 +2155,7 @@ private:
 		std::vector< SequenceIndex > target_haplotypes = haplotypes.haplotypes() ;
 		for( SequenceIndex i = 0; i < data.hpc_sequences().size(); ++i ) {
 			for( std::size_t j = 0; j < target_haplotypes.size(); ++j ) {
-				std::cerr << "!!!! " << i << " -- " << j << " (" << target_haplotypes[j] << ").\n" ;
+//				std::cerr << "!!!! " << i << " -- " << j << " (" << target_haplotypes[j] << ").\n" ;
 				SequenceIndex target = target_haplotypes[j] ;
 				AlignmentDetail const& alignment = alignments.alignment( i, target ) ;
 				result(i,j) = double( alignment.identity ) ;
