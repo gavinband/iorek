@@ -7,6 +7,7 @@ A key use case is extracting the coding sequence of a gene based on kmers identi
 
 **Note** `translatorator` is under development and its feature set, design, and usage miught change.
 
+
 ## Features:
 
 * Can work with FASTA input or with aligned BAM/SAM/CRAM files
@@ -17,6 +18,30 @@ A key use case is extracting the coding sequence of a gene based on kmers identi
 * Allows for IUPAC codes in specified kmers, to allow for known genetic variants
 * Outputs matching sequences and their translation into amino acid sequence
 
+## Diagram
+
+With input conceptually like this:
+```
+    kmer pairs:    CGTG      GTCG  GTAA  CATA
+read1 sequence  GCACGTGGT-ACCGTCGTCGTAAGTCATAC
+read2 sequence   CACGTGGTCACCGTCGTCGTAAGTCATACGCC
+read3 sequence    ACGTGGTCACCGTCGTTGTAAGGCATA
+```
+
+You get output conceptually like this (`-mode asm`):
+```
+ read sequence
+read1 CGTGGTACCGTCGGTAAGTCATA
+read2 CGTGGTCACCGTCGGTAAGTCATA
+read3 CGTGGTCACCGTCGGTAAGGCATA
+```
+
+Or like this (`-mode hifi`):
+```
+cluster number_of_reads total_informative_reads proportion sequence
+      0               2                       3      0.666 CGTGGTACCGTCGGTAAGTCATA
+      1               1                       3      0.333 CGTGGTCACCGTCGGTAAGGCATA
+```
 
 ## Running translatorator
 
