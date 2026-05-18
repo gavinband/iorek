@@ -1054,6 +1054,11 @@ namespace impl {
 		}
 
 		// Bail out if there are no matches for some kmers
+#if DEBUG
+		for( std::size_t j = 0; j < matches.size(); ++j ) {
+			std::cerr << "Matches: " << j << ": " << matches[j].size() << ".\n" ;
+		}
+#endif
 		for( std::size_t j = 0; j < matches.size(); ++j ) {
 			if( matches[j].size() == 0 ) {
 				return false ;
