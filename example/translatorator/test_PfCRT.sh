@@ -3,8 +3,10 @@
 mkdir -p tmp
 rm -f tmp/PfCRT.sequences.tsv
 
+#-sequences PfCRT.fa.gz \
+
 ../../build/apps/translatorator_v0.9.2 \
--sequences PfCRT.fa.gz \
+-sequences ~/Downloads/x.fa \
 -mode asm \
 -cds-kmers  \
 ATGAAATTCGCAAGTAAAAAAAAT TTAGATAATTTAGTACAAGAAGGAA \
