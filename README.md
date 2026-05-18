@@ -4,6 +4,7 @@ This repository contains a collection of programs for analysing sequence data.
 
 - `find-motifs` finds (short) specified motifs in sequences from a fasta file.
 - `find-homopolymers` finds homopolymer tracts, as well as di- and tri-nucleotide repeats, in sequences from a FASTA file.  See the [documentation](doc/find-homopolymers.md)
+- `translatorator` finds sub-sequences of input sequence that match kmers, and translates them into amino acid sequence.  See the [documentation](doc/translatorator.md)
 - `coverotron` computes per-base or per-window sequence read coverage from a set of BAM or CRAM files.
 - `tabulate-alignments` reports the count of reads split by read base (or insertion/deletion) and mapping quality at each position in a given range or ranges.
 - `iorek-qc` quantifies the presence of 'true' and 'error' kmers in a set of sequence reads (from a FASTQ file), based on a database of true kmers in [jellyfish2](https://github.com/zippav/Jellyfish-2) format.
