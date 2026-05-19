@@ -55,7 +55,7 @@ namespace seqlib = SeqLib;
 #include "statfile/BuiltInTypeStatSink.hpp"
 #include "iorek/log_sum_exp.hpp"
 
-#define DEBUG 2
+#define DEBUG 1
 
 namespace globals {
 	std::string const program_name = "translatorator" ;
@@ -1070,7 +1070,7 @@ namespace impl {
 		}
 
 		// Bail out if there are no matches for some kmers
-#if DEBUG
+#if DEBUG > 2
 		for( std::size_t j = 0; j < matches.size(); ++j ) {
 			std::cerr << "Matches: " << j << ": " << matches[j].size() << ".\n" ;
 		}
@@ -1280,9 +1280,9 @@ namespace impl {
 		pairs.push_back( KmerPair( "CGTA", "GTTA" )) ; // A or G
 		assert( !find_spliced_match( "CATANNGTTA", pairs, &result, &positions, 0 ) ) ;
 		assert(  find_spliced_match( "CATANNGTTA", pairs, &result, &positions, 1 ) ) ;
-		assert( !find_spliced_match( "CATANNGATA", pairs, &result, &positions, 0 ) ) ;
-		assert( !find_spliced_match( "CATANNGATA", pairs, &result, &positions, 1 ) ) ;
-		assert(  find_spliced_match( "CATANNGATA", pairs, &result, &positions, 2 ) ) ;
+		assert( !find_spliced_match( "CAAANNGTTA", pairs, &result, &positions, 0 ) ) ;
+		assert( !find_spliced_match( "CAAANNGTTA", pairs, &result, &positions, 1 ) ) ;
+		assert(  find_spliced_match( "CAAANNGTTA", pairs, &result, &positions, 2 ) ) ;
 	}
 
 	struct MixtureOfHaplotypes {
