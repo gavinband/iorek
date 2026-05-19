@@ -5,10 +5,10 @@ rm -f tmp/PfCRT.sequences.tsv
 
 #-sequences PfCRT.fa.gz \
 
-../../build/apps/translatorator_v0.9.2 \
--sequences ~/Downloads/x.fa \
+../../build/apps/translatorator_v0.9.3 \
+-sequences PfCRT.fa.gz \
 -mode asm \
--cds-kmers  \
+-kmer-pairs  \
 ATGAAATTCGCAAGTAAAAAAAAT TTAGATAATTTAGTACAAGAAGGAA \
 ATGGCTCACGTTTAGGTGGAGGT GGAAATAAAAAGGGAAATTCAAAA \
 GAACGACACCGAAGCTTTAATTTA CTGCTTTTTAATATTAAGATATAG \
@@ -26,6 +26,7 @@ GAAAAAAAATGAGAAATGAAGAA GTCGATTCAATTATTACACAATAA \
 -min-fraction-per-sample 0 \
 -min-obs-per-sample 1 \
 -output-sequences tmp/PfCRT.sequences.tsv \
+-o tmp/PfCRT.tsv \
 -output-identities -
 
 cat tmp/PfCRT.sequences.tsv | grep -v '^#' 

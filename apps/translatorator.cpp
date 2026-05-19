@@ -99,8 +99,8 @@ public:
 		;
 
 		options.declare_group( "Output file options" ) ;
-		options[ "-output-clusters" ]
-			.set_description( "Path of main clusters output file." )
+		options[ "-o" ]
+			.set_description( "Path of main output file." )
 			.set_takes_single_value()
 			.set_default_value( "-" ) ;
 
@@ -1754,6 +1754,14 @@ private:
 					algorithm_options.truncate_at_stops
 				) ;
 			}
+			if( options().check( "-o" )) {
+				output_asm_sequences(
+					segmentations,
+					options().get< std::string >( "-o" ),
+					kmer_pairs,
+					algorithm_options.truncate_at_stops
+				) ;
+			}
 			return ;
 		}
 		assert( algorithm_options.mode == "hifi" ) ;
@@ -1890,7 +1898,7 @@ private:
 			aa_consensus,
 			data,
 			algorithm_options,
-			options().get< std::string >( "-output-clusters" ),
+			options().get< std::string >( "-o" ),
 			kmer_pairs
 		) ;
 
@@ -2294,6 +2302,81 @@ private:
 			(*output) << statfile::end_row() ;
 		}
 	}
+
+	void output_asm_sequences(
+		std::vector< Segmentation > const& result,
+		std::string const& filename,
+		std::vector< impl::KmerPair > kmer_pairs,
+		bool truncate_at_stops
+	) const {
+		using genfile::string_utils::to_string ;
+		statfile::BuiltInTypeStatSink::UniquePtr
+			output = statfile::BuiltInTypeStatSink::open( filename ) ;
+		{
+			output->write_comment( "Written by translatorator" ) ;
+			output->write_comment( "Kmer pairs are:" ) ;
+			for( std::size_t i = 0; i < kmer_pairs.size(); ++i ) {
+				output->write_comment( to_string(i+1) + ": " + kmer_pairs[i].first() + " / " + kmer_pairs[i].second() ) ;
+			}
+//			(*output) | "file" | "type" | "cluster_id" | "hpc_id" | "supporting_reads" | "exact_reads" | "total_informative_reads" | "proportion" | "total_reads" | "sequence" ;
+
+			(*output) | "file" | "type" | "sequence_id" | "strand" ;
+			for( std::size_t i = 0; i < kmer_pairs.size(); ++i ) {
+				(*output) | ("start_" + to_string(i+1)) | ("end_" + to_string(i+1)) ;
+			}
+			(*output) | "sequence";
+		}
+
+		for( auto s: result ) {
+#if DEBUG > 1
+			std::cerr << "kmer pairs size: " << kmer_pairs.size() << ".\n" ;
+			std::cerr << s << "\n" ;
+#endif
+			// DNA record
+			(*output)
+				<< s.sample_id()
+				<< "dna"
+				<< s.sequence_id()
+				<< std::string( 1, s.strand() ) ;
+
+			if( s.is_unambiguous() ) {
+				for( std::size_t i = 0; i < kmer_pairs.size(); ++i ) {
+					(*output)
+						<< uint64_t(s.ranges()[i].start + 1)
+						<< uint64_t(s.ranges()[i].end) ;
+				}
+				(*output) << s.match().sequence() ;
+			} else {
+				while( output->current_column() < output->number_of_columns() ) {
+					(*output) << "NA" ;
+				}
+			}
+			(*output) << statfile::end_row() ;
+
+			// AA record
+			(*output)
+				<< s.sample_id()
+				<< "aa"
+				<< s.sequence_id()
+				<< std::string( 1, s.strand() ) ;
+
+			if( s.is_unambiguous() ) {
+				for( std::size_t i = 0; i < kmer_pairs.size(); ++i ) {
+					(*output)
+						<< uint64_t(s.ranges()[i].start + 1)
+						<< uint64_t(s.ranges()[i].end) ;
+				}
+				(*output) << genfile::translate( s.match().sequence(), truncate_at_stops ) ;
+			} else {
+				while( output->current_column() < output->number_of_columns() ) {
+					(*output) << "NA" ;
+				}
+			}
+
+			(*output) << statfile::end_row() ;
+		}
+	}
+
 
 	void output_reads(
 		AlgorithmData const& data,
