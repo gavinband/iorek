@@ -135,7 +135,7 @@ public:
 			.set_default_value( "-" ) ;
 
 		options.declare_group( "Coding sequence options" ) ;
-		options[ "-cds-kmers" ]
+		options[ "-kmer-pairs" ]
 			.set_description(
 				"Specify a pair of DNA kmers, on the *translation strand*, that represent the start and end of a CDS segment."
 				" If the gene has multiple exons, specify this option multiple times."
@@ -144,6 +144,14 @@ public:
 			.set_takes_values_until_next_option()
 			.set_minimum_multiplicity(1)
 			.set_minimum_multiplicity(1000) ;
+
+		options[ "-kmer-max-mismatches" ]
+			.set_description(
+				"Maximum number of mismatches allowed in a kmer match"
+			)
+			.set_takes_single_value()
+			.set_default_value( 0ul )
+		;			
 
 		options.declare_group( "Algorithm options" ) ;
 		options[ "-mode" ]
@@ -996,7 +1004,8 @@ namespace impl {
 		std::string const& sequence,
 		std::vector< KmerPair > const& kmer_pairs,
 		std::string* result = 0,
-		Segmentation::Ranges* ranges = 0
+		Segmentation::Ranges* ranges = 0,
+		std::size_t const maximum_mismatches = 0
 	) {
 		if( kmer_pairs.size() == 0 ) {
 			return false ;
@@ -1005,11 +1014,17 @@ namespace impl {
 		// Ns in kmer are ignored.
 		// returns true if the sequence matches the kmer at position i (ignoring Ns in kmer)
 		// or false if there is a mismatch, or the kmer.size() + i > sequence length.
-		auto subsequence_matches = [&]( std::string const& sequence, std::size_t i, std::string const& kmer ) -> bool {
+		auto subsequence_matches = [&](
+			std::string const& sequence,
+			std::size_t i,
+			std::string const& kmer,
+			std::size_t const maximum_mismatches
+		) -> bool {
 			auto end_i = i + kmer.size() ;
 			if( end_i > sequence.size() ) {
 				return false ;
 			}
+			std::size_t mismatches = 0 ;
 			for( std::size_t x = 0; i != end_i; ++i, ++x ) {
 				// IUPAC codes
 				// From https://www.bioinformatics.org/sms/iupac.html
@@ -1032,7 +1047,8 @@ namespace impl {
 					case 'N': ok = true ; break ;
 					default: ok = false ; break ;
 				}
-				if( !ok ) { 
+				mismatches += (ok ? 0 : 1) ; 
+				if( mismatches > maximum_mismatches ) { 
 					return false ;
 				}
 			}
@@ -1044,10 +1060,10 @@ namespace impl {
 		for( std::size_t p = 0; p < sequence.size(); ++p ) {
 			for( std::size_t k = 0; k < kmer_pairs.size(); ++k ) {
 				auto const& kmer_pair = kmer_pairs[k] ;
-				if( subsequence_matches( sequence, p, kmer_pair.first() ) ) {
+				if( subsequence_matches( sequence, p, kmer_pair.first(), maximum_mismatches ) ) {
 					matches[2*k].push_back(p) ;
 				}
-				if( subsequence_matches( sequence, p, kmer_pair.second() ) ) {
+				if( subsequence_matches( sequence, p, kmer_pair.second(), maximum_mismatches ) ) {
 					matches[2*k+1].push_back(p) ;
 				}
 			}
@@ -1258,6 +1274,15 @@ namespace impl {
 		assert(  find_spliced_match( "CGTANNGTTA", pairs, &result, &positions ) ) ;
 		assert(  find_spliced_match( "CTTANNGTTA", pairs, &result, &positions ) ) ;
 		assert(  find_spliced_match( "CCTANNGTTA", pairs, &result, &positions ) ) ;
+
+		// N	any base
+		pairs.clear() ;
+		pairs.push_back( KmerPair( "CGTA", "GTTA" )) ; // A or G
+		assert( !find_spliced_match( "CATANNGTTA", pairs, &result, &positions, 0 ) ) ;
+		assert(  find_spliced_match( "CATANNGTTA", pairs, &result, &positions, 1 ) ) ;
+		assert( !find_spliced_match( "CATANNGATA", pairs, &result, &positions, 0 ) ) ;
+		assert( !find_spliced_match( "CATANNGATA", pairs, &result, &positions, 1 ) ) ;
+		assert(  find_spliced_match( "CATANNGATA", pairs, &result, &positions, 2 ) ) ;
 	}
 
 	struct MixtureOfHaplotypes {
@@ -1665,6 +1690,7 @@ private:
 		std::size_t max_clustering_iterations ;
 		double homopolymer_indel_weight ;
 		double min_identity ;
+		std::size_t kmer_max_mismatches ;
 	} ;
 
 	struct StateLL {
@@ -1683,7 +1709,8 @@ private:
 			options().get< double >( "-min-fraction-per-sample" ),
 			options().get< std::size_t >( "-iterations" ),
 			options().get< double >( "-homopolymer-indel-weight" ),
-			options().get< double >( "-min-alignment-identity" )
+			options().get< double >( "-min-alignment-identity" ),
+			options().get< std::size_t >( "-kmer-max-mismatches" )
 		} ;
 		if( algorithm_options.mode != "hifi" && algorithm_options.mode != "asm" ) {
 			throw genfile::BadArgumentError( "TranslatoratorApplication::unsafe_process()", "-mode=\"" + algorithm_options.mode + "\"", "Expected 'asm' or 'hifi'" ) ;
@@ -1695,7 +1722,7 @@ private:
 	}
 
 	void unsafe_process( AlgorithmOptions const& algorithm_options ) {
-		std::vector< impl::KmerPair > kmer_pairs = load_kmer_pairs( options().get_values< std::string >( "-cds-kmers" ) ) ;
+		std::vector< impl::KmerPair > kmer_pairs = load_kmer_pairs( options().get_values< std::string >( "-kmer-pairs" ) ) ;
 		std::unordered_set< std::string > excluded_reads ;
 		if( options().check( "-exclude-reads" )) {
 			load_excluded_reads( options().get< std::string >( "-exclude-reads" ), &excluded_reads ) ;
@@ -1709,6 +1736,7 @@ private:
 				return excluded_reads.find( name ) == excluded_reads.end() ;
 			},
 			kmer_pairs,
+			algorithm_options.kmer_max_mismatches,
 			&segmentations
 		) ;
 		AlgorithmData data ( segmentations ) ;
@@ -2503,6 +2531,7 @@ private:
 		std::vector< std::string > const& filenames,
 		ReadFilter include_read,
 		std::vector< impl::KmerPair > const& kmer_pairs,
+		std::size_t maximum_mismatches,
 		std::vector< Segmentation >* result
 	) {
 		using genfile::string_utils::to_string ;
@@ -2525,6 +2554,7 @@ private:
 						names[i],
 						kmer_pairs,
 						include_read,
+						maximum_mismatches,
 						result
 					) ;
 				}
@@ -2535,6 +2565,7 @@ private:
 					names[i],
 					kmer_pairs,
 					include_read,
+					maximum_mismatches,
 					result
 				) ;
 			}
@@ -2547,10 +2578,11 @@ private:
 		std::string const& name,
 		std::vector< impl::KmerPair > kmer_pairs,
 		ReadFilter include_read,
+		std::size_t const maximum_mismatches,
 		std::vector< Segmentation >* result
 	) const {
 		try {
-			find_segmentations_unsafe( sequences, name, kmer_pairs, include_read, result ) ;
+			find_segmentations_unsafe( sequences, name, kmer_pairs, include_read, maximum_mismatches, result ) ;
 		} catch( std::exception const& e ) {
 			ui().logger() << "!! Error processing \"" << name << "\", there will be no results for this file.\n" ;
 		}
@@ -2561,6 +2593,7 @@ private:
 		std::string const& name,
 		std::vector< impl::KmerPair > const& kmer_pairs,
 		ReadFilter include_read,
+		std::size_t const maximum_mismatches,
 		std::vector< Segmentation >* result
 	) const {
 		std::string sequence_name ;
@@ -2571,8 +2604,8 @@ private:
 		while( sequences.next( &sequence_name, &sequence, &qualities )) {
 			if( include_read( sequence_name, sequence, qualities )) {
 				impl::to_upper_inplace( sequence ) ;
-				bool fwd = find_spliced_match( sequence, kmer_pairs, &fwd_sequence, &fwd_positions ) ;
-				bool rev = find_spliced_match( genfile::reverse_complement( sequence ), kmer_pairs, &rc_sequence, &rc_positions ) ;
+				bool fwd = find_spliced_match( sequence, kmer_pairs, &fwd_sequence, &fwd_positions, maximum_mismatches ) ;
+				bool rev = find_spliced_match( genfile::reverse_complement( sequence ), kmer_pairs, &rc_sequence, &rc_positions, maximum_mismatches ) ;
 				if( fwd & rev ) {
 					result->push_back(
 						impl::Segmentation(
