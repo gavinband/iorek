@@ -2582,7 +2582,7 @@ private:
 				<< "aa"
 				<< int64_t(i)
 				<< int64_t( x.sequence_ids[0] )
-				<< int64_t( x.sequence_ids.size() )
+				<< int64_t( total_reads )
 				<< int64_t( total_exact )
 				<< int64_t( total_informative_reads )
 				<< double( total_reads ) / double( total_informative_reads )
