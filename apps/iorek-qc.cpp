@@ -1366,6 +1366,9 @@ private:
 						| ( format % "5p" % "1st" % "start"    ).str()
 						| ( format % "5p" % "1st" % "end"    ).str()
 						| ( format % "5p" % "1st" % "cigar"    ).str()
+						| ( format % "5p" % "2nd" % "start"    ).str()
+						| ( format % "5p" % "2nd" % "end"    ).str()
+						| ( format % "5p" % "2nd" % "cigar"    ).str()
 					;
 
 					(*output)
@@ -1378,6 +1381,9 @@ private:
 						| ( format % "3p" % "1st" % "start"    ).str()
 						| ( format % "3p" % "1st" % "end"    ).str()
 						| ( format % "3p" % "1st" % "cigar"    ).str()
+						| ( format % "3p" % "2nd" % "start"    ).str()
+						| ( format % "3p" % "2nd" % "end"    ).str()
+						| ( format % "3p" % "2nd" % "cigar"    ).str()
 					;
 				}
 			}
@@ -1487,14 +1493,16 @@ private:
 						(*output) << "NA" << "NA" << "NA" ;
 					}
 				}
-				if( best_fwd[0] < m_barcodes.size() ) {
-					(*output)
-						<< fwd_alignments[best_fwd[0]].start
-						<< fwd_alignments[best_fwd[0]].end
-						<< fwd_alignments[best_fwd[0]].cigar
-					;
-				} else {
-					(*output) << "NA" << "NA" << "NA" ;
+				for( std::size_t b = 0; b < 2; ++b ) {
+					if( best_fwd[b] < m_barcodes.size() ) {
+						(*output)
+							<< fwd_alignments[best_fwd[b]].start
+							<< fwd_alignments[best_fwd[b]].end
+							<< fwd_alignments[best_fwd[b]].cigar
+						;
+					} else {
+						(*output) << "NA" << "NA" << "NA" ;
+					}
 				}
 
 				for( std::size_t b = 0; b < 2; ++b ) {
@@ -1508,14 +1516,16 @@ private:
 						(*output) << "NA" << "NA" << "NA" ;
 					}
 				}
-				if( best_rev[0] < m_barcodes.size() ) {
-					(*output)
-						<< rev_alignments[best_rev[0]].start
-						<< rev_alignments[best_rev[0]].end
-						<< rev_alignments[best_rev[0]].cigar
-					;
-				} else {
-					(*output) << "NA" << "NA" << "NA" ;
+				for( std::size_t b = 0; b < 2; ++b ) {
+					if( best_rev[b] < m_barcodes.size() ) {
+						(*output)
+							<< rev_alignments[best_rev[b]].start
+							<< rev_alignments[best_rev[b]].end
+							<< rev_alignments[best_rev[b]].cigar
+						;
+					} else {
+						(*output) << "NA" << "NA" << "NA" ;
+					}
 				}
 			}
 		}
