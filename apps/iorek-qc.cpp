@@ -47,6 +47,7 @@ namespace seqlib = SeqLib;
 #include "genfile/kmer/KmerHashIterator.hpp"
 #include "statfile/BuiltInTypeStatSource.hpp"
 #include "statfile/BuiltInTypeStatSink.hpp"
+#include "genfile/reverse_complement.hpp"
 
 #include "jellyfish/jellyfish.hpp"
 
@@ -150,17 +151,21 @@ public:
 			.set_default_value( 1000 )
 		;
 
-		options.declare_group( "Adapter options" ) ;
-		options[ "-adapters" ]
+		options.declare_group( "Barcoding options" ) ;
+		options[ "-barcodes" ]
 			.set_description(
-				"Set 5' and 3' adapter sequences.  These should be specified in the same orientation as the read strand, "
-				" i.e 5'->3' on the strand being sequenced.  The defaults are from Nanonpore Chemistry Document for Ligation Adapter "
-				"kit LSK114 (Kit 14 chemistry)"
+				"Specify a set of barcodes to look for at the start and end of reads."
+				" The argument must be a file with two names columns, containing the barcode name and the barcode sequence."
+				" For each read, the best alignment of each barcode in the first L bases of the read will be found, and results reported."
+				" The best alignment of each barcode to the reverse complement of the last L bases of the read will also be found, and results reported."
+				" This can be useful to implement custom demultiplexing schemes."
 			)
-			.set_takes_values( 2 )
-//			.set_default_value( "TTCAGTTACGTATTGCT" )
-//			.set_default_value( "GCAATACGTAACTGAAC" )
+			.set_takes_single_value()
 		;
+		options[ "-barcode-output-style" ]
+			.set_description( "Specify style of barcoding output, either \"full\" or \"top2\"" )
+			.set_takes_single_value()
+			.set_default_value( "top2" ) ;
 
 		options.declare_group( "Other options" ) ;
 		options[ "-verbose" ]
@@ -179,6 +184,31 @@ public:
 namespace {
 	typedef iorek::kmer::ParallelHashSet HashSet ;
 	typedef moodycamel::ConcurrentQueue< uint64_t > Queue ;
+
+	struct NamedSequence {
+		NamedSequence() {}
+
+		NamedSequence( std::string const& _id, std::string const& _sequence ):
+			id( _id ),
+			sequence( _sequence )
+		{}
+
+		NamedSequence( NamedSequence const& other ):
+			id( other.id ),
+			sequence( other.sequence )
+		{}
+
+		NamedSequence& operator=( NamedSequence const& other ) {
+			id = other.id ;
+			sequence = other.sequence ;
+			return *this ;
+		}
+
+		std::size_t length() const { return sequence.size() ; }
+
+		std::string id ;
+		std::string sequence ;
+	} ;
 
 	struct Read {
 		Read() {}
@@ -222,6 +252,7 @@ namespace {
 			start(0),
 			end(0),
 			cigar(""),
+			score(0.0),
 			identity(0.0)
 		{}
 
@@ -234,8 +265,7 @@ namespace {
 
 	struct AdapterAligner {
 		virtual ~AdapterAligner() {} ;
-		virtual bool find_best_forward_alignment( std::string query, std::string sequence, AdapterAlignment* result ) = 0 ;
-		virtual bool find_best_reverse_alignment( std::string query, std::string sequence, AdapterAlignment* result ) = 0 ;
+		virtual AdapterAlignment find_best_alignment( std::string query, std::string sequence ) = 0 ;
 	} ;
 	
 	struct WFAAdapterAligner: public AdapterAligner {
@@ -244,17 +274,26 @@ namespace {
 			// porechop defaults are: match = 3, mismatch = -6, gap open = -5, gap extend = -2
 			// we use the same scheme but WFA requires non-positive scores, and is most efficient
 			// for match = 0, so:
+			//m_aligner(
+			//	0, // match
+			//	9, 	// mismatch
+			//	5, 	// gap open
+			//	5,	// gap extend
+			//	wfa::WFAligner::Alignment,
+			//	wfa::WFAligner::MemoryHigh
+			//)
 			m_aligner(
 				0, // match
-				9, 	// mismatch
-				5, 	// gap open
-				5,	// gap extend
+				1, 	// mismatch
+				1, 	// gap open
+				1,	// gap extend
 				wfa::WFAligner::Alignment,
 				wfa::WFAligner::MemoryHigh
 			)
 		{}
 
-		bool find_best_forward_alignment( std::string query, std::string sequence, AdapterAlignment* result ) {
+		AdapterAlignment find_best_alignment( std::string query, std::string sequence ) {
+			AdapterAlignment result ;
 			if(
 				// ends-free alignment
 				// we allow insertions at the start/end of the read sequence for free.
@@ -268,43 +307,12 @@ namespace {
 			) {
 				// find start and end from cigar string.
 				std::string cigar = m_aligner.getAlignmentCigar() ;
-				result->start = cigar.find_first_of( "MXD" ) ;
-				result->end = cigar.find_last_of( "MXD" ) ;
-				result->cigar = compress_cigar( m_aligner.getAlignmentCigar(), result->start, result->end ) ;
-				result->score = m_aligner.getAlignmentScore() ;
-
-				return true ;
-			} else {
-				return false ;
+				result.start      = cigar.find_first_of( "MXD" ) ;
+				result.end        = cigar.find_last_of( "MXD" ) ;
+				result.cigar      = compress_cigar( m_aligner.getAlignmentCigar(), result.start, result.end ) ;
+				result.score      = m_aligner.getAlignmentScore() ;
 			}
-		}
-
-		bool find_best_reverse_alignment( std::string query, std::string sequence, AdapterAlignment* result ) {
-			std::reverse( sequence.begin(), sequence.end() ) ;
-			std::reverse( query.begin(), query.end() ) ;
-			if(
-				// ends-free alignment
-				// we allow insertions at the start/end of the read sequence for free.
-				m_aligner.alignEndsFree(
-					query,
-					0, 0,
-					sequence,
-					sequence.size(), sequence.size()
-				) == wfa::WFAligner::StatusSuccessful
-			) {
-				// find start and end from cigar string.
-				std::string cigar = m_aligner.getAlignmentCigar() ;
-				// e.g. IIIIIMXMMMMIIIIIIIIII
-				std::reverse( cigar.begin(), cigar.end() ) ;
-				// now IIIIIIIIIIMMMMXMIIIII
-				result->start = cigar.find_first_of( "MXD" ) ;
-				result->end = cigar.find_last_of( "MXD" ) ;
-				result->cigar = compress_cigar( cigar, result->start, result->end ) ;
-				result->score = m_aligner.getAlignmentScore() ;
-				return true ;
-			} else {
-				return false ;
-			}
+			return result ;
 		}
 
 	private:
@@ -340,15 +348,24 @@ namespace {
 		SSWAdapterAligner():
 			// porechop defaults are: match = 3, mismatch = -6, gap open = -5, gap extend = -2
 			// we use the same scheme but SSW requires non-positive scores, so:
+			//m_ssw(
+			//	3,  // match
+			//	6,  // mismatch
+			//	5,  // gap open
+			//	2   // gap extension
+			//)
+
+			// edit distance
 			m_ssw(
-				3,  // match
-				6,  // mismatch
-				5,  // gap open
-				2   // gap extension
+				1,  // match
+				1,  // mismatch penalty
+				2,  // gap open penalty
+				1   // gap extension penalty
 			)
 		{}
 
-		bool find_best_forward_alignment( std::string query, std::string sequence, AdapterAlignment* result ) {
+		AdapterAlignment find_best_alignment( std::string query, std::string sequence ) {
+			AdapterAlignment result ;
 			StripedSmithWaterman::Alignment alignment ;
 			// bool Align(const char* query, const char* ref, const int& ref_len,
 			//         const Filter& filter, Alignment* alignment, const int32_t maskLen) const;
@@ -361,20 +378,13 @@ namespace {
 			) {
 				// find start and end from cigar string.
 				// results are 1-based, convert back to 0-based here.
-				result->start = alignment.ref_begin-1 ;
-				result->end = alignment.ref_end ;
-				result->cigar = alignment.cigar_string ;
-				result->score = alignment.sw_score ;
-				result->identity = compute_identity( alignment.cigar_string, query.size() ) ;
-				return true ;
-			} else {
-				return false ;
+				result.start = alignment.ref_begin-1 ;
+				result.end = alignment.ref_end ;
+				result.cigar = alignment.cigar_string ;
+				result.score = alignment.sw_score ;
+				result.identity = compute_identity( alignment.cigar_string, query.size() ) ;
 			}
-		}
-
-		bool find_best_reverse_alignment( std::string query, std::string sequence, AdapterAlignment* result ) {
-			// ssw works well so just search in forward sequence
-			return find_best_forward_alignment( query, sequence, result ) ;
+			return result ;
 		}
 
 	private:
@@ -479,8 +489,8 @@ namespace {
 			number_of_bases_ge_q( other.number_of_bases_ge_q ),
 			error_positions( other.error_positions ),
 			bases_at_q( other.bases_at_q ),
-			forward_adapter_alignment( other.forward_adapter_alignment ),
-			reverse_adapter_alignment( other.reverse_adapter_alignment ),
+			forward_adapter_alignments( other.forward_adapter_alignments ),
+			reverse_adapter_alignments( other.reverse_adapter_alignments ),
 			unique_solid_kmers( other.unique_solid_kmers )
 		{}
 
@@ -501,8 +511,8 @@ namespace {
 			number_of_bases_ge_q = other.number_of_bases_ge_q ;
 			error_positions = other.error_positions ;
 			bases_at_q = other.bases_at_q ;
-			forward_adapter_alignment = other.forward_adapter_alignment ;
-			reverse_adapter_alignment = other.reverse_adapter_alignment ;
+			forward_adapter_alignments = other.forward_adapter_alignments ;
+			reverse_adapter_alignments = other.reverse_adapter_alignments ;
 			unique_solid_kmers = other.unique_solid_kmers ;
 
 			return *this ;
@@ -525,8 +535,8 @@ namespace {
 		std::vector< uint64_t > number_of_bases_ge_q ;
 		std::vector< std::size_t > error_positions ;
 		std::vector< uint64_t > bases_at_q ;
-		boost::optional< AdapterAlignment > forward_adapter_alignment ;
-		boost::optional< AdapterAlignment > reverse_adapter_alignment ;
+		boost::optional< std::vector< AdapterAlignment > > forward_adapter_alignments ;
+		boost::optional< std::vector< AdapterAlignment > > reverse_adapter_alignments ;
 		uint64_t unique_solid_kmers ;
 	} ;
 	
@@ -673,7 +683,7 @@ private:
 	ReadTags m_read_tags ;
 	std::size_t m_k ;
 	HashSet m_kmers ;
-	std::vector< std::string > m_adapters ;
+	std::vector< NamedSequence > m_barcodes ;
 
 private:
 	void unsafe_process() {
@@ -688,16 +698,15 @@ private:
 			m_read_tags = load_read_tags( options().get< std::string >( "-read-tags" )) ;
 		}
 
-		if( options().check( "-adapters" )) {
-			std::vector< std::string > const adapters = options().get_values< std::string >( "-adapters" ) ;
-			if( adapters.size() != 2 ) {
-				throw genfile::BadArgumentError(
-					"IorekQCApplication::unsafe_process()",
-					"-adapters",
-					"Expected two adapters (forward and reverse), found " + genfile::string_utils::to_string( adapters.size() )
-				) ;
+		if( options().check( "-barcodes" )) {
+			std::vector< NamedSequence > barcodes ;
+			auto source = statfile::BuiltInTypeStatSource::open( options().get< std::string >( "-barcodes" )) ;
+			std::string name, sequence ;
+			while( (*source) >> name >> sequence ) {
+				barcodes.push_back( NamedSequence( name, sequence )) ;
+				(*source) >> statfile::end_row() ;
 			}
-			m_adapters = adapters ;
+			m_barcodes = barcodes ;
 		}
 
 		if( options().check( "-jf" )) {
@@ -988,8 +997,8 @@ private:
 	) {
 		ReadResult result ;
 		analyse_read_for_kmers( read, kmers, k, base_quality_threshold, &result ) ;
-		if( m_adapters.size() > 0 ) {
-			analyse_read_for_adapters( read, aligner, &result ) ;
+		if( m_barcodes.size() > 0 ) {
+			analyse_read_for_barcodes( read, aligner, m_barcodes, &result ) ;
 		}
 		return result ;
 	}
@@ -1101,6 +1110,12 @@ private:
 			int base_quality = get_quality_from_char(read.qualities[i]) ;
 			assert( base_quality <= 93 ) ;
 			++(result->bases_at_q[std::size_t(base_quality)] );
+
+			result->A += (read.sequence[i] == 'A' || read.sequence[i] == 'a' ) ;
+			result->C += (read.sequence[i] == 'C' || read.sequence[i] == 'c' ) ;
+			result->G += (read.sequence[i] == 'G' || read.sequence[i] == 'g' ) ;
+			result->T += (read.sequence[i] == 'T' || read.sequence[i] == 't' ) ;
+
 			sum_of_base_qualities += double(base_quality) ;
 			sum_of_predicted_errors += double(pow( 10, -base_quality/10.0 )) ;
 			for( std::size_t b = 0; b < 9; ++b ) {
@@ -1123,38 +1138,44 @@ private:
 #endif
 	}
 
-	void analyse_read_for_adapters(
+	void analyse_read_for_barcodes(
 		Read const& read,
 		AdapterAligner& aligner,
-		ReadResult* result
+		std::vector< NamedSequence > const& barcodes,
+		ReadResult* result,
+		std::size_t const length_to_search = 100
 	) {
-		AdapterAlignment forward_adapter_alignment ;
-		AdapterAlignment reverse_adapter_alignment ;
+		std::vector< AdapterAlignment > forward_result ;
+		std::vector< AdapterAlignment > reverse_result ;
 		std::size_t const L = read.sequence.size() ;
-		std::size_t const length_to_search = 1000 ;
-		if(
-			aligner.find_best_forward_alignment(
-				m_adapters[0],
-				read.sequence.substr( 0, std::min( L, length_to_search )),
-				&forward_adapter_alignment
-			)
-		) {
-			result->forward_adapter_alignment = forward_adapter_alignment ;
+		std::string const sequence_head    = read.sequence.substr( 0, std::min( L, length_to_search )) ;
+
+		// look for barcodes at the 5' end of read
+		for( std::size_t i = 0; i < barcodes.size(); ++i ) {
+			AdapterAlignment alignment ;
+			forward_result.push_back(
+				aligner.find_best_alignment(
+					m_barcodes[i].sequence,
+					sequence_head
+				)
+			) ;
 		}
 
-		if(
-			aligner.find_best_reverse_alignment(
-				// adapter should be specified in same orientation as read
-				m_adapters[1],
-				read.sequence.substr( L - std::min( L, length_to_search ), L ),
-				&reverse_adapter_alignment
-			)
-		) {
-			// adjust position because we only looked at last length_to_search bases
-			reverse_adapter_alignment.start += (L - std::min( L, length_to_search )) ;
-			reverse_adapter_alignment.end += (L - std::min( L, length_to_search )) ;
-			result->reverse_adapter_alignment = reverse_adapter_alignment ;
+		// look for barcodes at the 3' end of read in the reverse complement sequence
+		std::string const sequence_tail_rc = genfile::reverse_complement(
+			read.sequence.substr( L - std::min( L, length_to_search ), L )
+		) ;
+		for( std::size_t i = 0; i < barcodes.size(); ++i ) {
+			reverse_result.push_back(
+				aligner.find_best_alignment(
+					m_barcodes[i].sequence,
+					sequence_tail_rc
+				)
+			) ;
 		}
+
+		result->forward_adapter_alignments = forward_result ;
+		result->reverse_adapter_alignments = reverse_result ;
 	}
 
 	std::string get_read_tag( std::string const& read_id ) const {
@@ -1284,6 +1305,8 @@ private:
 		bool const include_tags,
 		bool include_kmer_metrics
 	) {
+		std::string const barcode_output_style = options().get< std::string >( "-barcode-output-style" ) ;
+
 		(*output)
 			| "read_id" ;
 		if( include_tags ) {
@@ -1306,19 +1329,58 @@ private:
 			| "n_bases_at_q80"
 			| "n_bases_at_q90"
 		;
-		if( m_adapters.size() > 0 ) {
-			(*output)
-				| "forward_adapter_start"
-				| "forward_adapter_end"
-				| "forward_adapter_score"
-				| "forward_adapter_cigar"
-				| "forward_adapter_identity"
-				| "reverse_adapter_start"
-				| "reverse_adapter_end"
-				| "reverse_adapter_score"
-				| "reverse_adapter_cigar"
-				| "reverse_adapter_identity"
-			;
+		if( m_barcodes.size() > 0 ) {
+			if( barcode_output_style == "full" ) {
+				for( std::size_t i = 0; i < m_barcodes.size(); ++i ) {
+					NamedSequence const& adapter = m_barcodes[i] ;
+					auto format = boost::format( "bc:5p:" + adapter.id + ":%s" ) ;
+					(*output)
+						| ( format % "start"    ).str()
+						| ( format % "end"    ).str()
+						| ( format % "score"    ).str()
+						| ( format % "cigar"    ).str()
+						| ( format % "identity" ).str()
+					;
+				}
+				for( std::size_t i = 0; i < m_barcodes.size(); ++i ) {
+					NamedSequence const& adapter = m_barcodes[i] ;
+					auto format = boost::format( "bc:3p:" + adapter.id + ":%s" ) ;
+					(*output)
+						| ( format % "start"    ).str()
+						| ( format % "end"    ).str()
+						| ( format % "score"    ).str()
+						| ( format % "cigar"    ).str()
+						| ( format % "identity" ).str()
+					;
+				}
+			} else {
+				{
+					auto format = boost::format( "bc:%s:%s:%s" ) ;
+					(*output)
+						| ( format % "5p" % "1st" % "id"    ).str()
+						| ( format % "5p" % "1st" % "score"    ).str()
+						| ( format % "5p" % "1st" % "identity" ).str()
+						| ( format % "5p" % "2nd" % "id"    ).str()
+						| ( format % "5p" % "2nd" % "score"    ).str()
+						| ( format % "5p" % "2nd" % "identity" ).str()
+						| ( format % "5p" % "1st" % "start"    ).str()
+						| ( format % "5p" % "1st" % "end"    ).str()
+						| ( format % "5p" % "1st" % "cigar"    ).str()
+					;
+
+					(*output)
+						| ( format % "3p" % "1st" % "id"    ).str()
+						| ( format % "3p" % "1st" % "score"    ).str()
+						| ( format % "3p" % "1st" % "identity" ).str()
+						| ( format % "3p" % "2nd" % "id"    ).str()
+						| ( format % "3p" % "2nd" % "score"    ).str()
+						| ( format % "3p" % "2nd" % "identity" ).str()
+						| ( format % "3p" % "1st" % "start"    ).str()
+						| ( format % "3p" % "1st" % "end"    ).str()
+						| ( format % "3p" % "1st" % "cigar"    ).str()
+					;
+				}
+			}
 		}
 		if( include_kmer_metrics ) {
 			(*output)
@@ -1341,6 +1403,8 @@ private:
 #if DEBUG
 		std::cerr << "++ write_per_read_result(): " << result.id << ".\n" ;
 #endif
+		std::string const barcode_output_style = options().get< std::string >( "-barcode-output-style" ) ;
+
 		(*output)
 			<< read_result.read.id ;
 		if( include_tags ) {
@@ -1365,28 +1429,94 @@ private:
 			<< read_result.number_of_bases_ge_q[9] 				// q90
 		;
 
-		if( m_adapters.size() > 0 ) {
-			if( read_result.forward_adapter_alignment ) {
-				(*output)
-					<< read_result.forward_adapter_alignment->start+1	// convert to 1-based
-					<< read_result.forward_adapter_alignment->end+1 	// convert to 1-based
-					<< read_result.forward_adapter_alignment->score
-					<< read_result.forward_adapter_alignment->cigar
-					<< read_result.forward_adapter_alignment->identity
-				;
+		if( m_barcodes.size() > 0 ) {			
+			assert( read_result.forward_adapter_alignments->size() == m_barcodes.size() ) ;
+			assert( read_result.reverse_adapter_alignments->size() == m_barcodes.size() ) ;
+			if( barcode_output_style == "full" ) {
+				for( std::size_t i = 0; i < m_barcodes.size(); ++i ) {
+					AdapterAlignment const& alignment = (*read_result.forward_adapter_alignments)[i] ;
+					(*output)
+						<< alignment.start+1	// convert to 1-based
+						<< alignment.end+1	    // convert to 1-based
+						<< alignment.score
+						<< alignment.cigar
+						<< alignment.identity
+					;
+				}
+				for( std::size_t i = 0; i < m_barcodes.size(); ++i ) {
+					AdapterAlignment const& alignment = (*read_result.reverse_adapter_alignments)[i] ;
+					(*output)
+						<< alignment.start+1	// convert to 1-based
+						<< alignment.end+1	   // convert to 1-based
+						<< alignment.score
+						<< alignment.cigar
+						<< alignment.identity
+					;
+				}
 			} else {
-				(*output) << "NA" << "NA" << "NA" << "NA" ;
-			}
-			if( read_result.reverse_adapter_alignment ) {
-				(*output)
-					<< read_result.reverse_adapter_alignment->start+1	// convert to 1-based
-					<< read_result.reverse_adapter_alignment->end+1 	// convert to 1-based
-					<< read_result.reverse_adapter_alignment->score
-					<< read_result.reverse_adapter_alignment->cigar
-					<< read_result.reverse_adapter_alignment->identity
-				;
-			} else {
-				(*output) << "NA" << "NA" << "NA" << "NA" ;
+				auto find_bests = [&]( std::vector< AdapterAlignment > const& alignments ) {
+					std::vector< std::size_t > bests( 2, alignments.size() ) ;
+					std::vector< double >      identities( 2, -1.0 ) ;
+					for( std::size_t i = 0; i < alignments.size(); ++i ) {
+						auto const& alignment = alignments[i] ;
+						if( alignment.identity > identities[0] ) {
+							// previous best is now 2nd best
+							identities[1]  = identities[0] ;
+							bests[1]       = bests[0] ;
+							identities[0]  = alignment.identity ;
+							bests[0]       = i ;
+						} else if( alignment.identity > identities[1] ) {
+							identities[1]  = alignment.identity ;
+							bests[1]       = i ;
+						}
+					}
+					return bests ;
+				} ;
+				auto const& fwd_alignments = *read_result.forward_adapter_alignments ;
+				auto const& rev_alignments = *read_result.reverse_adapter_alignments ;
+				auto best_fwd = find_bests( fwd_alignments ) ;
+				auto best_rev = find_bests( rev_alignments ) ;
+				for( std::size_t b = 0; b < 2; ++b ) {
+					if( best_fwd[b] < m_barcodes.size() ) {
+						(*output)
+							<< m_barcodes[best_fwd[b]].id
+							<< fwd_alignments[best_fwd[b]].score
+							<< fwd_alignments[best_fwd[b]].identity
+						;
+					} else {
+						(*output) << "NA" << "NA" << "NA" ;
+					}
+				}
+				if( best_fwd[0] < m_barcodes.size() ) {
+					(*output)
+						<< fwd_alignments[best_fwd[0]].start
+						<< fwd_alignments[best_fwd[0]].end
+						<< fwd_alignments[best_fwd[0]].cigar
+					;
+				} else {
+					(*output) << "NA" << "NA" << "NA" ;
+				}
+
+				for( std::size_t b = 0; b < 2; ++b ) {
+					if( best_rev[b] < m_barcodes.size() ) {
+						(*output)
+							<< m_barcodes[best_rev[b]].id
+							<< rev_alignments[best_rev[b]].score
+							<< rev_alignments[best_rev[b]].identity
+						;
+					} else {
+						(*output) << "NA" << "NA" << "NA" ;
+					}
+				}
+				if( best_rev[0] < m_barcodes.size() ) {
+					(*output)
+						<< rev_alignments[best_rev[0]].start
+						<< rev_alignments[best_rev[0]].end
+						<< rev_alignments[best_rev[0]].cigar
+					;
+				} else {
+					(*output) << "NA" << "NA" << "NA" ;
+				}
 			}
 		}
 
