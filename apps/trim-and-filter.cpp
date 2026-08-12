@@ -79,6 +79,8 @@ public:
 			.set_takes_single_value()
 		;
 
+		options[ "-omit-untagged" ]
+			.set_description( "Don't output reads that don't have a tag") ;
 
 		options.declare_group( "Algorithm options" ) ;
 		options[ "-trim-start" ]
@@ -169,6 +171,7 @@ private:
 			&m_tags
 		) ;
 
+		//std::cerr << "TAG: " << m_read_tags.begin()->first << " " << m_read_tags.begin()->second << ".\n" ;
 		if( std::find( m_tags.begin(), m_tags.end(), "NA" ) == m_tags.end() ) {
 			m_tags.push_back( "NA" ) ;
 		}
@@ -325,6 +328,7 @@ private:
 			options().get< std::size_t >( "-trim-start" ),
 			options().get< std::size_t >( "-trim-end" ),
 			options().check( "-ot" ),
+			!options().check( "-omit-untagged" ),
 			&quit
 		) ;
 
@@ -335,7 +339,10 @@ private:
 			while( std::getline( input, line )) {
 				switch(l) {
 					case 0:
-						read.id = line.substr(1,line.size() ) ;
+						// sometimes fastq files have stuff after the read ID on the read ID line (i.e. BAM tags)
+						// just take up to the first whitespace here.
+						read.id = genfile::string_utils::slice(line).substr(1, std::min( line.size(), line.find_first_of( " \t\n" ))) ;
+						//std::cerr << "READ: " << read.id << ".\n" ;
 						break ;
 					case 1:
 						read.sequence = line ;
@@ -384,13 +391,14 @@ private:
 		std::size_t const trim_start,
 		std::size_t const trim_end,
 		bool const output_trimmed,
+		bool const output_untagged,
 		std::atomic< int >* quit
 	) {
 		Read read ;
 		while( !(*quit) ) {
 			bool popped = read_queue->try_dequeue( read ) ;
 			if( popped ) {
-				analyse_read( read, trim_start, trim_end, output_trimmed ) ;
+				analyse_read( read, trim_start, trim_end, output_trimmed, output_untagged ) ;
 			} else {
 				// nothing to pop, sleep to allow queue to fill.
 				std::this_thread::sleep_for( std::chrono::microseconds(10) ) ;
@@ -402,9 +410,13 @@ private:
 		Read const& read,
 		std::size_t const trim_start,
 		std::size_t const trim_end,
-		bool output_trimmed
+		bool output_trimmed,
+		bool output_untagged
 	) {
 		std::string const tag = get_read_tag( read.id ) ;
+		if( tag == "NA" && !output_untagged ) {
+			return ;
+		}
 		//std::cerr << "++ read.id = " << read.id << ", tag = [" << tag << "].\n" ;
 		std::ostream* sink = get_sink( tag ) ;
 		std::size_t const L = read.sequence.size() ;
