@@ -141,7 +141,7 @@ public:
 				" If the gene has multiple exons, specify this option multiple times."
 				" The kmers should be specified in upper-case letters and can include IUPAC SNP (but not indel) codes to allow for known variation."
 				" Lower-case letters at the start of 5' kmers, and at the end of 3' kmers, are used for matching kmers but are omitted from inferred CDS regions."
-				" A * in the kmer indicates that the preceding letter is allowed to match an arbitrary number of additional times, often "
+				" A + in the kmer indicates that the preceding letter is allowed to match an arbitrary number of additional times, often "
 				" useful to allow for homopolymer runs."
 			)
 			.set_takes_values_until_next_option()
@@ -1076,7 +1076,7 @@ namespace impl {
 				}
 				// Wildcard expansion.
 				// If we matched, and the next character is a wildcard, we allow to match more
-				if( ok && (x+1) < kmer.size() && kmer[x+1] == '*' ) {
+				if( ok && (x+1) < kmer.size() && kmer[x+1] == '+' ) {
 					for( ; (i+1) < sequence.size() && matchit( kmer[x], sequence[i+1] ); ++i ) ;
 					++x ;
 				}
