@@ -140,6 +140,9 @@ public:
 				"Specify a pair of DNA kmers, on the *translation strand*, that represent the start and end of a CDS segment."
 				" If the gene has multiple exons, specify this option multiple times."
 				" The kmers should be specified in upper-case letters and can include IUPAC SNP (but not indel) codes to allow for known variation."
+				" Lower-case letters at the start of 5' kmers, and at the end of 3' kmers, are used for matching kmers but are omitted from inferred CDS regions."
+				" A * in the kmer indicates that the preceding letter is allowed to match an arbitrary number of additional times, often "
+				" useful to allow for homopolymer runs."
 			)
 			.set_takes_values_until_next_option()
 			.set_minimum_multiplicity(1)
