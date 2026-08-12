@@ -286,7 +286,7 @@ private:
 						(
 							"Read id \""
 							+ read_id
-							+ "\" appears at least twice with differenct tags."
+							+ "\" appears at least twice with different tags."
 						)
 					) ;
 				}

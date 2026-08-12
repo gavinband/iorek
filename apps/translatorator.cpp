@@ -140,6 +140,9 @@ public:
 				"Specify a pair of DNA kmers, on the *translation strand*, that represent the start and end of a CDS segment."
 				" If the gene has multiple exons, specify this option multiple times."
 				" The kmers should be specified in upper-case letters and can include IUPAC SNP (but not indel) codes to allow for known variation."
+				" Lower-case letters at the start of 5' kmers, and at the end of 3' kmers, are used for matching kmers but are omitted from inferred CDS regions."
+				" A * in the kmer indicates that the preceding letter is allowed to match an arbitrary number of additional times, often "
+				" useful to allow for homopolymer runs."
 			)
 			.set_takes_values_until_next_option()
 			.set_minimum_multiplicity(1)
@@ -1010,10 +1013,52 @@ namespace impl {
 		if( kmer_pairs.size() == 0 ) {
 			return false ;
 		}
+
+		// Compare a sequence to a template char, allowing for N's (match anything)
+		// and other IUPAC codes
+		auto matchit = []( char template_char, char sequence_char ) {
+			bool ok = false ;
+			switch( template_char ) {
+				case 'a':
+				case 'A': ok = ( sequence_char == 'A' ) ; break ;
+				case 'c':
+				case 'C': ok = ( sequence_char == 'C' ) ; break ;
+				case 'g':
+				case 'G': ok = ( sequence_char == 'G' ) ; break ;
+				case 't':
+				case 'T': ok = ( sequence_char == 'T' ) ; break ;
+				// IUPAC codes
+				// From https://www.bioinformatics.org/sms/iupac.html
+				case 'r':
+				case 'R': ok = ( sequence_char == 'A' || sequence_char == 'G' ); break ;
+				case 'y':
+				case 'Y': ok = ( sequence_char == 'C' || sequence_char == 'T' ); break ;
+				case 's':
+				case 'S': ok = ( sequence_char == 'G' || sequence_char == 'C' ); break ;
+				case 'w':
+				case 'W': ok = ( sequence_char == 'A' || sequence_char == 'T' ); break ;
+				case 'k':
+				case 'K': ok = ( sequence_char == 'G' || sequence_char == 'T' ); break ;
+				case 'm':
+				case 'M': ok = ( sequence_char == 'A' || sequence_char == 'C' ); break ;
+				case 'b':
+				case 'B': ok = ( sequence_char == 'C' || sequence_char == 'G' || sequence_char == 'T' ); break ;
+				case 'd':
+				case 'D': ok = ( sequence_char == 'A' || sequence_char == 'G' || sequence_char == 'T' ); break ;
+				case 'h':
+				case 'H': ok = ( sequence_char == 'A' || sequence_char == 'C' || sequence_char == 'T' ); break ;
+				case 'v':
+				case 'V': ok = ( sequence_char == 'A' || sequence_char == 'C' || sequence_char == 'G' ); break ;
+				case 'n':
+				case 'N': ok = true ; break ;
+				default: ok = false ; break ;
+			}
+			return ok ;
+		} ;
 		// compare sequence starting at position i to kmer
 		// Ns in kmer are ignored.
 		// returns true if the sequence matches the kmer at position i (ignoring Ns in kmer)
-		// or false if there is a mismatch, or the kmer.size() + i > sequence length.
+		// or false if there are too many mismatches, or the kmer.size() + i > sequence length.
 		auto subsequence_matches = [&](
 			std::string const& sequence,
 			std::size_t i,
@@ -1021,35 +1066,19 @@ namespace impl {
 			std::size_t const maximum_mismatches
 		) -> bool {
 			auto end_i = i + kmer.size() ;
-			if( end_i > sequence.size() ) {
-				return false ;
-			}
 			std::size_t mismatches = 0 ;
+
 			for( std::size_t x = 0; i != end_i; ++i, ++x ) {
-				// IUPAC codes
-				// From https://www.bioinformatics.org/sms/iupac.html
-				bool ok = false ;
-				switch( kmer[x] ) {
-					case 'A': ok = ( sequence[i] == 'A' ) ; break ;
-					case 'C': ok = ( sequence[i] == 'C' ) ; break ;
-					case 'G': ok = ( sequence[i] == 'G' ) ; break ;
-					case 'T': ok = ( sequence[i] == 'T' ) ; break ;
-					case 'R': ok = ( sequence[i] == 'A' || sequence[i] == 'G' ); break ;
-					case 'Y': ok = ( sequence[i] == 'C' || sequence[i] == 'T' ); break ;
-					case 'S': ok = ( sequence[i] == 'G' || sequence[i] == 'C' ); break ;
-					case 'W': ok = ( sequence[i] == 'A' || sequence[i] == 'T' ); break ;
-					case 'K': ok = ( sequence[i] == 'G' || sequence[i] == 'T' ); break ;
-					case 'M': ok = ( sequence[i] == 'A' || sequence[i] == 'C' ); break ;
-					case 'B': ok = ( sequence[i] == 'C' || sequence[i] == 'G' || sequence[i] == 'T' ); break ;
-					case 'D': ok = ( sequence[i] == 'A' || sequence[i] == 'G' || sequence[i] == 'T' ); break ;
-					case 'H': ok = ( sequence[i] == 'A' || sequence[i] == 'C' || sequence[i] == 'T' ); break ;
-					case 'V': ok = ( sequence[i] == 'A' || sequence[i] == 'C' || sequence[i] == 'G' ); break ;
-					case 'N': ok = true ; break ;
-					default: ok = false ; break ;
-				}
+				bool ok = matchit( kmer[x], sequence[i] ) ;
 				mismatches += (ok ? 0 : 1) ; 
 				if( mismatches > maximum_mismatches ) { 
 					return false ;
+				}
+				// Wildcard expansion.
+				// If we matched, and the next character is a wildcard, we allow to match more
+				if( ok && (x+1) < kmer.size() && kmer[x+1] == '*' ) {
+					for( ; (i+1) < sequence.size() && matchit( kmer[x], sequence[i+1] ); ++i ) ;
+					++x ;
 				}
 			}
 			return true ;
@@ -1081,7 +1110,7 @@ namespace impl {
 			}
 		}
 
-		// Find all chains covering all kmer ranges in linear order
+		// Find all linear chains of the above kmer matches, which come in the right order
 		std::vector< std::vector< std::size_t > > chains ;
 		std::vector< std::size_t > current( matches.size(), 0 ) ;
 		while( current[0] < matches[0].size() ) {
@@ -1116,21 +1145,48 @@ namespace impl {
 			}
 		}
 
+		// Lower-case 
+		auto find_start_of_capitals_or_end = []( std::string const& s ) {
+			std::size_t i = 0 ;
+			for( ; i < s.size(); ++i ) {
+				if( s[i] >= 65 && s[i] <= 90 ) {
+					break ;
+				}
+			}
+			return i ;
+		} ;
+
+		auto find_end_of_capitals_or_start = []( std::string const& s ) {
+			std::size_t i = s.size() ;
+			for( ; i > 0; --i ) {
+				if( s[i-1] >= 65 && s[i-1] <= 90 ) {
+					break ;
+				}
+			}
+			return i ;
+		} ;
+
 		if( chains.size() == 1 ) {
 			auto chain = chains[0] ;
 			std::string final_sequence ;
 			Segmentation::Ranges final_ranges ;
 			std::size_t length = 0 ;
+			std::vector< std::size_t > capital_starts( kmer_pairs.size(), 0 ) ;
+			std::vector< std::size_t > capital_ends( kmer_pairs.size(), 0 ) ;
 			for( std::size_t j = 0; j < matches.size(); j += 2 ) {
-				auto p1 = matches[j]  [ chain[j]   ] ;
-				auto p2 = matches[j+1][ chain[j+1] ] + kmer_pairs[j/2].second().size() ;
-				final_ranges.push_back( Segmentation::Range( p1, p2 )) ;
+				auto kmer_pair = kmer_pairs[j/2] ;
+				capital_starts[j/2] = find_start_of_capitals_or_end( kmer_pair.first() ) ;
+				capital_ends[j/2]   = find_end_of_capitals_or_start( kmer_pair.second() ) ;
+				// We disregard the start of the forward kmer, or the end of the reverse kmer, that has lower case.
+				auto p1 = matches[j]  [ chain[j]   ] + capital_starts[j/2] ;
+				auto p2 = matches[j+1][ chain[j+1] ] + capital_ends[j/2] ;
 				length += p2-p1 ;
 			}
 			final_sequence.reserve(length) ;
 			for( std::size_t j = 0; j < matches.size(); j += 2 ) {
-				auto p1 = matches[j]  [ chain[j]   ] ;
-				auto p2 = matches[j+1][ chain[j+1] ] + kmer_pairs[j/2].second().size() ;
+				auto p1 = matches[j]  [ chain[j]   ] + capital_starts[j/2] ;
+				auto p2 = matches[j+1][ chain[j+1] ] + capital_ends[j/2] ;
+				final_ranges.push_back( Segmentation::Range( p1, p2 )) ;
 				final_sequence.append( sequence, p1, p2-p1 ) ;
 			}
 			if( result ) {
@@ -2164,7 +2220,8 @@ private:
 		}
 
 		for( std::size_t i = 0; i < kmers.size(); i += 2 ) {
-			result.push_back( impl::KmerPair( impl::to_upper(kmers[i]), impl::to_upper(kmers[i+1]) )) ;
+			result.push_back( impl::KmerPair( kmers[i], kmers[i+1] )) ;
+//			result.push_back( impl::KmerPair( impl::to_upper(kmers[i]), impl::to_upper(kmers[i+1]) )) ;
 		}
 		return result ;
 	}
