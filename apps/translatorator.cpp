@@ -94,8 +94,8 @@ public:
 			.set_takes_single_value() ;
 		
 		options[ "-exclude-reads" ]
-			.set_description( "Specify a file of read IDs to exclude from the analysis" )
-			.set_takes_single_value()
+			.set_description( "Specify one or more files of read IDs to exclude from the analysis" )
+			.set_takes_values_until_next_option()
 		;
 
 		options.declare_group( "Output file options" ) ;
@@ -1800,7 +1800,9 @@ private:
 		std::vector< impl::KmerPair > kmer_pairs = load_kmer_pairs( options().get_values< std::string >( "-kmer-pairs" ) ) ;
 		std::unordered_set< std::string > excluded_reads ;
 		if( options().check( "-exclude-reads" )) {
-			load_excluded_reads( options().get< std::string >( "-exclude-reads" ), &excluded_reads ) ;
+			for( std::string filename: options().get_values< std::string >( "-exclude-reads" )) {
+				load_excluded_reads( filename, &excluded_reads ) ;
+			}
 		}
 		// A 'segmentation' means a set of sub-ranges of a sequence
 		// which Segmentation the given kmer pairs.
