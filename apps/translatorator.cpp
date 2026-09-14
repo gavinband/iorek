@@ -173,14 +173,19 @@ public:
 			.set_default_value( 10 )
 		;
 		options[ "-min-obs-per-sample" ]
-			.set_description( "The minimum number of times a sequence must be observed in one sample, "
+			.set_description( "The minimum number of times a compressed sequence must be observed in one sample, "
 			" before it is treated as a candidate for clustering." )
 			.set_takes_single_value()
 			.set_default_value( 1 )
 		;
 		options[ "-min-fraction-per-sample" ]
-			.set_description( "The minimum fraction of sequences must be observed in one sample, "
+			.set_description( "The minimum fraction of times a compressed sequence must be observed in one sample, "
 			" before it is treated as a candidate for clustering." )
+			.set_takes_single_value()
+			.set_default_value( 0 )
+		;
+		options[ "-min-exact-read-matches" ]
+			.set_description( "The minimum number of exactly matching reads a candidate must be supported by to be reported in the output." )
 			.set_takes_single_value()
 			.set_default_value( 0 )
 		;
@@ -1747,6 +1752,7 @@ private:
 		double homopolymer_indel_weight ;
 		double min_identity ;
 		std::size_t kmer_max_mismatches ;
+		std::size_t min_exact_read_matches ;
 	} ;
 
 	struct StateLL {
@@ -1766,7 +1772,8 @@ private:
 			options().get< std::size_t >( "-iterations" ),
 			options().get< double >( "-homopolymer-indel-weight" ),
 			options().get< double >( "-min-alignment-identity" ),
-			options().get< std::size_t >( "-kmer-max-mismatches" )
+			options().get< std::size_t >( "-kmer-max-mismatches" ),
+			options().get< std::size_t >( "-min-exact-read-matches" )
 		} ;
 		if( algorithm_options.mode != "hifi" && algorithm_options.mode != "asm" ) {
 			throw genfile::BadArgumentError( "TranslatoratorApplication::unsafe_process()", "-mode=\"" + algorithm_options.mode + "\"", "Expected 'asm' or 'hifi'" ) ;
@@ -1915,11 +1922,34 @@ private:
 		}
 
 		ui().logger() << "++ Computing representative DNA sequences...\n" ;
-		std::vector< AlgorithmData::SequenceToIds > const dna_consensus = find_most_common_representative_read(
+		std::vector< AlgorithmData::SequenceToIds > dna_consensus = find_most_common_representative_read(
 			final_haplotypes,
 			hpc_assignments,
 			data
 		) ;
+
+		if( algorithm_options.min_exact_read_matches > 0 ) {
+			ui().logger() << "++ finding those with at least " << algorithm_options.min_exact_read_matches << " supporting reads...\n" ;
+			auto count_exact_reads = [&]( AlgorithmData::SequenceToIds const x ) {
+				auto result = 0ul ;
+				for( auto i: x.sequence_ids ) {
+					auto const& y = data.sequences()[i] ;
+					auto const& sequence = y.match.sequence() ;
+					if( sequence == x.sequence) {
+						result += y.reads.size() ;
+					}
+				}
+				return result ;
+			} ;
+			for( std::size_t i = 0; i < dna_consensus.size(); ) {
+				auto total_exact = count_exact_reads( dna_consensus[i] ) ;
+				if( total_exact < algorithm_options.min_exact_read_matches ) {
+					dna_consensus.erase( dna_consensus.begin() + i ) ;
+				} else {
+					++i ;
+				}
+			}
+		}
 
 		ui().logger() << "++ Translating sequence...\n" ;
 		std::vector< AlgorithmData::SequenceToIds > aa_consensus ;

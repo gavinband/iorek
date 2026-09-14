@@ -1,7 +1,7 @@
 import os.path
 import glob
 
-VERSION = '0.9.3'
+VERSION = '0.9.6'
 
 subdirs = [ '3rd_party', 'appcontext', 'apps', 'statfile', 'genfile', 'qcdb', 'lib' ]
 
@@ -93,6 +93,7 @@ char const* const package_revision = "%s" ;
 	return 0 # success
 
 def build( bld ):
+	bld.env['VERSION'] = VERSION
 	bld(
 		target = 'svelte_config',
 		includes = "./",
