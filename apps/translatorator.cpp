@@ -141,7 +141,7 @@ public:
 				" If the gene has multiple exons, specify this option multiple times."
 				" The kmers should be specified in upper-case letters and can include IUPAC SNP (but not indel) codes to allow for known variation."
 				" Lower-case letters at the start of 5' kmers, and at the end of 3' kmers, are used for matching kmers but are omitted from inferred CDS regions."
-				" A + in the kmer indicates that the preceding letter is allowed to match an arbitrary number of additional times, often "
+				" A * in the kmer indicates that the preceding letter is allowed to match an arbitrary number of additional times, often "
 				" useful to allow for homopolymer runs."
 			)
 			.set_takes_values_until_next_option()
@@ -172,20 +172,23 @@ public:
 			.set_takes_single_value()
 			.set_default_value( 10 )
 		;
-		options[ "-min-obs-per-sample" ]
-			.set_description( "The minimum number of times a compressed sequence must be observed in one sample, "
-			" before it is treated as a candidate for clustering." )
+		options[ "-min-hpc-reads" ]
+			.set_description( "Only pick candidate hpc sequences that occur at least this many times in the reads." )
 			.set_takes_single_value()
 			.set_default_value( 1 )
 		;
-		options[ "-min-fraction-per-sample" ]
-			.set_description( "The minimum fraction of times a compressed sequence must be observed in one sample, "
-			" before it is treated as a candidate for clustering." )
+		options[ "-min-fraction-hpc-reads" ]
+			.set_description( "Only pick candidate hpc sequences that occur in at least this fraction of the reads." )
 			.set_takes_single_value()
 			.set_default_value( 0 )
 		;
-		options[ "-min-exact-read-matches" ]
-			.set_description( "The minimum number of exactly matching reads a candidate must be supported by to be reported in the output." )
+		options[ "-min-exact-reads" ]
+			.set_description( "Only pick candidate hpc sequences, for which there is at least one uncompressed sequencing occuring this number of times in the reads." )
+			.set_takes_single_value()
+			.set_default_value( 1 )
+		;
+		options[ "-min-fraction-exact-reads" ]
+			.set_description( "Only pick candidate hpc sequences, for which there is at least one uncompressed sequencing occuring in this fraction of reads." )
 			.set_takes_single_value()
 			.set_default_value( 0 )
 		;
@@ -210,7 +213,7 @@ public:
 			.set_default_value( 0.95 )
 		;
 
-//		options.option_implies_option( "-min-obs-per-sample", "-cluster" ) ;
+//		options.option_implies_option( "-min-supporting-reads", "-cluster" ) ;
 //		options.option_implies_option( "-min-fraction-per-sample", "-cluster" ) ;
 		options.option_excludes_option( "-only-translatable", "-truncate-at-stops" ) ;
 
@@ -1081,7 +1084,7 @@ namespace impl {
 				}
 				// Wildcard expansion.
 				// If we matched, and the next character is a wildcard, we allow to match more
-				if( ok && (x+1) < kmer.size() && kmer[x+1] == '+' ) {
+				if( ok && (x+1) < kmer.size() && kmer[x+1] == '*' ) {
 					for( ; (i+1) < sequence.size() && matchit( kmer[x], sequence[i+1] ); ++i ) ;
 					++x ;
 				}
@@ -1565,6 +1568,13 @@ namespace impl {
 			return( result ) ;
 		}
 
+		std::size_t maximum_read_count_for_hpc_sequence( std::size_t i ) const {
+			std::size_t result = 0 ;
+			for( std::size_t j: m_hpc_sequences[i].sequence_ids ) {
+				result = std::max( result, m_sequences[j].reads.size() ) ;
+			}
+			return( result ) ;
+		}
 
 	private:
 		std::vector< MatchToReads > m_sequences ;
@@ -1746,13 +1756,14 @@ private:
 		bool only_translatable ;
 		bool truncate_at_stops ;
 		std::size_t number_of_threads ;
-		std::size_t min_obs_per_sample ;
-		double min_fraction_per_sample ;
+		std::size_t min_hpc_reads ;
+		double min_fraction_hpc_reads ;
+		std::size_t min_exact_reads ;
+		double min_fraction_exact_reads ;
 		std::size_t max_clustering_iterations ;
 		double homopolymer_indel_weight ;
 		double min_identity ;
 		std::size_t kmer_max_mismatches ;
-		std::size_t min_exact_read_matches ;
 	} ;
 
 	struct StateLL {
@@ -1767,13 +1778,14 @@ private:
 			options().check( "-only-translatable" ),
 			options().check( "-truncate-at-stops" ),
 			options().get< std::size_t >( "-threads" ),
-			options().get< std::size_t >( "-min-obs-per-sample" ),
-			options().get< double >( "-min-fraction-per-sample" ),
+			options().get< std::size_t >( "-min-hpc-reads" ),
+			options().get< double >( "-min-fraction-hpc-reads" ),
+			options().get< std::size_t >( "-min-exact-reads" ),
+			options().get< double >( "-min-fraction-exact-reads" ),
 			options().get< std::size_t >( "-iterations" ),
 			options().get< double >( "-homopolymer-indel-weight" ),
 			options().get< double >( "-min-alignment-identity" ),
-			options().get< std::size_t >( "-kmer-max-mismatches" ),
-			options().get< std::size_t >( "-min-exact-read-matches" )
+			options().get< std::size_t >( "-kmer-max-mismatches" )
 		} ;
 		if( algorithm_options.mode != "hifi" && algorithm_options.mode != "asm" ) {
 			throw genfile::BadArgumentError( "TranslatoratorApplication::unsafe_process()", "-mode=\"" + algorithm_options.mode + "\"", "Expected 'asm' or 'hifi'" ) ;
@@ -1842,11 +1854,16 @@ private:
 				return result ;
 			})() ;
 			auto filter_candidates = [&data,&algorithm_options,total_reads](std::size_t i)->bool {
-				auto count = data.count_reads_for_hpc_sequence(i) ;
+				auto hpc_count  = data.count_reads_for_hpc_sequence(i) ;
+				auto read_count = data.maximum_read_count_for_hpc_sequence(i) ;
 				return
-					(count >= algorithm_options.min_obs_per_sample)
+					(hpc_count >= algorithm_options.min_hpc_reads)
 					&&
-					(double(count) / double(total_reads) >= algorithm_options.min_fraction_per_sample)
+					(double(hpc_count) / double(total_reads) >= algorithm_options.min_fraction_hpc_reads)
+					&&
+					(read_count >= algorithm_options.min_exact_reads)
+					&&
+					(double(read_count) / double(total_reads) >= algorithm_options.min_fraction_exact_reads)
 				;
 			} ;
 			alignments.add_sequences(
@@ -1927,29 +1944,6 @@ private:
 			hpc_assignments,
 			data
 		) ;
-
-		if( algorithm_options.min_exact_read_matches > 0 ) {
-			ui().logger() << "++ finding those with at least " << algorithm_options.min_exact_read_matches << " supporting reads...\n" ;
-			auto count_exact_reads = [&]( AlgorithmData::SequenceToIds const x ) {
-				auto result = 0ul ;
-				for( auto i: x.sequence_ids ) {
-					auto const& y = data.sequences()[i] ;
-					auto const& sequence = y.match.sequence() ;
-					if( sequence == x.sequence) {
-						result += y.reads.size() ;
-					}
-				}
-				return result ;
-			} ;
-			for( std::size_t i = 0; i < dna_consensus.size(); ) {
-				auto total_exact = count_exact_reads( dna_consensus[i] ) ;
-				if( total_exact < algorithm_options.min_exact_read_matches ) {
-					dna_consensus.erase( dna_consensus.begin() + i ) ;
-				} else {
-					++i ;
-				}
-			}
-		}
 
 		ui().logger() << "++ Translating sequence...\n" ;
 		std::vector< AlgorithmData::SequenceToIds > aa_consensus ;
@@ -2278,7 +2272,7 @@ private:
 		std::vector< SequenceIndex > target_haplotypes = haplotypes.haplotypes() ;
 		for( SequenceIndex i = 0; i < data.hpc_sequences().size(); ++i ) {
 			for( std::size_t j = 0; j < target_haplotypes.size(); ++j ) {
-				std::cerr << "!!!! " << i << " -- " << j << " (" << target_haplotypes[j] << ").\n" ;
+//				std::cerr << "!!!! " << i << " -- " << j << " (" << target_haplotypes[j] << ").\n" ;
 				SequenceIndex target = target_haplotypes[j] ;
 				AlignmentDetail const& alignment = alignments.alignment( i, target ) ;
 				result(i,j) = double( alignment.identity ) ;
