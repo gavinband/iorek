@@ -1075,6 +1075,9 @@ namespace impl {
 		) -> bool {
 			auto end_i = i + kmer.size() ;
 			std::size_t mismatches = 0 ;
+			if( end_i > sequence.size() ) {
+				return false ;
+			}
 
 			for( std::size_t x = 0; i != end_i; ++i, ++x ) {
 				bool ok = matchit( kmer[x], sequence[i] ) ;
@@ -1205,6 +1208,7 @@ namespace impl {
 			}
 			return true ;
 		} else {
+			std::cerr << "!!! chains.size() == " << chains.size() << ".\n" ;
 			return false ;
 		}
 	}
@@ -1801,6 +1805,7 @@ private:
 		std::unordered_set< std::string > excluded_reads ;
 		if( options().check( "-exclude-reads" )) {
 			for( std::string filename: options().get_values< std::string >( "-exclude-reads" )) {
+				std::cerr << "!!! " << filename << ".\n" ;
 				load_excluded_reads( filename, &excluded_reads ) ;
 			}
 		}
