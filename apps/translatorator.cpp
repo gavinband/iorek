@@ -1208,7 +1208,6 @@ namespace impl {
 			}
 			return true ;
 		} else {
-			std::cerr << "!!! chains.size() == " << chains.size() << ".\n" ;
 			return false ;
 		}
 	}
@@ -2611,7 +2610,7 @@ private:
 			for( std::size_t i = 0; i < kmer_pairs.size(); ++i ) {
 				output->write_comment( to_string(i+1) + ": " + kmer_pairs[i].first() + " / " + kmer_pairs[i].second() ) ;
 			}
-			(*output) | "file" | "type" | "cluster_id" | "hpc_id" | "supporting_reads" | "exact_reads" | "total_informative_reads" | "proportion" | "total_reads" | "sequence" ;
+			(*output) | "file" | "type" | "cluster_id" | "hpc_id" | "supporting_reads" | "exact_reads" | "total_informative_reads" | "proportion"  | "unsegmented_reads"| "total_reads" | "sequence" ;
 		}
 
 		std::size_t total_informative_reads = 0 ;
@@ -2647,6 +2646,7 @@ private:
 				<< int64_t( total_exact )
 				<< int64_t( total_informative_reads )
 				<< double( total_reads ) / double( total_informative_reads )
+				<< int64_t( data.ambiguous_sequences().size() )
 				<< int64_t( data.total_reads() )
 				<< x.sequence
 				<< statfile::end_row()
@@ -2674,6 +2674,7 @@ private:
 				<< int64_t( total_exact )
 				<< int64_t( total_informative_reads )
 				<< double( total_reads ) / double( total_informative_reads )
+				<< int64_t( data.ambiguous_sequences().size() )
 				<< int64_t( data.total_reads() )
 				<< x.sequence
 				<< statfile::end_row()
