@@ -26,7 +26,7 @@ read6 sequence    ACGTGGT-CACCGTCGTTGTAAG-CATACGCCGG
 # kmer pairs:   ...CGTG.......GTCG..GTAA..CATA
 ```
 
-And using kmer pairs `CGTG` - `GTCG`, and `GTAA` - `CATA`,  you get output conceptually like this (`-mode asm`):
+And using kmer pairs `CGTG` - `GTCG`, and `GTAA` - `CATA`,  you get output conceptually like this for `-mode asm`:
 ```
  read sequence
 read1 CGTGGTTCACCGTCGGTAAGTCATA
@@ -37,14 +37,16 @@ read5 CGTGGTCACCGTCGGTAAGCATA
 read6 CGTGGTCACCGTCGGTAAGCATA
 ```
 
-(with one resulting extracted sequence per input sequence), or potentially like this (`-mode hifi`):
+with one resulting extracted sequence per input sequence).
+
+For `-mode hifi` you instead get this:
 ```
 cluster number_of_reads total_informative_reads exact_reads proportion sequence
       0               4                       6           3 0.666      CGTGGTCACCGTCGGTAAGTCATA
       1               2                       6           2 0.333      CGTGGTCACCGTCGGTAAGCATA
 ```
 
-(With the resulting extracted sequences clustered and counted.  In this toy example, note that `read1` has
+with the resulting extracted sequences clustered and counted.  In this toy example, note that `read1` has
 been clustered with `read2` and others similar reads.  `translatorator` has determined that, among reads with substantial frequency,
 it is most similar to the first cluster.
 
