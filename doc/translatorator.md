@@ -1,29 +1,35 @@
 # translatorator
 
-`translatorator` is a tool to locate, and call, specific subsequences of assembly-level DNA sequences or PacBio HiFi reads.
-Its particular USP is that it looks up sub-sequences based on pairs of DNA kmers at the 5' and 3' end.
+`translatorator` is a tool to locate subsequences of assembly-level DNA sequences or sequencing reads based
+on the presence of specific kmers, or kmer patterns.  
 
 A key use case is extracting the coding sequence of a gene based on kmers identifying the start and end of each exon.
 
-**Note** `translatorator` is under development and its feature set, design, and usage miught change.
+`translatorator`'s particular USP is that it looks up sub-sequences based on pairs of DNA kmers at the 5' and 3' end.  The
+kmers can be specified on the command line and have a particular syntax that allows for various levels of
+flexibility that we've found useful.  Once found, the relevant portion(s) of the read are extracted and optionally 'translated'
+to form predicted protein sequence.
+
+**Note** `translatorator` is under development and its feature set, design, and usage might change.
 
 ## Diagram
 
 With input conceptually like this:
 ```
-    kmer pairs:    CGTG      GTCG  GTAA  CATA
-read1 sequence  GCACGTGGT-ACCGTCGTCGTAAGTCATAC
-read2 sequence  GCACGTGGTCACCGTCGTCGTAAGTCATA
-read3 sequence   CACGTGGTCACCGTCGTCGTAAGTCATACGCC
-read4 sequence   CACGTGGTCACCGTCGTCGTAAGTCATACGCCGGC
-read5 sequence    ACGTGGTCACCGTCGTTGTAAG-CATA
-read6 sequence    ACGTGGTCACCGTCGTTGTAAG-CATACGCCGG
+read1 sequence  GCACGTGGTTCACCGTCGTCGTAAGTCATAC
+read2 sequence  GCACGTGGT-CACCGTCGTCGTAAGTCATA
+read3 sequence   CACGTGGT-CACCGTCGTCGTAAGTCATACGCC
+read4 sequence   CACGTGGT-CACCGTCGTCGTAAGTCATACGCCGGC
+read5 sequence    ACGTGGT-CACCGTCGTTGTAAG-CATA
+read6 sequence    ACGTGGT-CACCGTCGTTGTAAG-CATACGCCGG
+
+# kmer pairs:   ...CGTG.......GTCG..GTAA..CATA
 ```
 
-You get output conceptually like this (`-mode asm`):
+And using kmer pairs `CGTG` - `GTCG`, and `GTAA` - `CATA`,  you get output conceptually like this (`-mode asm`):
 ```
  read sequence
-read1 CGTGGTACCGTCGGTAAGTCATA
+read1 CGTGGTTCACCGTCGGTAAGTCATA
 read2 CGTGGTCACCGTCGGTAAGTCATA
 read3 CGTGGTCACCGTCGGTAAGTCATA
 read4 CGTGGTCACCGTCGGTAAGTCATA
@@ -31,12 +37,16 @@ read5 CGTGGTCACCGTCGGTAAGCATA
 read6 CGTGGTCACCGTCGGTAAGCATA
 ```
 
-Or like this (`-mode hifi`):
+(with one resulting extracted sequence per input sequence), or potentially like this (`-mode hifi`):
 ```
 cluster number_of_reads total_informative_reads exact_reads proportion sequence
       0               4                       6           3 0.666      CGTGGTCACCGTCGGTAAGTCATA
       1               2                       6           2 0.333      CGTGGTCACCGTCGGTAAGCATA
 ```
+
+(With the resulting extracted sequences clustered and counted.  In this toy example, note that `read1` has
+been clustered with `read2` and others similar reads.  `translatorator` has determined that, among reads with substantial frequency,
+it is most similar to the first cluster.
 
 ## Features:
 
@@ -48,10 +58,28 @@ cluster number_of_reads total_informative_reads exact_reads proportion sequence
 * Allows for IUPAC codes in specified kmers, to allow for known genetic variants
 * Outputs matching sequences and their translation into amino acid sequence
 
-
 ## Running translatorator
 
-`translatorator` has two modes.  If `-mode asm` is specified, `translatorator` assumes that each input sequence (or read) is a fully correct / assembled sequence and proceeds accordingly.  The file specified by `-output-sequences` will then detail the sub-sequences of each input sequence (or read) that were matched by the kmers.
+`translatorator` has two modes.  
+
+### Assembly sequence mode
+
+If `-mode asm` is specified, `translatorator` assumes that each input sequence (or read) is a fully correct / assembled sequence and proceeds accordingly.  The file specified by `-output-sequences` will then detail the sub-sequences of each input sequence (or read) that were matched by the kmers.
+
+### Sequence read mode
+
+
+If `-mode hifi` is specified, `translatorator` assumes that the input reads are PacBio 'hifi' reads and proceeds accordingly:
+
+* Each read is examined for the presence of the kmer patterns (up to matching options).  If uniquely present in the right order, the relevant part of the sequence is extracted.  The original coordinates of the segments within the reads are retained for later use.
+* Reads undergo homopolymer compression (within each contiguous segment).
+* Homopolymer compressed reads meeting user-specified frequency filters are retained and treated as candidate haplotypes.
+* All homopolymers-compressed reads are re-aligned to the candidates.  Each read is assigned to the candidate with the highest alignment identity, provided this meets a user-specified threshold.
+* The number of reads aligning to each candidate is counted
+* The candidates are output along with their counts
+* Finally, the candidates are also 'translated' into amino acid sequences.
+
+The file specified by `-output-sequences` will then detail the sub-sequences of each input sequence (or read) that were matched by the kmers.
 
 
 ### Getting help
