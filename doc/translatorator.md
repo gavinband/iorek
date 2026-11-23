@@ -110,9 +110,7 @@ and kmer pairs `CGTG` - `GTCG` and `GTAA` - `CATA`,
 ```sh
 translatorator -sequences mysequence.fasta -cds-kmers CGTG GTCG GTAA CATA -output-sequences output.tsv
 ```
-will produce
-
-translatorator will figure out that the input sequence segments like this:
+will figure out that the input sequence segments like this:
 
 ```
 aCGTGGTCACCGTCGtcGTAAGTCATAc
